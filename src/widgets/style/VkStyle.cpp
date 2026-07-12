@@ -6,7 +6,9 @@
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
+#include <QAbstractSpinBox>
 #include <QApplication>
+#include <QComboBox>
 #include <QEvent>
 #include <QFrame>
 #include <QHash>
@@ -28,6 +30,7 @@
 #include <QStyleOptionTab>
 #include <QStyleOptionToolButton>
 #include <QStyleOptionViewItem>
+#include <QTimer>
 #include <QWidget>
 #include <algorithm>
 #include <array>
@@ -36,6 +39,7 @@
 #include <vkui/core/VkIcon.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/VkComboBox.h>
 #include <vkui/widgets/VkControlSize.h>
 #include <vkui/widgets/style/VkStyle.h>
 
@@ -53,6 +57,13 @@ bool hasState(const QStyleOption* option, QStyle::StateFlag state) {
 
 QRectF insetRect(const QRect& rect, qreal inset) {
     return QRectF(rect).adjusted(inset, inset, -inset, -inset);
+}
+
+bool isEmbeddedEditor(const QWidget* widget) {
+    const QWidget* parent = widget ? widget->parentWidget() : nullptr;
+    return widget && widget->inherits("QLineEdit") && parent &&
+           (qobject_cast<const QAbstractSpinBox*>(parent) ||
+            qobject_cast<const QComboBox*>(parent));
 }
 
 Qt::ArrowType arrowTypeForPrimitive(QStyle::PrimitiveElement element) {
@@ -273,6 +284,92 @@ class VkComboPopupStyler final : public QObject {
     QHash<QWidget*, PopupState> m_popups;
 };
 
+class VkRuntimeThemeSynchronizer final : public QObject {
+  public:
+    explicit VkRuntimeThemeSynchronizer(QApplication& application)
+        : QObject(&application), application_(&application) {
+        connect(VkThemeManager::instance(), &VkThemeManager::themeChanged, this,
+                [this](quint64) { scheduleRefresh(); });
+    }
+
+  private:
+    static int widgetDepth(const QWidget* widget) {
+        int depth = 0;
+        for (const QWidget* parent = widget ? widget->parentWidget() : nullptr; parent;
+             parent = parent->parentWidget()) {
+            ++depth;
+        }
+        return depth;
+    }
+
+    void scheduleRefresh() {
+        if (refreshPending_) {
+            return;
+        }
+        refreshPending_ = true;
+
+        // Appearance controls commonly emit while their popup is still dispatching an input
+        // event. Refresh on the next event-loop turn so popup teardown and theme repolish never
+        // mutate the same widget tree reentrantly. Multiple token changes in one turn coalesce.
+        QTimer::singleShot(0, this, [this] { refreshWidgets(); });
+    }
+
+    void refreshWidgets() {
+        refreshPending_ = false;
+        QApplication* application = application_.data();
+        if (!application) {
+            return;
+        }
+
+        struct WidgetEntry {
+            QPointer<QWidget> widget;
+            int depth = 0;
+        };
+
+        QList<WidgetEntry> widgets;
+        const QWidgetList liveWidgets = QApplication::allWidgets();
+        widgets.reserve(liveWidgets.size());
+        for (QWidget* widget : liveWidgets) {
+            widgets.append({widget, widgetDepth(widget)});
+        }
+
+        // Unpolish children before parents, then polish parents before children. This preserves
+        // inherited palettes and lets QStyleSheetStyle rebuild its resolved palette from the new
+        // application colors instead of retaining values captured by the previous appearance.
+        std::ranges::sort(widgets, [](const WidgetEntry& left, const WidgetEntry& right) {
+            return left.depth > right.depth;
+        });
+        for (const WidgetEntry& entry : widgets) {
+            const QPointer<QWidget>& widget = entry.widget;
+            if (widget && widget->testAttribute(Qt::WA_WState_Polished) && widget->style()) {
+                widget->style()->unpolish(widget);
+            }
+        }
+
+        std::ranges::reverse(widgets);
+        for (const WidgetEntry& entry : widgets) {
+            const QPointer<QWidget>& widget = entry.widget;
+            if (!widget) {
+                continue;
+            }
+            if (widget->testAttribute(Qt::WA_WState_Polished) && widget->style()) {
+                widget->style()->polish(widget);
+            }
+            widget->updateGeometry();
+            widget->update();
+        }
+
+        for (QWidget* window : QApplication::topLevelWidgets()) {
+            if (window) {
+                window->update();
+            }
+        }
+    }
+
+    QPointer<QApplication> application_;
+    bool refreshPending_ = false;
+};
+
 VkStylePrivate::VkStylePrivate(VkStyle* owner)
     : q(owner), animations(new VkWidgetAnimationManager(owner)),
       comboPopups(new VkComboPopupStyler(owner)) {}
@@ -308,6 +405,11 @@ void VkStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option
     const VkTheme& theme = VkThemeManager::instance()->theme();
     const auto& colors = theme.colors();
     const auto& metrics = theme.metrics();
+    if ((element == PE_PanelLineEdit || element == PE_FrameLineEdit) && isEmbeddedEditor(widget)) {
+        // QAbstractSpinBox and editable QComboBox own the only frame. Their private QLineEdit is
+        // deliberately surface-less so nested editors never produce a second rounded rectangle.
+        return;
+    }
     if (d->comboPopups->isPopupPart(widget) &&
         (element == PE_Frame || element == PE_FrameMenu || element == PE_PanelMenu)) {
         if (VkComboPopupStyler::isPopupContainer(widget)) {
@@ -567,6 +669,39 @@ void VkStyle::drawControl(ControlElement element, const QStyleOption* option, QP
                                                     : colors.textPrimary)
                                       : colors.textDisabled);
         QProxyStyle::drawControl(element, &copy, painter, widget);
+        return;
+    }
+    case CE_ComboBoxLabel: {
+        const auto* combo = qstyleoption_cast<const QStyleOptionComboBox*>(option);
+        const auto* comboWidget = qobject_cast<const QComboBox*>(widget);
+        if (!combo || combo->editable || !comboWidget) {
+            QProxyStyle::drawControl(element, option, painter, widget);
+            return;
+        }
+
+        QRect textRect = subControlRect(CC_ComboBox, combo, SC_ComboBoxEditField, widget);
+        painter->save();
+        painter->setClipRect(textRect);
+        if (!combo->currentIcon.isNull()) {
+            const QSize requested = combo->iconSize.isValid() ? combo->iconSize : QSize(16, 16);
+            const QSize actual = combo->currentIcon.actualSize(requested);
+            const QRect iconRect = alignedRect(
+                option->direction, Qt::AlignLeading | Qt::AlignVCenter, actual, textRect);
+            combo->currentIcon.paint(painter, iconRect, Qt::AlignCenter,
+                                     enabled ? QIcon::Normal : QIcon::Disabled);
+            const int iconGap = qRound(metrics.spacing6);
+            if (option->direction == Qt::LeftToRight) {
+                textRect.setLeft(iconRect.right() + 1 + iconGap);
+            } else {
+                textRect.setRight(iconRect.left() - 1 - iconGap);
+            }
+        }
+
+        const QString text = option->fontMetrics.elidedText(
+            combo->currentText, comboBoxElideMode(*comboWidget), std::max(0, textRect.width()));
+        painter->setPen(enabled ? colors.textPrimary : colors.textDisabled);
+        painter->drawText(textRect, Qt::AlignLeading | Qt::AlignVCenter | Qt::TextSingleLine, text);
+        painter->restore();
         return;
     }
     case CE_ProgressBarGroove:
@@ -998,11 +1133,21 @@ QSize VkStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
             QSize(qRound(metrics.controlHeightRegular), qRound(metrics.controlHeightRegular)));
         break;
     case CT_LineEdit:
-    case CT_ComboBox:
-    case CT_SpinBox:
         result.rheight() = std::max(result.height(), qRound(metrics.controlHeightRegular));
         result.rwidth() =
             std::max(result.width(), contentsSize.width() + qRound(metrics.spacing16));
+        break;
+    case CT_ComboBox:
+        result.rheight() = std::max(result.height(), qRound(metrics.controlHeightRegular));
+        result.rwidth() =
+            std::max(result.width(), contentsSize.width() +
+                                         qRound(metrics.controlHeightRegular + metrics.spacing20));
+        break;
+    case CT_SpinBox:
+        result.rheight() = std::max(result.height(), qRound(metrics.controlHeightRegular));
+        result.rwidth() = std::max(
+            result.width(),
+            contentsSize.width() + qRound(metrics.controlHeightRegular * 0.78 + metrics.spacing20));
         break;
     case CT_CheckBox:
     case CT_RadioButton:
@@ -1317,11 +1462,16 @@ void installVkUi(QApplication& application) {
     // Creating the manager resolves Auto appearance and installs system-change listeners.
     auto* const themeManager = VkThemeManager::instance();
     Q_UNUSED(themeManager)
-    if (qobject_cast<VkStyle*>(application.style())) {
-        return;
+    if (!qobject_cast<VkStyle*>(application.style())) {
+        application.setStyle(new VkStyle);
     }
 
-    application.setStyle(new VkStyle);
+    constexpr auto synchronizerName = "_vkui_runtime_theme_synchronizer";
+    if (!application.findChild<QObject*>(QString::fromLatin1(synchronizerName),
+                                         Qt::FindDirectChildrenOnly)) {
+        auto* synchronizer = new VkRuntimeThemeSynchronizer(application);
+        synchronizer->setObjectName(QString::fromLatin1(synchronizerName));
+    }
 }
 
 } // namespace vkui

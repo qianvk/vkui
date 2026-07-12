@@ -9,23 +9,48 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QImage>
+#include <QLineEdit>
 #include <QPainter>
+#include <QProxyStyle>
 #include <QQueue>
 #include <QRadioButton>
+#include <QSpinBox>
 #include <QStyleOptionComboBox>
+#include <QStyleOptionFrame>
+#include <QTemporaryFile>
 #include <QtTest>
 #include <cmath>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/VkComboBox.h>
 #include <vkui/widgets/VkControlSize.h>
 #include <vkui/widgets/controls/VkSegmentedControl.h>
 #include <vkui/widgets/controls/VkSwitch.h>
 #include <vkui/widgets/style/VkStyle.h>
+#include <vkui/widgets/style/VkStyleSheet.h>
 
 namespace {
 
 class InspectableComboBox final : public QComboBox {
   public:
     using QComboBox::initStyleOption;
+};
+
+class PolishProbeStyle final : public QProxyStyle {
+  public:
+    PolishProbeStyle() : QProxyStyle(QStringLiteral("Fusion")) {}
+
+    void polish(QWidget* widget) override {
+        ++polishCount;
+        QProxyStyle::polish(widget);
+    }
+
+    void unpolish(QWidget* widget) override {
+        ++unpolishCount;
+        QProxyStyle::unpolish(widget);
+    }
+
+    int polishCount = 0;
+    int unpolishCount = 0;
 };
 
 QImage renderWidget(QWidget& widget) {
@@ -99,6 +124,10 @@ class StyleTest final : public QObject {
     void everyAccentHasLegibleSelectedText();
     void comboBoxUsesTwoChevronGlyphs();
     void comboPopupUsesOneRoundedSurface();
+    void existingWidgetsAreRepolishedAfterThemeChange();
+    void optionalStyleSheetOverlayTracksPalette();
+    void embeddedEditorsDoNotPaintASecondFrame();
+    void comboBoxSizingAndElisionProtectTheChevronColumn();
     void fixedControlsHonorSizeClasses();
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
@@ -107,6 +136,7 @@ class StyleTest final : public QObject {
   private:
     bool animationsEnabled_ = true;
     vkui::VkAccentColor accentColor_ = vkui::VkAccentColor::Blue;
+    vkui::VkAppearance appearance_ = vkui::VkAppearance::Auto;
 };
 
 void StyleTest::initTestCase() {
@@ -114,12 +144,14 @@ void StyleTest::initTestCase() {
     auto* manager = vkui::VkThemeManager::instance();
     animationsEnabled_ = manager->animationsEnabled();
     accentColor_ = manager->accentColor();
+    appearance_ = manager->appearance();
     manager->setAnimationsEnabled(false);
 }
 
 void StyleTest::cleanupTestCase() {
     auto* manager = vkui::VkThemeManager::instance();
     manager->setAccentColor(accentColor_);
+    manager->setAppearance(appearance_);
     manager->setAnimationsEnabled(animationsEnabled_);
 }
 
@@ -180,6 +212,115 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     QVERIFY(QColor::fromRgba(popupImage.pixel(0, 0)).alpha() < 64);
     QVERIFY(QColor::fromRgba(popupImage.pixel(popupImage.rect().center())).alpha() > 192);
     combo.hidePopup();
+}
+
+void StyleTest::existingWidgetsAreRepolishedAfterThemeChange() {
+    auto* manager = vkui::VkThemeManager::instance();
+    manager->setAppearance(vkui::VkAppearance::Light);
+
+    QWidget probe;
+    auto* probeStyle = new PolishProbeStyle;
+    probeStyle->setParent(&probe);
+    probe.setStyle(probeStyle);
+    probe.resize(80, 40);
+    probe.show();
+    probe.ensurePolished();
+    QCoreApplication::processEvents();
+
+    const int polishCount = probeStyle->polishCount;
+    const int unpolishCount = probeStyle->unpolishCount;
+    manager->setAppearance(vkui::VkAppearance::Dark);
+    manager->setAccentColor(manager->accentColor() == vkui::VkAccentColor::Purple
+                                ? vkui::VkAccentColor::Blue
+                                : vkui::VkAccentColor::Purple);
+
+    QTRY_VERIFY(probeStyle->unpolishCount > unpolishCount);
+    QTRY_VERIFY(probeStyle->polishCount > polishCount);
+    QCOMPARE(probeStyle->unpolishCount, unpolishCount + 1);
+    QCOMPARE(probeStyle->polishCount, polishCount + 1);
+    QCOMPARE(qApp->palette().color(QPalette::Base), manager->theme().colors().contentBackground);
+}
+
+void StyleTest::optionalStyleSheetOverlayTracksPalette() {
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QVERIFY(file.write("QWidget#QssPaletteProbe { background: palette(base); }") > 0);
+    file.flush();
+
+    QString error;
+    const bool applied = vkui::applyStyleSheetFile(*qApp, file.fileName(), &error);
+    QWidget probe;
+    probe.setObjectName(QStringLiteral("QssPaletteProbe"));
+    probe.resize(48, 32);
+    probe.show();
+
+    auto* manager = vkui::VkThemeManager::instance();
+    manager->setAppearance(vkui::VkAppearance::Light);
+    QCoreApplication::processEvents();
+    const QColor lightPixel = QColor::fromRgba(renderWidget(probe).pixel(probe.rect().center()));
+    const QColor lightBase = manager->theme().colors().contentBackground;
+
+    manager->setAppearance(vkui::VkAppearance::Dark);
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    const QColor darkPixel = QColor::fromRgba(renderWidget(probe).pixel(probe.rect().center()));
+    const QColor darkBase = manager->theme().colors().contentBackground;
+    vkui::clearStyleSheet(*qApp);
+
+    QVERIFY2(applied, qPrintable(error));
+    QCOMPARE(lightPixel.toRgb(), lightBase.toRgb());
+    QCOMPARE(darkPixel.toRgb(), darkBase.toRgb());
+}
+
+void StyleTest::embeddedEditorsDoNotPaintASecondFrame() {
+    QSpinBox spinBox;
+    spinBox.resize(140, 30);
+    spinBox.show();
+    spinBox.ensurePolished();
+    QLineEdit* editor = spinBox.findChild<QLineEdit*>();
+    QVERIFY(editor != nullptr);
+
+    QStyleOptionFrame option;
+    option.initFrom(editor);
+    option.rect = editor->rect();
+    QImage image(editor->size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    editor->style()->drawPrimitive(QStyle::PE_PanelLineEdit, &option, &painter, editor);
+    painter.end();
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            QCOMPARE(QColor::fromRgba(image.pixel(x, y)).alpha(), 0);
+        }
+    }
+}
+
+void StyleTest::comboBoxSizingAndElisionProtectTheChevronColumn() {
+    InspectableComboBox combo;
+    const QString label = QStringLiteral("A deliberately long combo-box value");
+    combo.addItem(label);
+    combo.setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    vkui::setComboBoxElideMode(combo, Qt::ElideMiddle);
+    QCOMPARE(vkui::comboBoxElideMode(combo), Qt::ElideMiddle);
+    QVERIFY(combo.sizeHint().width() > combo.fontMetrics().horizontalAdvance(label));
+
+    combo.resize(128, 30);
+    QStyleOptionComboBox option;
+    combo.initStyleOption(&option);
+    QImage labelImage(combo.size(), QImage::Format_ARGB32_Premultiplied);
+    labelImage.fill(Qt::transparent);
+    QPainter painter(&labelImage);
+    combo.style()->drawControl(QStyle::CE_ComboBoxLabel, &option, &painter, &combo);
+    painter.end();
+
+    const QRect arrow = combo.style()->subControlRect(QStyle::CC_ComboBox, &option,
+                                                      QStyle::SC_ComboBoxArrow, &combo);
+    for (int y = arrow.top(); y <= arrow.bottom(); ++y) {
+        for (int x = arrow.left(); x <= arrow.right(); ++x) {
+            QCOMPARE(QColor::fromRgba(labelImage.pixel(x, y)).alpha(), 0);
+        }
+    }
 }
 
 void StyleTest::fixedControlsHonorSizeClasses() {

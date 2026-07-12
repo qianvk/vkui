@@ -37,6 +37,16 @@ enum class VkSymbol {
     Upload,
     Lock,
     Eye,
+    Save,
+    Reset,
+    Duplicate,
+    Image,
+    Background,
+    Focus,
+    Rename,
+    Projects,
+    Remove,
+    Reveal,
 };
 
 enum class VkIconRole {

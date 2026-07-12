@@ -12,10 +12,17 @@ artwork crisp without parallel asset directories.
 
 Icon-only controls still need a meaningful accessible name or visible label relationship.
 
-The built-in MIT-licensed SVG set includes toggle on/off, power, sidebar, grid/list, edit, trash,
-download/upload, lock, and visibility symbols in addition to the foundational navigation and file
-symbols. The Gallery separately embeds Fira Code Nerd Font for file-type demonstrations; the font
-is not part of either library target. See `THIRD_PARTY_NOTICES.md` for its upstream licenses.
+The built-in MIT-licensed SVG set includes navigation, files, projects, save, reset, duplicate,
+image/background, focus, rename, reveal, remove, toggles, sidebar, grid/list, edit, trash,
+download/upload, lock, and visibility symbols. These application-command icons share a 24-by-24
+view box, rounded outline geometry, semantic two-channel color, and deterministic metrics across
+platforms.
+
+Nerd Font glyphs remain a Gallery-only option for dense file-type or developer-tool surfaces. They
+are not used for primary desktop commands: font fallback, private-codepoint mapping, baseline
+alignment, and glyph-version drift make them less predictable than owned SVG assets for buttons,
+menus, accessibility states, and high-DPI rendering. The font is not part of either library target.
+See `THIRD_PARTY_NOTICES.md` for its upstream licenses.
 
 Gallery Nerd glyph icons support either a live semantic `VkIconRole` or an explicit `QColor`. The
 Icons page includes an interactive folder-color picker. The file-system tree uses the Nerd Font

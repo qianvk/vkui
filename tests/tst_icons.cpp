@@ -28,7 +28,10 @@ void IconTest::everySymbolHasARenderableResource() {
         vkui::VkSymbol::Power,       vkui::VkSymbol::Sidebar,      vkui::VkSymbol::Grid,
         vkui::VkSymbol::List,        vkui::VkSymbol::Edit,         vkui::VkSymbol::Trash,
         vkui::VkSymbol::Download,    vkui::VkSymbol::Upload,       vkui::VkSymbol::Lock,
-        vkui::VkSymbol::Eye,
+        vkui::VkSymbol::Eye,         vkui::VkSymbol::Save,         vkui::VkSymbol::Reset,
+        vkui::VkSymbol::Duplicate,   vkui::VkSymbol::Image,        vkui::VkSymbol::Background,
+        vkui::VkSymbol::Focus,       vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
+        vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,
     };
     for (const vkui::VkSymbol symbol : symbols) {
         const QIcon rendered = vkui::icon(symbol);

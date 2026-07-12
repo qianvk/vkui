@@ -164,7 +164,7 @@
     </message>
     <message>
         <location filename="../../examples/gallery/pages/IconsPage.cpp" line="70"/>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="146"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="156"/>
         <source>Folder</source>
         <translation>Folder</translation>
     </message>
@@ -244,77 +244,127 @@
         <translation>Eye</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="102"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="86"/>
+        <source>Save</source>
+        <translation>Save</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="87"/>
+        <source>Reset</source>
+        <translation>Reset</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="88"/>
+        <source>Duplicate</source>
+        <translation>Duplicate</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="89"/>
+        <source>Image</source>
+        <translation>Image</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="90"/>
+        <source>Background</source>
+        <translation>Background</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="91"/>
+        <source>Focus</source>
+        <translation>Focus</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="92"/>
+        <source>Rename</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="93"/>
+        <source>Projects</source>
+        <translation>Projects</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="94"/>
+        <source>Remove</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="95"/>
+        <source>Reveal</source>
+        <translation>Reveal</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="112"/>
         <source>Semantic roles</source>
         <translation>Semantic roles</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="109"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="119"/>
         <source>Primary</source>
         <translation>Primary</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="110"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="120"/>
         <source>Secondary</source>
         <translation>Secondary</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="111"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="121"/>
         <source>Disabled</source>
         <translation>Disabled</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="112"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="122"/>
         <source>Accent</source>
         <translation>Accent</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="113"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="123"/>
         <source>Destructive</source>
         <translation>Destructive</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="131"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="141"/>
         <source>Fira Code and Nerd Font</source>
         <translation>Fira Code and Nerd Font</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="147"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="157"/>
         <source>Source file</source>
         <translation>Source file</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="148"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="158"/>
         <source>PDF file</source>
         <translation>PDF file</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="149"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="159"/>
         <source>Image file</source>
         <translation>Image file</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="150"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="160"/>
         <source>Archive</source>
         <translation>Archive</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="165"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="175"/>
         <source>Nerd Font glyphs can use a semantic theme role or an explicit QColor.</source>
         <translation>Nerd Font glyphs can use a semantic theme role or an explicit QColor.</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="172"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="182"/>
         <source>Custom folder</source>
         <translation>Custom folder</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="174"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="184"/>
         <source>Choose color…</source>
         <translation>Choose color…</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="187"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="197"/>
         <source>Choose folder color</source>
         <translation>Choose folder color</translation>
     </message>
@@ -895,82 +945,82 @@
         <translation>Details</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="173"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="172"/>
         <source>vkui</source>
         <translation>vkui</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="174"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="173"/>
         <source>Source</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="176"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="174"/>
         <source>VkStyle.cpp</source>
         <translation>VkStyle.cpp</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="178"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="175"/>
         <source>VkSwitch.cpp</source>
         <translation>VkSwitch.cpp</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="180"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="177"/>
         <source>Empty folder</source>
         <translation>Empty folder</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="181"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="178"/>
         <source>README.md</source>
         <translation>README.md</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="211"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="205"/>
         <source>Name</source>
         <translation>Name</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="211"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="205"/>
         <source>Status</source>
         <translation>Status</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="211"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="205"/>
         <source>Updated</source>
         <translation>Updated</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="212"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="206"/>
         <source>Core</source>
         <translation>Core</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="212"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="206"/>
         <source>Widgets</source>
         <translation>Widgets</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="212"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="206"/>
         <source>Gallery</source>
         <translation>Gallery</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="215"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="209"/>
         <source>Ready</source>
         <translation>Ready</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="216"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="210"/>
         <source>Today</source>
         <translation>Today</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="230"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="224"/>
         <source>Surfaces</source>
         <translation>Surfaces</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="235"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="229"/>
         <source>QFrame and QGroupBox remain standard widgets.</source>
         <translation>QFrame and QGroupBox remain standard widgets.</translation>
     </message>
@@ -1101,22 +1151,22 @@
         <translation>Live preview</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="159"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="158"/>
         <source>Animation interruption</source>
         <translation>Animation interruption</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="162"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="161"/>
         <source>Rapid toggling target</source>
         <translation>Rapid toggling target</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="163"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="162"/>
         <source>Run rapid toggling</source>
         <translation>Run rapid toggling</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="185"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="184"/>
         <source>Use the appearance selector above to compare all examples in light, dark, and system appearance.</source>
         <translation>Use the appearance selector above to compare all examples in light, dark, and system appearance.</translation>
     </message>

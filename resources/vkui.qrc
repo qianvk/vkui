@@ -29,5 +29,15 @@
         <file alias="upload.svg">icons/upload.svg</file>
         <file alias="lock.svg">icons/lock.svg</file>
         <file alias="eye.svg">icons/eye.svg</file>
+        <file alias="save.svg">icons/save.svg</file>
+        <file alias="reset.svg">icons/reset.svg</file>
+        <file alias="duplicate.svg">icons/duplicate.svg</file>
+        <file alias="image.svg">icons/image.svg</file>
+        <file alias="background.svg">icons/background.svg</file>
+        <file alias="focus.svg">icons/focus.svg</file>
+        <file alias="rename.svg">icons/rename.svg</file>
+        <file alias="projects.svg">icons/projects.svg</file>
+        <file alias="remove.svg">icons/remove.svg</file>
+        <file alias="reveal.svg">icons/reveal.svg</file>
     </qresource>
 </RCC>

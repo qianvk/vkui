@@ -75,6 +75,26 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("lock");
     case VkSymbol::Eye:
         return QStringLiteral("eye");
+    case VkSymbol::Save:
+        return QStringLiteral("save");
+    case VkSymbol::Reset:
+        return QStringLiteral("reset");
+    case VkSymbol::Duplicate:
+        return QStringLiteral("duplicate");
+    case VkSymbol::Image:
+        return QStringLiteral("image");
+    case VkSymbol::Background:
+        return QStringLiteral("background");
+    case VkSymbol::Focus:
+        return QStringLiteral("focus");
+    case VkSymbol::Rename:
+        return QStringLiteral("rename");
+    case VkSymbol::Projects:
+        return QStringLiteral("projects");
+    case VkSymbol::Remove:
+        return QStringLiteral("remove");
+    case VkSymbol::Reveal:
+        return QStringLiteral("reveal");
     }
     return {};
 }
