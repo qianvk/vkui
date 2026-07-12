@@ -76,6 +76,10 @@ vkui::installVkUi(application);
 applies the resolved palette. Change appearance later through `VkThemeManager`; the style is not
 recreated.
 
+VkUI uses no QSS by default. Applications that need a narrow override layer can call
+`applyStyleSheetFile()` after installation; palette-based QSS follows runtime appearance changes
+without regenerating the stylesheet.
+
 ## Status
 
 The project starts at version 0.1.0. Source compatibility is treated carefully, but ABI stability

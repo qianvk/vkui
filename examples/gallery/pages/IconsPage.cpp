@@ -83,6 +83,16 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
         {vkui::VkSymbol::Upload, QT_TR_NOOP("Upload")},
         {vkui::VkSymbol::Lock, QT_TR_NOOP("Lock")},
         {vkui::VkSymbol::Eye, QT_TR_NOOP("Eye")},
+        {vkui::VkSymbol::Save, QT_TR_NOOP("Save")},
+        {vkui::VkSymbol::Reset, QT_TR_NOOP("Reset")},
+        {vkui::VkSymbol::Duplicate, QT_TR_NOOP("Duplicate")},
+        {vkui::VkSymbol::Image, QT_TR_NOOP("Image")},
+        {vkui::VkSymbol::Background, QT_TR_NOOP("Background")},
+        {vkui::VkSymbol::Focus, QT_TR_NOOP("Focus")},
+        {vkui::VkSymbol::Rename, QT_TR_NOOP("Rename")},
+        {vkui::VkSymbol::Projects, QT_TR_NOOP("Projects")},
+        {vkui::VkSymbol::Remove, QT_TR_NOOP("Remove")},
+        {vkui::VkSymbol::Reveal, QT_TR_NOOP("Reveal")},
     };
     for (int index = 0; index < symbols.size(); ++index) {
         const SymbolEntry& entry = symbols.at(index);

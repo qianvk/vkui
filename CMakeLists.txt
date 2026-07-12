@@ -100,12 +100,16 @@ add_library(VkUI::Widgets ALIAS vkui_widgets)
 target_sources(vkui_widgets
     PRIVATE
         include/vkui/Widgets.h
+        include/vkui/widgets/VkComboBox.h
         include/vkui/widgets/VkControlSize.h
         include/vkui/widgets/style/VkStyle.h
+        include/vkui/widgets/style/VkStyleSheet.h
         include/vkui/widgets/controls/VkSwitch.h
         include/vkui/widgets/controls/VkSegmentedControl.h
         include/vkui/widgets/overlays/VkPopover.h
         src/widgets/style/VkStyle.cpp
+        src/widgets/style/VkStyleSheet.cpp
+        src/widgets/VkComboBox.cpp
         src/widgets/style/VkControlSize.cpp
         src/widgets/style/private/VkStyle_p.h
         src/widgets/style/private/VkStylePainter_p.h

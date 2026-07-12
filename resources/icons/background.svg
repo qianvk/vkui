@@ -1,0 +1,7 @@
+<!-- SPDX-License-Identifier: MIT -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 3.5h13.2A1.8 1.8 0 0 1 21 5.3v11.9" stroke="#000002" stroke-width="1.4"/>
+  <rect x="3" y="6" width="16.5" height="14.5" rx="2.3" stroke="#000001" stroke-width="1.7"/>
+  <path d="m4.5 18 4.2-4.4 2.8 2.7 2-2 4.4 4" stroke="#000002" stroke-width="1.35"/>
+  <circle cx="14.3" cy="10.3" r="1.35" fill="#000002" stroke="none"/>
+</svg>

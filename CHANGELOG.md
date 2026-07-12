@@ -3,6 +3,15 @@
 All notable changes are documented here. This project follows Semantic Versioning once public
 releases are tagged.
 
+## Unreleased
+
+- Added coalesced runtime repolish so existing widgets and QSS overlays switch appearance fully.
+- Added optional palette-aware QSS file overlays without making QSS the default theme engine.
+- Added semantic application-command SVG symbols for save, reset, duplicate, media, focus, project,
+  rename, reveal, and remove actions.
+- Added configurable combo-box label elision and corrected content-aware width accounting.
+- Removed the nested private-editor frame from spin boxes and editable combo boxes.
+
 ## 0.1.0 - 2026-07-12
 
 - Added Core and Widgets CMake package components.

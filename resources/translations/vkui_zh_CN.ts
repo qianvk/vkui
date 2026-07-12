@@ -164,7 +164,7 @@
     </message>
     <message>
         <location filename="../../examples/gallery/pages/IconsPage.cpp" line="70"/>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="146"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="156"/>
         <source>Folder</source>
         <translation>文件夹</translation>
     </message>
@@ -244,77 +244,127 @@
         <translation>显示</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="102"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="86"/>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="87"/>
+        <source>Reset</source>
+        <translation>重置</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="88"/>
+        <source>Duplicate</source>
+        <translation>创建副本</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="89"/>
+        <source>Image</source>
+        <translation>图像</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="90"/>
+        <source>Background</source>
+        <translation>背景</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="91"/>
+        <source>Focus</source>
+        <translation>聚焦</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="92"/>
+        <source>Rename</source>
+        <translation>重命名</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="93"/>
+        <source>Projects</source>
+        <translation>项目</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="94"/>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="95"/>
+        <source>Reveal</source>
+        <translation>在文件管理器中显示</translation>
+    </message>
+    <message>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="112"/>
         <source>Semantic roles</source>
         <translation>语义角色</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="109"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="119"/>
         <source>Primary</source>
         <translation>主要</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="110"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="120"/>
         <source>Secondary</source>
         <translation>次要</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="111"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="121"/>
         <source>Disabled</source>
         <translation>禁用</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="112"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="122"/>
         <source>Accent</source>
         <translation>强调</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="113"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="123"/>
         <source>Destructive</source>
         <translation>危险操作</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="131"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="141"/>
         <source>Fira Code and Nerd Font</source>
         <translation>Fira Code 与 Nerd Font</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="147"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="157"/>
         <source>Source file</source>
         <translation>源代码文件</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="148"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="158"/>
         <source>PDF file</source>
         <translation>PDF 文件</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="149"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="159"/>
         <source>Image file</source>
         <translation>图像文件</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="150"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="160"/>
         <source>Archive</source>
         <translation>压缩包</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="165"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="175"/>
         <source>Nerd Font glyphs can use a semantic theme role or an explicit QColor.</source>
         <translation>Nerd Font 字形可以使用语义主题角色或显式 QColor。</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="172"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="182"/>
         <source>Custom folder</source>
         <translation>自定义文件夹</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="174"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="184"/>
         <source>Choose color…</source>
         <translation>选择颜色…</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="187"/>
+        <location filename="../../examples/gallery/pages/IconsPage.cpp" line="197"/>
         <source>Choose folder color</source>
         <translation>选择文件夹颜色</translation>
     </message>
@@ -895,82 +945,82 @@
         <translation>详细信息</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="173"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="172"/>
         <source>vkui</source>
         <translation>vkui</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="174"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="173"/>
         <source>Source</source>
         <translation>来源</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="176"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="174"/>
         <source>VkStyle.cpp</source>
         <translation>VkStyle.cpp</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="178"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="175"/>
         <source>VkSwitch.cpp</source>
         <translation>VkSwitch.cpp</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="180"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="177"/>
         <source>Empty folder</source>
         <translation>空文件夹</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="181"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="178"/>
         <source>README.md</source>
         <translation>README.md</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="211"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="205"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="211"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="205"/>
         <source>Status</source>
         <translation>状态</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="211"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="205"/>
         <source>Updated</source>
         <translation>更新时间</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="212"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="206"/>
         <source>Core</source>
         <translation>核心模块</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="212"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="206"/>
         <source>Widgets</source>
         <translation>控件模块</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="212"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="206"/>
         <source>Gallery</source>
         <translation>画廊</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="215"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="209"/>
         <source>Ready</source>
         <translation>就绪</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="216"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="210"/>
         <source>Today</source>
         <translation>今天</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="230"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="224"/>
         <source>Surfaces</source>
         <translation>界面容器</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="235"/>
+        <location filename="../../examples/gallery/pages/StandardWidgetsPage.cpp" line="229"/>
         <source>QFrame and QGroupBox remain standard widgets.</source>
         <translation>QFrame 和 QGroupBox 仍使用标准 Qt 控件。</translation>
     </message>
@@ -1101,22 +1151,22 @@
         <translation>实时预览</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="159"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="158"/>
         <source>Animation interruption</source>
         <translation>动画中断</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="162"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="161"/>
         <source>Rapid toggling target</source>
         <translation>快速切换目标</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="163"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="162"/>
         <source>Run rapid toggling</source>
         <translation>执行快速切换</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="185"/>
+        <location filename="../../examples/gallery/pages/SwitchPage.cpp" line="184"/>
         <source>Use the appearance selector above to compare all examples in light, dark, and system appearance.</source>
         <translation>使用上方的外观选择器，比较所有示例在浅色、深色和跟随系统外观下的效果。</translation>
     </message>
