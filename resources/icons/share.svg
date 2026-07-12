@@ -1,0 +1,6 @@
+<!-- SPDX-License-Identifier: MIT -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M12 15V3.5m0 0L8.5 7M12 3.5 15.5 7" fill="none" stroke="#000001" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M7.2 9.5H5.8a2.3 2.3 0 0 0-2.3 2.3v6.4a2.3 2.3 0 0 0 2.3 2.3h12.4a2.3 2.3 0 0 0 2.3-2.3v-6.4a2.3 2.3 0 0 0-2.3-2.3h-1.4" fill="none" stroke="#000002" stroke-width="1.7" stroke-linecap="round"/>
+</svg>
+

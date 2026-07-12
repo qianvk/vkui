@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MIT
+
+CompileFlags:
+  CompilationDatabase: .
+
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+
+Index:
+  Background: Build
+
+InlayHints:
+  Enabled: true
+
+Hover:
+  ShowAKA: true
+

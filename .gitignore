@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+
+/build/
+/out/
+/.cache/
+/.qtcreator/
+compile_commands.json
+.DS_Store
+*.user
+*.autosave
