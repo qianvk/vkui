@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} · ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        build_type: [Debug, Release]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: 'qtsvg qttools'
+          cache: true
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DVKUI_BUILD_EXAMPLES=ON
+          -DVKUI_BUILD_TESTS=ON
+          -DVKUI_ENABLE_WARNINGS=ON
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }}
+      - name: Test
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+  installation-and-consumers:
+    name: Installation and consumers
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: 'qtsvg qttools'
+          cache: true
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Build and install vkui
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage" \
+            -DVKUI_BUILD_EXAMPLES=OFF -DVKUI_BUILD_TESTS=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+          cmake --install build
+      - name: Test find_package consumer
+        run: |
+          cmake -S tests/consumers/find_package -B consumer-find -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/stage"
+          cmake --build consumer-find
+          cmake -S tests/consumers/find_package_core -B consumer-core -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/stage"
+          cmake --build consumer-core
+      - name: Test add_subdirectory consumer
+        run: |
+          cmake -S tests/consumers/add_subdirectory -B consumer-subdir -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build consumer-subdir
+
+  formatting:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-19
+      - name: Validate formatting
+        shell: bash
+        run: |
+          mapfile -d '' files < <(find include src examples tests -type f \
+            \( -name '*.h' -o -name '*.cpp' \) -print0)
+          clang-format-19 --dry-run --Werror "${files[@]}"
