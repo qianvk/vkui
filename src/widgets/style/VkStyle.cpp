@@ -13,8 +13,6 @@
 #include <QFrame>
 #include <QHash>
 #include <QPainter>
-#include <QPainterPath>
-#include <QPolygon>
 #include <QPointer>
 #include <QRegion>
 #include <QStyleFactory>
@@ -140,12 +138,13 @@ class VkPopupSurfaceStyler final : public QObject {
         popup->setAttribute(Qt::WA_StyledBackground, false);
         popup->setAutoFillBackground(false);
         applyTransparentPalette(*popup);
-        applySurfaceMask(*popup);
+        popup->clearMask();
 #if defined(Q_OS_WIN)
         // Qt requires a frameless top-level window for translucent QWidget
         // backgrounds on Windows. Setting it explicitly keeps the compositing
         // contract stable for both QComboBox and QMenu popups.
         popup->setWindowFlag(Qt::FramelessWindowHint, true);
+        popup->setWindowFlag(Qt::NoDropShadowWindowHint, true);
 #endif
         popup->installEventFilter(this);
         connect(popup, &QObject::destroyed, this, [this, popup] { m_popups.remove(popup); });
@@ -202,7 +201,7 @@ class VkPopupSurfaceStyler final : public QObject {
         case QEvent::StyleChange:
         case QEvent::PaletteChange:
             applyTransparentPalette(*popup);
-            applySurfaceMask(*popup);
+            popup->clearMask();
             configureView(popup, m_popups[popup]);
             popup->update();
             break;
@@ -239,23 +238,6 @@ class VkPopupSurfaceStyler final : public QObject {
         transparent.setColor(QPalette::AlternateBase, Qt::transparent);
         transparent.setColor(QPalette::Window, Qt::transparent);
         widget.setPalette(transparent);
-    }
-
-    static void applySurfaceMask(QWidget& widget) {
-        const qreal radius = VkThemeManager::instance()->theme().metrics().popoverCornerRadius;
-        if (radius <= 0.0 || widget.width() <= 0 || widget.height() <= 0) {
-            widget.clearMask();
-            return;
-        }
-
-        QPainterPath path;
-        path.addRoundedRect(QRectF(QPointF(0.0, 0.0), QSizeF(widget.size())), radius, radius);
-        const QPolygon polygon = path.toFillPolygon().toPolygon();
-        if (polygon.isEmpty()) {
-            widget.clearMask();
-        } else {
-            widget.setMask(QRegion(polygon));
-        }
     }
 
     static void configureView(QWidget* popup, PopupState& state) {
