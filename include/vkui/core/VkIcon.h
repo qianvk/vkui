@@ -51,6 +51,7 @@ enum class VkSymbol {
     Projects,
     Remove,
     Reveal,
+    Clear,
 };
 
 enum class VkIconRole {
