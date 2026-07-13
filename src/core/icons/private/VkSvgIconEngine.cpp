@@ -103,6 +103,8 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("remove");
     case VkSymbol::Reveal:
         return QStringLiteral("reveal");
+    case VkSymbol::Clear:
+        return QStringLiteral("clear");
     }
     return {};
 }

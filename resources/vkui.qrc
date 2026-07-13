@@ -43,5 +43,6 @@
         <file alias="projects.svg">icons/projects.svg</file>
         <file alias="remove.svg">icons/remove.svg</file>
         <file alias="reveal.svg">icons/reveal.svg</file>
+        <file alias="clear.svg">icons/clear.svg</file>
     </qresource>
 </RCC>

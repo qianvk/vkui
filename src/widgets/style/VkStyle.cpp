@@ -119,6 +119,10 @@ class VkPopupSurfaceStyler final : public QObject {
     }
 
     void polish(QWidget* popup) {
+        if (auto* combo = qobject_cast<QComboBox*>(popup)) {
+            polishCombo(combo);
+            return;
+        }
         if (!isPopupContainer(popup) || m_popups.contains(popup)) {
             return;
         }
@@ -155,6 +159,10 @@ class VkPopupSurfaceStyler final : public QObject {
     }
 
     void unpolish(QWidget* popup) {
+        if (auto* combo = qobject_cast<QComboBox*>(popup)) {
+            unpolishCombo(combo);
+            return;
+        }
         auto iterator = m_popups.find(popup);
         if (iterator == m_popups.end()) {
             return;
@@ -182,6 +190,22 @@ class VkPopupSurfaceStyler final : public QObject {
 
   protected:
     bool eventFilter(QObject* watched, QEvent* event) override {
+        if (auto* combo = qobject_cast<QComboBox*>(watched)) {
+            if (m_combos.contains(combo)) {
+                switch (event->type()) {
+                case QEvent::MouseButtonPress:
+                case QEvent::MouseButtonDblClick:
+                case QEvent::KeyPress:
+                case QEvent::ShortcutOverride:
+                    syncComboViewToCurrentIndex(combo);
+                    break;
+                default:
+                    break;
+                }
+            }
+            return QObject::eventFilter(watched, event);
+        }
+
         auto* popup = qobject_cast<QWidget*>(watched);
         if (!popup || !m_popups.contains(popup)) {
             return QObject::eventFilter(watched, event);
@@ -233,6 +257,34 @@ class VkPopupSurfaceStyler final : public QObject {
         bool viewportNoSystemBackground = false;
         bool viewportOpaquePaintEvent = false;
     };
+
+    struct ComboState {
+        QMetaObject::Connection currentIndexConnection;
+    };
+
+    void polishCombo(QComboBox* combo) {
+        if (!combo || m_combos.contains(combo)) {
+            return;
+        }
+        ComboState state;
+        combo->installEventFilter(this);
+        state.currentIndexConnection =
+            connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    [combo](int) { syncComboViewToCurrentIndex(combo); });
+        connect(combo, &QObject::destroyed, this, [this, combo] { m_combos.remove(combo); });
+        m_combos.insert(combo, state);
+        syncComboViewToCurrentIndex(combo);
+    }
+
+    void unpolishCombo(QComboBox* combo) {
+        auto iterator = m_combos.find(combo);
+        if (iterator == m_combos.end()) {
+            return;
+        }
+        disconnect(iterator->currentIndexConnection);
+        m_combos.erase(iterator);
+        combo->removeEventFilter(this);
+    }
 
     static void applyTransparentPalette(QWidget& widget) {
         QPalette transparent = widget.palette();
@@ -290,14 +342,28 @@ class VkPopupSurfaceStyler final : public QObject {
         return nullptr;
     }
 
-    static void syncComboPopupCurrentIndex(QWidget* popup, QAbstractItemView* view) {
-        auto* combo = ownerComboBox(popup);
-        if (!combo || !view || !combo->model()) {
+    static QModelIndex comboCurrentModelIndex(QComboBox* combo) {
+        if (!combo || !combo->model() || combo->currentIndex() < 0) {
+            return {};
+        }
+        QModelIndex index = combo->model()->index(combo->currentIndex(), combo->modelColumn(),
+                                                  combo->rootModelIndex());
+        if (!index.isValid()) {
+            index = combo->model()->index(combo->currentIndex(), combo->modelColumn());
+        }
+        return index;
+    }
+
+    static void syncComboViewToCurrentIndex(QComboBox* combo) {
+        if (!combo) {
             return;
         }
-
-        const int row = combo->currentIndex();
-        if (row < 0) {
+        auto* view = combo->view();
+        if (!view) {
+            return;
+        }
+        const QModelIndex index = comboCurrentModelIndex(combo);
+        if (!index.isValid()) {
             if (view->selectionModel()) {
                 view->selectionModel()->clear();
             }
@@ -305,22 +371,27 @@ class VkPopupSurfaceStyler final : public QObject {
             return;
         }
 
-        QModelIndex index =
-            combo->model()->index(row, combo->modelColumn(), combo->rootModelIndex());
-        if (!index.isValid()) {
-            index = combo->model()->index(row, combo->modelColumn());
-        }
-        if (!index.isValid()) {
-            return;
-        }
-
-        // Qt reuses combo popup views between openings; syncing the current and selected index
-        // prevents the previous hover row from being rendered as the active choice.
+        // Match Qt's own QComboBox::showPopup() contract: the view current index must already
+        // be the combo current index before Qt calculates popup geometry from visualRect().
         view->setCurrentIndex(index);
         if (auto* selection = view->selectionModel()) {
             selection->select(index, QItemSelectionModel::ClearAndSelect |
                                       QItemSelectionModel::Rows);
         }
+    }
+
+    static void syncComboPopupCurrentIndex(QWidget* popup, QAbstractItemView* view) {
+        auto* combo = ownerComboBox(popup);
+        if (!combo || !view) {
+            return;
+        }
+
+        syncComboViewToCurrentIndex(combo);
+        const QModelIndex index = comboCurrentModelIndex(combo);
+        if (!index.isValid()) {
+            return;
+        }
+
         view->scrollTo(index, QAbstractItemView::EnsureVisible);
         if (view->viewport()) {
             view->viewport()->update();
@@ -343,6 +414,7 @@ class VkPopupSurfaceStyler final : public QObject {
     }
 
     QHash<QWidget*, PopupState> m_popups;
+    QHash<QComboBox*, ComboState> m_combos;
 };
 
 class VkRuntimeThemeSynchronizer final : public QObject {
