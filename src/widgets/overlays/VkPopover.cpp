@@ -593,7 +593,12 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
                 pointerPress = true;
             }
         }
-        if (pointerPress && !q->geometry().contains(globalPosition.toPoint())) {
+        const QPoint globalPoint = globalPosition.toPoint();
+        const bool insidePopover = q->geometry().contains(globalPoint);
+        const QRect anchorRect =
+            anchor ? anchorGlobalRect().toAlignedRect().adjusted(-1, -1, 1, 1) : QRect();
+        const bool insideAnchor = anchorRect.contains(globalPoint);
+        if (pointerPress && !insidePopover && !insideAnchor) {
             closeAnimated();
         }
     }
@@ -686,8 +691,7 @@ bool VkPopoverPrivate::handleEvent(QEvent* event) {
     switch (event->type()) {
     case QEvent::Close:
         if (state != State::Closed) {
-            // Qt::Popup may request a native close for an outside click. The
-            // private policy and animation path own dismissal, so keep the
+            // The private policy and animation path own dismissal, so keep the
             // native window alive until that path has completed.
             static_cast<QCloseEvent*>(event)->ignore();
             return true;
@@ -763,7 +767,7 @@ void VkPopoverPrivate::paint(QPaintEvent* event) {
 }
 
 VkPopover::VkPopover(QWidget* parent)
-    : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
+    : QWidget(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
       d(std::make_unique<VkPopoverPrivate>(this)) {
     Q_ASSERT_X(QThread::currentThread() == thread(), "VkPopover::VkPopover",
                "VkPopover must be created on the GUI thread");

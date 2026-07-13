@@ -40,7 +40,8 @@ class VkPopoverPrivate;
  *
  * VkPopover must be created and used on the GUI thread. The optional parent is
  * used for QObject lifetime and transient-window association; the popover is
- * always a top-level Qt::Popup window.
+ * always a frameless secondary window. Outside dismissal is handled by
+ * VkPopover itself so the clicked widget still receives the original event.
  */
 class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     Q_OBJECT
