@@ -52,6 +52,7 @@ enum class VkSymbol {
     Remove,
     Reveal,
     Clear,
+    DefaultTemplate,
 };
 
 enum class VkIconRole {

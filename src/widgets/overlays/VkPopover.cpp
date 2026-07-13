@@ -5,7 +5,9 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QEvent>
+#include <QtCore/QPointer>
 #include <QtCore/QThread>
+#include <QtCore/QTimer>
 #include <QtGui/QCloseEvent>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
@@ -15,6 +17,7 @@
 #include <QtGui/QTouchEvent>
 #include <QtGui/QWindow>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QAbstractButton>
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -409,6 +412,29 @@ QScreen* VkPopoverPrivate::screenForAnchor(const QRectF& globalAnchor) const {
     return QGuiApplication::primaryScreen();
 }
 
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+QAbstractButton* buttonAtGlobalPoint(const QPoint& globalPoint, QWidget* expectedWindow,
+                                     QWidget* popover) {
+    QWidget* widget = QApplication::widgetAt(globalPoint);
+    while (widget) {
+        if (widget == popover || (popover && popover->isAncestorOf(widget))) {
+            return nullptr;
+        }
+        if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
+            return button->isEnabled() && button->isVisible() &&
+                           (!expectedWindow || button->window() == expectedWindow)
+                       ? button
+                       : nullptr;
+        }
+        if (widget->isWindow()) {
+            return nullptr;
+        }
+        widget = widget->parentWidget();
+    }
+    return nullptr;
+}
+#endif
+
 bool VkPopoverPrivate::repositionNow() {
     if (!anchor || !content) {
         return false;
@@ -599,7 +625,22 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
             anchor ? anchorGlobalRect().toAlignedRect().adjusted(-1, -1, 1, 1) : QRect();
         const bool insideAnchor = anchorRect.contains(globalPoint);
         if (pointerPress && !insidePopover && !insideAnchor) {
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+            QPointer<QAbstractButton> forwardedButton =
+                buttonAtGlobalPoint(globalPoint, anchorWindow, q);
             closeAnimated();
+            if (forwardedButton) {
+                QTimer::singleShot(0, q, [forwardedButton] {
+                    if (forwardedButton && forwardedButton->isEnabled() &&
+                        forwardedButton->isVisible()) {
+                        forwardedButton->click();
+                    }
+                });
+                return true;
+            }
+#else
+            closeAnimated();
+#endif
         }
     }
 

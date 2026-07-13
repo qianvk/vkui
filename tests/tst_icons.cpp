@@ -30,8 +30,11 @@ void IconTest::everySymbolHasARenderableResource() {
         vkui::VkSymbol::Download,    vkui::VkSymbol::Upload,       vkui::VkSymbol::Lock,
         vkui::VkSymbol::Eye,         vkui::VkSymbol::Save,         vkui::VkSymbol::Reset,
         vkui::VkSymbol::Duplicate,   vkui::VkSymbol::Image,        vkui::VkSymbol::Background,
-        vkui::VkSymbol::Focus,       vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
-        vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,
+        vkui::VkSymbol::Templates,   vkui::VkSymbol::CanvasBackground,
+        vkui::VkSymbol::PhotoLibrary, vkui::VkSymbol::Focus,
+        vkui::VkSymbol::FocusTarget, vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
+        vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,       vkui::VkSymbol::Clear,
+        vkui::VkSymbol::DefaultTemplate,
     };
     for (const vkui::VkSymbol symbol : symbols) {
         const QIcon rendered = vkui::icon(symbol);

@@ -10,6 +10,7 @@
 #include <QAbstractSpinBox>
 #include <QApplication>
 #include <QComboBox>
+#include <QCursor>
 #include <QEvent>
 #include <QFrame>
 #include <QHash>
@@ -80,6 +81,24 @@ Qt::ArrowType arrowTypeForPrimitive(QStyle::PrimitiveElement element) {
     default:
         return Qt::DownArrow;
     }
+}
+
+QColor textSelectionColor(const vkui::VkTheme& theme, bool active) {
+    QColor color = active ? theme.colors().accent : theme.colors().accentHovered;
+    const bool dark = theme.effectiveAppearance() == vkui::VkAppearance::Dark;
+    color.setAlphaF(dark ? (active ? 0.34 : 0.24) : (active ? 0.22 : 0.16));
+    return color;
+}
+
+bool indexIsUnderCursor(const QStyleOptionViewItem& option, const QWidget* widget) {
+    const auto* viewport = widget;
+    const auto* view =
+        qobject_cast<const QAbstractItemView*>(viewport ? viewport->parentWidget() : nullptr);
+    if (!viewport || !view) {
+        return hasState(&option, QStyle::State_MouseOver);
+    }
+    const QPoint localPos = viewport->mapFromGlobal(QCursor::pos());
+    return viewport->rect().contains(localPos) && view->indexAt(localPos) == option.index;
 }
 
 } // namespace
@@ -921,6 +940,13 @@ void VkStyle::drawControl(ControlElement element, const QStyleOption* option, QP
         if (!menuItem) {
             break;
         }
+        if (menuItem->menuItemType == QStyleOptionMenuItem::Separator) {
+            const qreal y = option->rect.center().y() + 0.5;
+            VkStylePainter::drawHairline(
+                *painter, QPointF(option->rect.left() + metrics.spacing8, y),
+                QPointF(option->rect.right() - metrics.spacing8, y), colors.separator);
+            return;
+        }
         QStyleOptionMenuItem copy = *menuItem;
         if (selected && enabled) {
             VkStylePainter::drawRoundedPanel(*painter, insetRect(option->rect, metrics.spacing2),
@@ -974,7 +1000,7 @@ void VkStyle::drawControl(ControlElement element, const QStyleOption* option, QP
             VkStylePainter::drawRoundedPanel(*painter, insetRect(option->rect, metrics.spacing2),
                                              metrics.cornerRadiusSmall, selection, Qt::transparent,
                                              0.0);
-        } else if (hovered) {
+        } else if (hovered && indexIsUnderCursor(*viewItem, widget)) {
             if (d->popupSurfaces->isPopupPart(widget)) {
                 VkStylePainter::drawRoundedPanel(
                     *painter, insetRect(option->rect, metrics.spacing2), metrics.cornerRadiusSmall,
@@ -1521,7 +1547,8 @@ QIcon VkStyle::standardIcon(StandardPixmap standardIcon, const QStyleOption* opt
 }
 
 QPalette VkStyle::standardPalette() const {
-    const auto& colors = VkThemeManager::instance()->theme().colors();
+    const VkTheme& theme = VkThemeManager::instance()->theme();
+    const auto& colors = theme.colors();
     QPalette palette;
     palette.setColor(QPalette::Window, colors.windowBackground);
     palette.setColor(QPalette::WindowText, colors.textPrimary);
@@ -1538,16 +1565,15 @@ QPalette VkStyle::standardPalette() const {
     palette.setColor(QPalette::Dark, colors.borderStrong);
     palette.setColor(QPalette::Mid, colors.border);
     palette.setColor(QPalette::Shadow, colors.shadow);
-    palette.setColor(QPalette::Highlight, colors.accent);
-    palette.setColor(QPalette::HighlightedText, VkStylePainter::contrastingText(colors.accent));
+    palette.setColor(QPalette::Highlight, textSelectionColor(theme, true));
+    palette.setColor(QPalette::HighlightedText, colors.textPrimary);
     palette.setColor(QPalette::Link, colors.accent);
     palette.setColor(QPalette::LinkVisited, colors.accentPressed);
     palette.setColor(QPalette::PlaceholderText, colors.textTertiary);
     palette.setColor(QPalette::Accent, colors.accent);
 
-    palette.setColor(QPalette::Inactive, QPalette::Highlight, colors.accentHovered);
-    palette.setColor(QPalette::Inactive, QPalette::HighlightedText,
-                     VkStylePainter::contrastingText(colors.accentHovered));
+    palette.setColor(QPalette::Inactive, QPalette::Highlight, textSelectionColor(theme, false));
+    palette.setColor(QPalette::Inactive, QPalette::HighlightedText, colors.textPrimary);
     palette.setColor(QPalette::Disabled, QPalette::WindowText, colors.textDisabled);
     palette.setColor(QPalette::Disabled, QPalette::Text, colors.textDisabled);
     palette.setColor(QPalette::Disabled, QPalette::Button, colors.controlFillDisabled);
