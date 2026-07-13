@@ -7,7 +7,7 @@ class QWidget;
 namespace vkui {
 
 class VkStyle;
-class VkComboPopupStyler;
+class VkPopupSurfaceStyler;
 class VkWidgetAnimationManager;
 
 class VkStylePrivate final {
@@ -19,7 +19,7 @@ class VkStylePrivate final {
 
     VkStyle* q = nullptr;
     VkWidgetAnimationManager* animations = nullptr;
-    VkComboPopupStyler* comboPopups = nullptr;
+    VkPopupSurfaceStyler* popupSurfaces = nullptr;
 };
 
 } // namespace vkui

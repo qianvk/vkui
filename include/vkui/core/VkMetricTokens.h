@@ -30,6 +30,7 @@ struct VKUI_CORE_EXPORT VkMetricTokens final {
     qreal cornerRadiusSmall = 0.0;
     qreal cornerRadiusRegular = 0.0;
     qreal cornerRadiusLarge = 0.0;
+    qreal windowCornerRadius = 0.0;
     qreal popoverCornerRadius = 0.0;
 
     qreal borderWidth = 0.0;

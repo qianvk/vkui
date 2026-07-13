@@ -3,6 +3,7 @@
 #include "private/VkThemeManager_p.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QOperatingSystemVersion>
 #include <QtCore/QString>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QPalette>
@@ -40,6 +41,29 @@ bool isValidAccentColor(const VkAccentColor accentColor) {
         return true;
     }
     return false;
+}
+
+qreal platformWindowCornerRadius() {
+#if defined(Q_OS_WIN)
+    const QOperatingSystemVersion version = QOperatingSystemVersion::current();
+    const bool windows11OrGreater =
+        version.majorVersion() > 10 ||
+        (version.majorVersion() == 10 && version.microVersion() >= 22000);
+    return windows11OrGreater ? 10.0 : 0.0;
+#elif defined(Q_OS_MACOS)
+    const QOperatingSystemVersion version = QOperatingSystemVersion::current();
+    if (version.majorVersion() >= 27) {
+        return 16.0;
+    }
+    if (version.majorVersion() >= 26) {
+        return 14.0;
+    }
+    return 12.0;
+#elif defined(Q_OS_LINUX)
+    return 10.0;
+#else
+    return 8.0;
+#endif
 }
 
 VkAppearance systemAppearance() {
@@ -209,13 +233,9 @@ VkMetricTokens defaultMetrics() {
 
     metrics.cornerRadiusSmall = 5.0;
     metrics.cornerRadiusRegular = 7.0;
-#if defined(Q_OS_MACOS)
-    metrics.cornerRadiusLarge = 16.0;
-    metrics.popoverCornerRadius = 16.0;
-#else
-    metrics.popoverCornerRadius = 10.0;
-    metrics.cornerRadiusLarge = 10.0;
-#endif
+    metrics.windowCornerRadius = platformWindowCornerRadius();
+    metrics.cornerRadiusLarge = metrics.windowCornerRadius;
+    metrics.popoverCornerRadius = metrics.windowCornerRadius;
     metrics.popoverShadowRadius = 24.0;
 
     metrics.borderWidth = 1.0;
@@ -355,6 +375,7 @@ bool metricTokensEqual(const VkMetricTokens& a, const VkMetricTokens& b) {
            a.cornerRadiusSmall == b.cornerRadiusSmall &&
            a.cornerRadiusRegular == b.cornerRadiusRegular &&
            a.cornerRadiusLarge == b.cornerRadiusLarge &&
+           a.windowCornerRadius == b.windowCornerRadius &&
            a.popoverCornerRadius == b.popoverCornerRadius && a.borderWidth == b.borderWidth &&
            a.focusRingWidth == b.focusRingWidth && a.switchTrackWidth == b.switchTrackWidth &&
            a.switchTrackHeight == b.switchTrackHeight &&
