@@ -8,7 +8,6 @@
 #include <QtGui/QFontDatabase>
 #include <QtGui/QPalette>
 #include <algorithm>
-#include <cmath>
 #include <vkui/core/VkThemeManager.h>
 
 namespace vkui {
@@ -291,19 +290,14 @@ VkMotionTokens defaultMotion() {
     return motion;
 }
 
-QColor contrastingTextColor(const QColor& background) {
-    const auto linearChannel = [](const qreal value) {
-        return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
-    };
-    const qreal luminance = 0.2126 * linearChannel(background.redF()) +
-                            0.7152 * linearChannel(background.greenF()) +
-                            0.0722 * linearChannel(background.blueF());
-    const qreal whiteContrast = 1.05 / (luminance + 0.05);
-    const qreal blackContrast = (luminance + 0.05) / 0.05;
-    return whiteContrast >= blackContrast ? QColor(Qt::white) : QColor(Qt::black);
+QColor textSelectionColor(const VkColorTokens& colors, VkAppearance appearance, bool active) {
+    QColor color = active ? colors.accent : colors.accentHovered;
+    const bool dark = appearance == VkAppearance::Dark;
+    color.setAlphaF(dark ? (active ? 0.34 : 0.24) : (active ? 0.22 : 0.16));
+    return color;
 }
 
-QPalette paletteForColors(const VkColorTokens& colors) {
+QPalette paletteForColors(const VkColorTokens& colors, VkAppearance appearance) {
     QPalette palette;
     palette.setColor(QPalette::Window, colors.windowBackground);
     palette.setColor(QPalette::WindowText, colors.textPrimary);
@@ -320,16 +314,16 @@ QPalette paletteForColors(const VkColorTokens& colors) {
     palette.setColor(QPalette::Dark, colors.borderStrong);
     palette.setColor(QPalette::Mid, colors.border);
     palette.setColor(QPalette::Shadow, colors.shadow);
-    palette.setColor(QPalette::Highlight, colors.accent);
-    palette.setColor(QPalette::HighlightedText, contrastingTextColor(colors.accent));
+    palette.setColor(QPalette::Highlight, textSelectionColor(colors, appearance, true));
+    palette.setColor(QPalette::HighlightedText, colors.textPrimary);
     palette.setColor(QPalette::Link, colors.accent);
     palette.setColor(QPalette::LinkVisited, colors.accentPressed);
     palette.setColor(QPalette::PlaceholderText, colors.textTertiary);
     palette.setColor(QPalette::Accent, colors.accent);
 
-    palette.setColor(QPalette::Inactive, QPalette::Highlight, colors.accentHovered);
-    palette.setColor(QPalette::Inactive, QPalette::HighlightedText,
-                     contrastingTextColor(colors.accentHovered));
+    palette.setColor(QPalette::Inactive, QPalette::Highlight,
+                     textSelectionColor(colors, appearance, false));
+    palette.setColor(QPalette::Inactive, QPalette::HighlightedText, colors.textPrimary);
 
     palette.setColor(QPalette::Disabled, QPalette::WindowText, colors.textDisabled);
     palette.setColor(QPalette::Disabled, QPalette::Text, colors.textDisabled);
@@ -443,7 +437,8 @@ bool VkThemeManagerPrivate::refreshTheme() {
 
 void VkThemeManagerPrivate::applyPalette() const {
     if (application != nullptr) {
-        const QPalette palette = paletteForColors(resolvedTheme.colors_);
+        const QPalette palette =
+            paletteForColors(resolvedTheme.colors_, resolvedTheme.effectiveAppearance_);
         if (application->palette() != palette) {
             application->setPalette(palette);
         }

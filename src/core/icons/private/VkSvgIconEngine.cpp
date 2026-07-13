@@ -105,6 +105,8 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("reveal");
     case VkSymbol::Clear:
         return QStringLiteral("clear");
+    case VkSymbol::DefaultTemplate:
+        return QStringLiteral("default-template");
     }
     return {};
 }
