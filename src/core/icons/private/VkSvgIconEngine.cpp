@@ -81,12 +81,20 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("reset");
     case VkSymbol::Duplicate:
         return QStringLiteral("duplicate");
+    case VkSymbol::Templates:
+        return QStringLiteral("templates");
     case VkSymbol::Image:
         return QStringLiteral("image");
     case VkSymbol::Background:
         return QStringLiteral("background");
+    case VkSymbol::CanvasBackground:
+        return QStringLiteral("canvas-background");
+    case VkSymbol::PhotoLibrary:
+        return QStringLiteral("photo-library");
     case VkSymbol::Focus:
         return QStringLiteral("focus");
+    case VkSymbol::FocusTarget:
+        return QStringLiteral("focus-target");
     case VkSymbol::Rename:
         return QStringLiteral("rename");
     case VkSymbol::Projects:

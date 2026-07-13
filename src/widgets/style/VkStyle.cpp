@@ -5,6 +5,7 @@
 #include "private/VkWidgetAnimationManager_p.h"
 
 #include <QAbstractButton>
+#include <QAbstractItemModel>
 #include <QAbstractItemView>
 #include <QAbstractSpinBox>
 #include <QApplication>
@@ -12,6 +13,7 @@
 #include <QEvent>
 #include <QFrame>
 #include <QHash>
+#include <QItemSelectionModel>
 #include <QPainter>
 #include <QPointer>
 #include <QRegion>
@@ -275,6 +277,53 @@ class VkPopupSurfaceStyler final : public QObject {
             state.viewport->setAutoFillBackground(false);
             state.viewport->setAttribute(Qt::WA_NoSystemBackground, true);
             state.viewport->setAttribute(Qt::WA_OpaquePaintEvent, false);
+        }
+        syncComboPopupCurrentIndex(popup, state.view);
+    }
+
+    static QComboBox* ownerComboBox(QWidget* popup) {
+        for (QObject* object = popup ? popup->parent() : nullptr; object; object = object->parent()) {
+            if (auto* combo = qobject_cast<QComboBox*>(object)) {
+                return combo;
+            }
+        }
+        return nullptr;
+    }
+
+    static void syncComboPopupCurrentIndex(QWidget* popup, QAbstractItemView* view) {
+        auto* combo = ownerComboBox(popup);
+        if (!combo || !view || !combo->model()) {
+            return;
+        }
+
+        const int row = combo->currentIndex();
+        if (row < 0) {
+            if (view->selectionModel()) {
+                view->selectionModel()->clear();
+            }
+            view->setCurrentIndex({});
+            return;
+        }
+
+        QModelIndex index =
+            combo->model()->index(row, combo->modelColumn(), combo->rootModelIndex());
+        if (!index.isValid()) {
+            index = combo->model()->index(row, combo->modelColumn());
+        }
+        if (!index.isValid()) {
+            return;
+        }
+
+        // Qt reuses combo popup views between openings; syncing the current and selected index
+        // prevents the previous hover row from being rendered as the active choice.
+        view->setCurrentIndex(index);
+        if (auto* selection = view->selectionModel()) {
+            selection->select(index, QItemSelectionModel::ClearAndSelect |
+                                      QItemSelectionModel::Rows);
+        }
+        view->scrollTo(index, QAbstractItemView::EnsureVisible);
+        if (view->viewport()) {
+            view->viewport()->update();
         }
     }
 

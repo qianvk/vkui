@@ -32,9 +32,13 @@
         <file alias="save.svg">icons/save.svg</file>
         <file alias="reset.svg">icons/reset.svg</file>
         <file alias="duplicate.svg">icons/duplicate.svg</file>
+        <file alias="templates.svg">icons/templates.svg</file>
         <file alias="image.svg">icons/image.svg</file>
         <file alias="background.svg">icons/background.svg</file>
+        <file alias="canvas-background.svg">icons/canvas-background.svg</file>
+        <file alias="photo-library.svg">icons/photo-library.svg</file>
         <file alias="focus.svg">icons/focus.svg</file>
+        <file alias="focus-target.svg">icons/focus-target.svg</file>
         <file alias="rename.svg">icons/rename.svg</file>
         <file alias="projects.svg">icons/projects.svg</file>
         <file alias="remove.svg">icons/remove.svg</file>
