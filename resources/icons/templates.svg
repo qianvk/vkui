@@ -1,0 +1,7 @@
+<!-- SPDX-License-Identifier: MIT -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="4.5" y="4.5" width="11" height="13" rx="2.4" stroke="#000002" stroke-width="1.6"/>
+  <path d="M8 8.2H12.2" stroke="#000001" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M8 11.2H12.8" stroke="#000002" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M17 8.2L18.05 10.35L20.4 10.7L18.7 12.36L19.1 14.7L17 13.58L14.9 14.7L15.3 12.36L13.6 10.7L15.95 10.35L17 8.2Z" fill="#000001"/>
+</svg>
