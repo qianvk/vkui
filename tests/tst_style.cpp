@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "widgets/style/private/VkStylePainter_p.h"
+#if defined(Q_OS_WIN)
+#include "widgets/style/private/VkWidgetAnimationManager_p.h"
+#endif
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -18,6 +21,7 @@
 #include <QStyleOptionComboBox>
 #include <QStyleOptionFrame>
 #include <QTemporaryFile>
+#include <QToolButton>
 #include <QtTest>
 #include <cmath>
 #include <vkui/core/VkThemeManager.h>
@@ -132,6 +136,9 @@ class StyleTest final : public QObject {
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
+#if defined(Q_OS_WIN)
+    void paintQueriesDoNotRetargetInputAnimations();
+#endif
 
   private:
     bool animationsEnabled_ = true;
@@ -438,6 +445,41 @@ void StyleTest::switchShowsFocusOnlyForKeyboardNavigation() {
     const QImage keyboardFocus = renderWidget(control);
     QVERIFY(keyboardFocus != noFocus);
 }
+
+#if defined(Q_OS_WIN)
+void StyleTest::paintQueriesDoNotRetargetInputAnimations() {
+    auto* themeManager = vkui::VkThemeManager::instance();
+    const bool animationsWereEnabled = themeManager->animationsEnabled();
+    struct AnimationSettingGuard {
+        vkui::VkThemeManager* manager;
+        bool enabled;
+        ~AnimationSettingGuard() {
+            manager->setAnimationsEnabled(enabled);
+        }
+    } restore{themeManager, animationsWereEnabled};
+    themeManager->setAnimationsEnabled(true);
+
+    QWidget host;
+    QToolButton button(&host);
+    host.resize(120, 60);
+    button.setGeometry(10, 10, 32, 32);
+    host.show();
+    QCoreApplication::processEvents();
+
+    vkui::VkWidgetAnimationManager manager;
+    manager.watch(&button);
+
+    QEvent enter(QEvent::Enter);
+    QApplication::sendEvent(&button, &enter);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.progress(&button, false, false, false, false).hover > 0.99,
+                             1000);
+
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(&button, &leave);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.progress(&button, true, false, false, false).hover < 0.01,
+                             1000);
+}
+#endif
 
 QTEST_MAIN(StyleTest)
 #include "tst_style.moc"

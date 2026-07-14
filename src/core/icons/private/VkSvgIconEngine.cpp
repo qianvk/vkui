@@ -107,6 +107,8 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("clear");
     case VkSymbol::DefaultTemplate:
         return QStringLiteral("default-template");
+    case VkSymbol::UnsavedIndicator:
+        return QStringLiteral("unsaved-indicator");
     }
     return {};
 }
