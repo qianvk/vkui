@@ -48,7 +48,7 @@ qreal platformWindowCornerRadius() {
     const bool windows11OrGreater =
         version.majorVersion() > 10 ||
         (version.majorVersion() == 10 && version.microVersion() >= 22000);
-    return windows11OrGreater ? 10.0 : 0.0;
+    return windows11OrGreater ? 8.0 : 0.0;
 #elif defined(Q_OS_MACOS)
     const QOperatingSystemVersion version = QOperatingSystemVersion::current();
     if (version.majorVersion() >= 27) {

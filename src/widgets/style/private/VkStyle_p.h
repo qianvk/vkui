@@ -2,8 +2,6 @@
 
 #pragma once
 
-class QWidget;
-
 namespace vkui {
 
 class VkStyle;
@@ -14,8 +12,6 @@ class VkStylePrivate final {
   public:
     explicit VkStylePrivate(VkStyle* owner);
     ~VkStylePrivate();
-
-    static bool supportsAnimations(const QWidget* widget);
 
     VkStyle* q = nullptr;
     VkWidgetAnimationManager* animations = nullptr;

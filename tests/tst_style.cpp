@@ -55,6 +55,19 @@ class PolishProbeStyle final : public QProxyStyle {
     int unpolishCount = 0;
 };
 
+class PaintCounter final : public QObject {
+  public:
+    int paints = 0;
+
+  protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (event->type() == QEvent::Paint) {
+            ++paints;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+
 QImage renderWidget(QWidget& widget) {
     QImage image(widget.size(), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
@@ -134,6 +147,7 @@ class StyleTest final : public QObject {
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
+    void styleOnlyAnimatesVisualsItOwns();
     void paintQueriesDoNotRetargetInputAnimations();
 
   private:
@@ -440,6 +454,46 @@ void StyleTest::switchShowsFocusOnlyForKeyboardNavigation() {
     QVERIFY(control.hasFocus());
     const QImage keyboardFocus = renderWidget(control);
     QVERIFY(keyboardFocus != noFocus);
+}
+
+void StyleTest::styleOnlyAnimatesVisualsItOwns() {
+    auto* themeManager = vkui::VkThemeManager::instance();
+    const bool animationsWereEnabled = themeManager->animationsEnabled();
+    struct AnimationSettingGuard {
+        vkui::VkThemeManager* manager;
+        bool enabled;
+        ~AnimationSettingGuard() {
+            manager->setAnimationsEnabled(enabled);
+        }
+    } restore{themeManager, animationsWereEnabled};
+    themeManager->setAnimationsEnabled(true);
+
+    QWidget host;
+    QToolButton button(&host);
+    button.setGeometry(8, 8, 32, 32);
+    QLineEdit styledEditor(&host);
+    styledEditor.setGeometry(48, 8, 120, 32);
+    styledEditor.setStyleSheet(QStringLiteral(
+        "QLineEdit{background:transparent;border:none;border-radius:0;padding:4px 10px;}"));
+    host.resize(180, 48);
+    host.show();
+    QCoreApplication::processEvents();
+
+    PaintCounter buttonCounter;
+    PaintCounter editorCounter;
+    button.installEventFilter(&buttonCounter);
+    styledEditor.installEventFilter(&editorCounter);
+
+    QEvent buttonEnter(QEvent::Enter);
+    QApplication::sendEvent(&button, &buttonEnter);
+    QTest::qWait(220);
+    QEvent editorEnter(QEvent::Enter);
+    QApplication::sendEvent(&styledEditor, &editorEnter);
+    QTest::qWait(220);
+
+    QVERIFY2(buttonCounter.paints > 2, "VkStyle-owned button hover should remain animated");
+    QVERIFY2(editorCounter.paints <= 2,
+             "Style-sheet-owned editor must not run an invisible VkUI animation");
 }
 
 void StyleTest::paintQueriesDoNotRetargetInputAnimations() {

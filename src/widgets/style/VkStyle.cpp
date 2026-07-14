@@ -58,6 +58,18 @@ bool hasState(const QStyleOption* option, QStyle::StateFlag state) {
     return option && option->state.testFlag(state);
 }
 
+bool usesVkUiFocusRing(const QWidget* widget) {
+    if (!widget) {
+        return false;
+    }
+    static constexpr std::array classes = {
+        "QPushButton", "QToolButton", "QLineEdit",        "QCheckBox", "QRadioButton",
+        "QComboBox",   "QSlider",     "QAbstractSpinBox", "QScrollBar",
+    };
+    return std::ranges::any_of(
+        classes, [widget](const char* className) { return widget->inherits(className); });
+}
+
 QRectF insetRect(const QRect& rect, qreal inset) {
     return QRectF(rect).adjusted(inset, inset, -inset, -inset);
 }
@@ -528,20 +540,6 @@ VkStylePrivate::VkStylePrivate(VkStyle* owner)
 
 VkStylePrivate::~VkStylePrivate() = default;
 
-bool VkStylePrivate::supportsAnimations(const QWidget* widget) {
-    if (!widget) {
-        return false;
-    }
-    static constexpr std::array supportedClasses = {
-        "QPushButton", "QToolButton", "QLineEdit",        "QCheckBox",    "QRadioButton",
-        "QComboBox",   "QSlider",     "QAbstractSpinBox", "QProgressBar", "QTabBar",
-        "QMenu",       "QListView",   "QTreeView",        "QTableView",   "QHeaderView",
-        "QScrollBar",  "QGroupBox",   "QFrame",
-    };
-    return std::ranges::any_of(
-        supportedClasses, [widget](const char* className) { return widget->inherits(className); });
-}
-
 VkStyle::VkStyle()
     : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))),
       d(std::make_unique<VkStylePrivate>(this)) {}
@@ -589,6 +587,9 @@ void VkStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option
     VkWidgetAnimationManager::Progress progress{hovered ? 1.0 : 0.0, pressed ? 1.0 : 0.0,
                                                 focused ? 1.0 : 0.0, selectionTarget ? 1.0 : 0.0};
     if (animatedElement && !itemViewIndicator) {
+        // Bind input tracking only when VkStyle owns the animated visual. A style-sheet-owned
+        // primitive may bypass this path entirely and must not schedule invisible animation frames.
+        d->animations->watch(const_cast<QWidget*>(widget));
         progress = d->animations->progress(const_cast<QWidget*>(widget), hovered, pressed, focused,
                                            tracksSelection && selectionTarget);
     }
@@ -753,7 +754,7 @@ void VkStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option
     case PE_FrameFocusRect:
         // Focus is rendered by each supported control using focus-reason-aware,
         // neutral treatment. Suppress Fusion's rectangular blue focus box.
-        if (!VkStylePrivate::supportsAnimations(widget)) {
+        if (!usesVkUiFocusRing(widget)) {
             QProxyStyle::drawPrimitive(element, option, painter, widget);
         }
         return;
@@ -1039,8 +1040,16 @@ void VkStyle::drawComplexControl(ComplexControl control, const QStyleOptionCompl
     const bool pressed = hasState(option, State_Sunken);
     const bool focused = hasState(option, State_HasFocus);
     const bool selected = hasState(option, State_On);
-    const auto progress =
-        d->animations->progress(const_cast<QWidget*>(widget), hovered, pressed, focused, selected);
+    const bool animatedControl = control == CC_ToolButton || control == CC_ComboBox ||
+                                 control == CC_SpinBox || control == CC_Slider ||
+                                 control == CC_ScrollBar;
+    VkWidgetAnimationManager::Progress progress{hovered ? 1.0 : 0.0, pressed ? 1.0 : 0.0,
+                                                focused ? 1.0 : 0.0, selected ? 1.0 : 0.0};
+    if (animatedControl) {
+        d->animations->watch(const_cast<QWidget*>(widget));
+        progress = d->animations->progress(const_cast<QWidget*>(widget), hovered, pressed, focused,
+                                           selected);
+    }
 
     switch (control) {
     case CC_ToolButton: {
@@ -1600,9 +1609,6 @@ void VkStyle::polish(QApplication* application) {
 void VkStyle::polish(QWidget* widget) {
     QProxyStyle::polish(widget);
     d->popupSurfaces->polish(widget);
-    if (VkStylePrivate::supportsAnimations(widget)) {
-        d->animations->watch(widget);
-    }
 }
 
 void VkStyle::unpolish(QApplication* application) {
