@@ -5,6 +5,7 @@
 #include <QSet>
 #include <QSignalSpy>
 #include <QtTest>
+#include <cmath>
 #include <vkui/core/VkThemeManager.h>
 
 class ThemeTest final : public QObject {
@@ -107,7 +108,12 @@ void ThemeTest::accentColorsAreDistinctAndGenerationSafe() {
         QVERIFY(manager->theme().generation() > generation);
         generation = manager->theme().generation();
         resolvedColors.insert(manager->theme().colors().accent.rgba());
-        QCOMPARE(qApp->palette().color(QPalette::Highlight), manager->theme().colors().accent);
+        const QColor selection = qApp->palette().color(QPalette::Highlight);
+        const QColor accentColor = manager->theme().colors().accent;
+        QCOMPARE(selection.rgb(), accentColor.rgb());
+        const qreal expectedSelectionAlpha =
+            manager->effectiveAppearance() == vkui::VkAppearance::Dark ? 0.34 : 0.22;
+        QVERIFY(std::abs(selection.alphaF() - expectedSelectionAlpha) < 0.01);
     }
     QCOMPARE(resolvedColors.size(), 8);
     QCOMPARE(accentSpy.count(), 7);
