@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "widgets/style/private/VkStylePainter_p.h"
-#if defined(Q_OS_WIN)
 #include "widgets/style/private/VkWidgetAnimationManager_p.h"
-#endif
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -136,9 +134,7 @@ class StyleTest final : public QObject {
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
-#if defined(Q_OS_WIN)
     void paintQueriesDoNotRetargetInputAnimations();
-#endif
 
   private:
     bool animationsEnabled_ = true;
@@ -446,7 +442,6 @@ void StyleTest::switchShowsFocusOnlyForKeyboardNavigation() {
     QVERIFY(keyboardFocus != noFocus);
 }
 
-#if defined(Q_OS_WIN)
 void StyleTest::paintQueriesDoNotRetargetInputAnimations() {
     auto* themeManager = vkui::VkThemeManager::instance();
     const bool animationsWereEnabled = themeManager->animationsEnabled();
@@ -479,7 +474,6 @@ void StyleTest::paintQueriesDoNotRetargetInputAnimations() {
     QTRY_VERIFY_WITH_TIMEOUT(manager.progress(&button, true, false, false, false).hover < 0.01,
                              1000);
 }
-#endif
 
 QTEST_MAIN(StyleTest)
 #include "tst_style.moc"
