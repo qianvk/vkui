@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "../style/private/VkStylePainter_p.h"
+#include "../animation/private/VkWidgetAnimation_p.h"
 #include "private/VkSegmentedControl_p.h"
 
 #include <QAbstractButton>
@@ -13,7 +14,6 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QStyle>
-#include <QVariantAnimation>
 #include <algorithm>
 #include <cmath>
 #include <vkui/core/VkMotion.h>
@@ -42,10 +42,8 @@ class VkSegmentButton final : public QAbstractButton {
         setCheckable(true);
         setFocusPolicy(Qt::StrongFocus);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        connect(this, &QAbstractButton::pressed, this,
-                [this] { animate(m_pressAnimation, m_pressProgress, 1.0); });
-        connect(this, &QAbstractButton::released, this,
-                [this] { animate(m_pressAnimation, m_pressProgress, 0.0); });
+        connect(this, &QAbstractButton::pressed, this, [this] { setPressed(true); });
+        connect(this, &QAbstractButton::released, this, [this] { setPressed(false); });
     }
 
     QSize sizeHint() const override {
@@ -86,7 +84,7 @@ class VkSegmentButton final : public QAbstractButton {
             break;
         case QEvent::FocusOut:
             m_keyboardFocusVisible = false;
-            animate(m_pressAnimation, m_pressProgress, 0.0);
+            setPressed(false);
             break;
         default:
             break;
@@ -175,44 +173,22 @@ class VkSegmentButton final : public QAbstractButton {
     }
 
   private:
-    void animate(QVariantAnimation*& animation, qreal& value, qreal target) {
-        const VkMotionSpec spec = motionSpec(VkMotionRole::StateTransition);
-        if (!VkThemeManager::instance()->animationsEnabled() || spec.durationMs <= 0 ||
-            !isVisible()) {
-            if (animation) {
-                animation->stop();
-            }
-            value = target;
-            update();
+    void setPressed(bool pressed) {
+        const qreal target = pressed ? 1.0 : 0.0;
+        if (qFuzzyCompare(m_pressProgress + 1.0, target + 1.0)) {
             return;
         }
-        if (!animation) {
-            animation = new QVariantAnimation(this);
-            qreal* animatedValue = &value;
-            connect(animation, &QVariantAnimation::valueChanged, this,
-                    [this, animatedValue](const QVariant& frame) {
-                        *animatedValue = frame.toReal();
-                        update();
-                    });
-        } else {
-            animation->stop();
-        }
-        animation->setStartValue(value);
-        animation->setEndValue(target);
-        const qreal distance = std::max<qreal>(0.35, std::abs(target - value));
-        animation->setDuration(std::max(1, qRound(spec.durationMs * 0.65 * distance)));
-        animation->setEasingCurve(spec.easing);
-        animation->start();
+        m_pressProgress = target;
+        update();
     }
 
     qreal m_pressProgress = 0.0;
-    QVariantAnimation* m_pressAnimation = nullptr;
     bool m_keyboardFocusVisible = false;
 };
 
 VkSegmentedControlPrivate::VkSegmentedControlPrivate(VkSegmentedControl* owner)
     : QObject(owner), q(owner), group(new QButtonGroup(owner)),
-      indicatorAnimation(new QVariantAnimation(this)) {
+      indicatorAnimation(new VkWidgetAnimation(owner, this)) {
     group->setExclusive(true);
     QObject::connect(group, &QButtonGroup::idClicked, q, [this](int index) {
         q->setCurrentIndex(index);
@@ -221,11 +197,6 @@ VkSegmentedControlPrivate::VkSegmentedControlPrivate(VkSegmentedControl* owner)
             emit q->segmentActivated(index);
         }
     });
-    QObject::connect(indicatorAnimation, &QVariantAnimation::valueChanged, q,
-                     [this](const QVariant& frame) {
-                         indicatorRect = frame.toRectF();
-                         q->update();
-                     });
 }
 
 bool VkSegmentedControlPrivate::validIndex(int index) const noexcept {
@@ -272,9 +243,7 @@ void VkSegmentedControlPrivate::updateIndicator(bool animated) {
     const qreal inset = std::max<qreal>(metrics.borderWidth, metrics.spacing2);
     const QRectF target =
         QRectF(buttons[currentIndex]->geometry()).adjusted(inset, inset, -inset, -inset);
-    const VkMotionSpec spec = motionSpec(VkMotionRole::StateTransition);
-    if (!animated || indicatorRect.isEmpty() || !q->isVisible() ||
-        !VkThemeManager::instance()->animationsEnabled() || spec.durationMs <= 0) {
+    if (!animated || indicatorRect.isEmpty()) {
         indicatorAnimation->stop();
         indicatorRect = target;
         q->update();
@@ -282,12 +251,14 @@ void VkSegmentedControlPrivate::updateIndicator(bool animated) {
     }
 
     // Retargeting begins at the rendered rectangle, so repeated arrow presses stay continuous.
-    indicatorAnimation->stop();
-    indicatorAnimation->setStartValue(indicatorRect);
-    indicatorAnimation->setEndValue(target);
-    indicatorAnimation->setDuration(spec.durationMs);
-    indicatorAnimation->setEasingCurve(spec.easing);
-    indicatorAnimation->start();
+    const QRectF start = indicatorRect;
+    indicatorAnimation->start(
+        0.0, 1.0, VkMotionRole::StateTransition,
+        [this, start, target](qreal progress) {
+            indicatorRect = QRectF(start.topLeft() + (target.topLeft() - start.topLeft()) * progress,
+                                   start.size() + (target.size() - start.size()) * progress);
+            q->update();
+        });
 }
 
 void VkSegmentedControlPrivate::moveSelection(int visualDelta, bool activate) {
@@ -360,12 +331,6 @@ VkSegmentedControl::VkSegmentedControl(QWidget* parent)
         }
         update();
     });
-    connect(VkThemeManager::instance(), &VkThemeManager::animationsEnabledChanged, this,
-            [this](bool enabled) {
-                if (!enabled) {
-                    d->updateIndicator(false);
-                }
-            });
 }
 
 VkSegmentedControl::~VkSegmentedControl() = default;

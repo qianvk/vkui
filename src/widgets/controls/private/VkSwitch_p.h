@@ -5,9 +5,9 @@
 #include <optional>
 #include <vkui/widgets/controls/VkSwitch.h>
 
-class QVariantAnimation;
-
 namespace vkui {
+
+class VkWidgetAnimation;
 
 class VkSwitchPrivate final {
   public:
@@ -15,9 +15,8 @@ class VkSwitchPrivate final {
     ~VkSwitchPrivate();
 
     void animateThumb(bool checked);
-    void animateHover(bool hovered);
-    void animatePress(bool pressed);
-    void settleAnimations();
+    void setHovered(bool hovered);
+    void setPressed(bool pressed);
 
     VkSwitch* q = nullptr;
     VkControlSize controlSize = VkControlSize::Regular;
@@ -28,12 +27,9 @@ class VkSwitchPrivate final {
     bool keyboardFocusVisible = false;
 
   private:
-    void animateValue(QVariantAnimation*& animation, qreal& value, qreal target,
-                      qreal durationScale);
+    void setInteractionValue(qreal& value, bool active);
 
-    QVariantAnimation* m_thumbAnimation = nullptr;
-    QVariantAnimation* m_hoverAnimation = nullptr;
-    QVariantAnimation* m_pressAnimation = nullptr;
+    VkWidgetAnimation* m_thumbAnimation = nullptr;
 };
 
 } // namespace vkui

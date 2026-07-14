@@ -7,12 +7,12 @@
 #include <QVector>
 
 class QButtonGroup;
-class QVariantAnimation;
 
 namespace vkui {
 
 class VkSegmentButton;
 class VkSegmentedControl;
+class VkWidgetAnimation;
 
 class VkSegmentedControlPrivate final : public QObject {
   public:
@@ -33,7 +33,7 @@ class VkSegmentedControlPrivate final : public QObject {
     QVector<VkSegmentButton*> buttons;
     int currentIndex = -1;
     QRectF indicatorRect;
-    QVariantAnimation* indicatorAnimation = nullptr;
+    VkWidgetAnimation* indicatorAnimation = nullptr;
 };
 
 } // namespace vkui

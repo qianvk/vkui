@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "../style/private/VkStylePainter_p.h"
+#include "../animation/private/VkWidgetAnimation_p.h"
 #include "private/VkSwitch_p.h"
 
 #include <QAccessible>
@@ -10,9 +11,7 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QVariant>
-#include <QVariantAnimation>
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <vkui/core/VkMotion.h>
 #include <vkui/core/VkTheme.h>
@@ -21,80 +20,39 @@
 
 namespace vkui {
 
-VkSwitchPrivate::VkSwitchPrivate(VkSwitch* owner) : q(owner) {}
+VkSwitchPrivate::VkSwitchPrivate(VkSwitch* owner)
+    : q(owner), m_thumbAnimation(new VkWidgetAnimation(owner)) {}
 
 VkSwitchPrivate::~VkSwitchPrivate() {
     delete m_thumbAnimation;
-    delete m_hoverAnimation;
-    delete m_pressAnimation;
 }
 
 void VkSwitchPrivate::animateThumb(bool checked) {
-    animateValue(m_thumbAnimation, thumbProgress, checked ? 1.0 : 0.0, 1.75);
+    const qreal target = checked ? 1.0 : 0.0;
+    m_thumbAnimation->start(
+        thumbProgress, target, VkMotionRole::StateTransition,
+        [this](qreal value) {
+            thumbProgress = value;
+            q->update();
+        },
+        {}, 1.75);
 }
 
-void VkSwitchPrivate::animateHover(bool hovered) {
-    animateValue(m_hoverAnimation, hoverProgress, hovered ? 1.0 : 0.0, 0.9);
+void VkSwitchPrivate::setHovered(bool hovered) {
+    setInteractionValue(hoverProgress, hovered);
 }
 
-void VkSwitchPrivate::animatePress(bool pressed) {
-    animateValue(m_pressAnimation, pressProgress, pressed ? 1.0 : 0.0, 0.65);
+void VkSwitchPrivate::setPressed(bool pressed) {
+    setInteractionValue(pressProgress, pressed);
 }
 
-void VkSwitchPrivate::settleAnimations() {
-    const std::array<QPair<QVariantAnimation*, qreal*>, 3> animations = {
-        QPair{m_thumbAnimation, &thumbProgress},
-        QPair{m_hoverAnimation, &hoverProgress},
-        QPair{m_pressAnimation, &pressProgress},
-    };
-    for (const auto& [animation, value] : animations) {
-        if (animation) {
-            animation->stop();
-            *value = animation->endValue().toReal();
-        }
+void VkSwitchPrivate::setInteractionValue(qreal& value, bool active) {
+    const qreal target = active ? 1.0 : 0.0;
+    if (qFuzzyCompare(value + 1.0, target + 1.0)) {
+        return;
     }
+    value = target;
     q->update();
-}
-
-void VkSwitchPrivate::animateValue(QVariantAnimation*& animation, qreal& value, qreal target,
-                                   qreal durationScale) {
-    target = std::clamp(target, 0.0, 1.0);
-    if (qFuzzyCompare(value + 1.0, target + 1.0) &&
-        (!animation || animation->state() != QAbstractAnimation::Running)) {
-        return;
-    }
-
-    const VkMotionSpec spec = motionSpec(VkMotionRole::StateTransition);
-    if (!VkThemeManager::instance()->animationsEnabled() || spec.durationMs <= 0 ||
-        !q->isVisible()) {
-        if (animation) {
-            animation->stop();
-        }
-        value = target;
-        q->update();
-        return;
-    }
-
-    if (!animation) {
-        animation = new QVariantAnimation;
-        qreal* animatedValue = &value;
-        QObject::connect(animation, &QVariantAnimation::valueChanged, q,
-                         [this, animatedValue](const QVariant& frame) {
-                             *animatedValue = frame.toReal();
-                             q->update();
-                         });
-    } else {
-        animation->stop();
-    }
-
-    // The current interpolated value is the new start, making rapid toggles continuous.
-    animation->setStartValue(value);
-    animation->setEndValue(target);
-    const qreal distance = std::abs(target - value);
-    const qreal durationFraction = std::max<qreal>(0.35, distance);
-    animation->setDuration(std::max(1, qRound(spec.durationMs * durationScale * durationFraction)));
-    animation->setEasingCurve(spec.easing);
-    animation->start();
 }
 
 VkSwitch::VkSwitch(QWidget* parent)
@@ -106,8 +64,8 @@ VkSwitch::VkSwitch(QWidget* parent)
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     setProperty("_vkui_controlSize", static_cast<int>(d->controlSize));
 
-    connect(this, &QAbstractButton::pressed, this, [this] { d->animatePress(true); });
-    connect(this, &QAbstractButton::released, this, [this] { d->animatePress(false); });
+    connect(this, &QAbstractButton::pressed, this, [this] { d->setPressed(true); });
+    connect(this, &QAbstractButton::released, this, [this] { d->setPressed(false); });
     connect(this, &QAbstractButton::toggled, this, [this](bool checked) {
         d->animateThumb(checked);
 
@@ -118,12 +76,6 @@ VkSwitch::VkSwitch(QWidget* parent)
         QAccessibleStateChangeEvent accessibilityEvent(this, changedState);
         QAccessible::updateAccessibility(&accessibilityEvent);
     });
-    connect(VkThemeManager::instance(), &VkThemeManager::animationsEnabledChanged, this,
-            [this](bool enabled) {
-                if (!enabled) {
-                    d->settleAnimations();
-                }
-            });
     connect(VkThemeManager::instance(), &VkThemeManager::themeChanged, this, [this](quint64) {
         updateGeometry();
         update();
@@ -285,12 +237,12 @@ bool VkSwitch::event(QEvent* event) {
     switch (event->type()) {
     case QEvent::Enter:
     case QEvent::HoverEnter:
-        d->animateHover(true);
+        d->setHovered(true);
         break;
     case QEvent::Leave:
     case QEvent::HoverLeave:
-        d->animateHover(false);
-        d->animatePress(false);
+        d->setHovered(false);
+        d->setPressed(false);
         break;
     case QEvent::MouseButtonPress:
         d->keyboardFocusVisible = false;
@@ -309,7 +261,7 @@ bool VkSwitch::event(QEvent* event) {
         break;
     case QEvent::FocusOut:
         d->keyboardFocusVisible = false;
-        d->animatePress(false);
+        d->setPressed(false);
         break;
     default:
         break;
@@ -322,7 +274,7 @@ void VkSwitch::changeEvent(QEvent* event) {
     switch (event->type()) {
     case QEvent::EnabledChange:
         if (!isEnabled()) {
-            d->animatePress(false);
+            d->setPressed(false);
         }
         update();
         break;

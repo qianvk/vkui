@@ -111,11 +111,11 @@ target_sources(vkui_widgets
         src/widgets/style/VkStyleSheet.cpp
         src/widgets/VkComboBox.cpp
         src/widgets/style/VkControlSize.cpp
+        src/widgets/animation/private/VkWidgetAnimation_p.h
+        src/widgets/animation/private/VkWidgetAnimation.cpp
         src/widgets/style/private/VkStyle_p.h
         src/widgets/style/private/VkStylePainter_p.h
         src/widgets/style/private/VkStylePainter.cpp
-        src/widgets/style/private/VkWidgetAnimationManager_p.h
-        src/widgets/style/private/VkWidgetAnimationManager.cpp
         src/widgets/controls/VkSwitch.cpp
         src/widgets/controls/VkSegmentedControl.cpp
         src/widgets/controls/private/VkSwitch_p.h
@@ -128,8 +128,6 @@ target_sources(vkui_widgets
         src/widgets/overlays/private/VkPopoverPath.cpp
         src/widgets/overlays/private/VkPopoverShadowCache_p.h
         src/widgets/overlays/private/VkPopoverShadowCache.cpp
-        src/widgets/overlays/private/VkPopoverAnimation_p.h
-        src/widgets/overlays/private/VkPopoverAnimation.cpp
 )
 
 target_compile_definitions(vkui_widgets PRIVATE VKUI_BUILDING_WIDGETS)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "widgets/style/private/VkStylePainter_p.h"
-#include "widgets/style/private/VkWidgetAnimationManager_p.h"
+#include "widgets/animation/private/VkWidgetAnimation_p.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -18,6 +18,7 @@
 #include <QSpinBox>
 #include <QStyleOptionComboBox>
 #include <QStyleOptionFrame>
+#include <QStyleOptionToolButton>
 #include <QTemporaryFile>
 #include <QToolButton>
 #include <QtTest>
@@ -53,6 +54,11 @@ class PolishProbeStyle final : public QProxyStyle {
 
     int polishCount = 0;
     int unpolishCount = 0;
+};
+
+class InspectableToolButton final : public QToolButton {
+  public:
+    using QToolButton::initStyleOption;
 };
 
 class PaintCounter final : public QObject {
@@ -147,8 +153,8 @@ class StyleTest final : public QObject {
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
-    void styleOnlyAnimatesVisualsItOwns();
-    void paintQueriesDoNotRetargetInputAnimations();
+    void styleInteractionsAreEventDriven();
+    void hiddenAnimationsSettleAtTheirTarget();
 
   private:
     bool animationsEnabled_ = true;
@@ -456,7 +462,7 @@ void StyleTest::switchShowsFocusOnlyForKeyboardNavigation() {
     QVERIFY(keyboardFocus != noFocus);
 }
 
-void StyleTest::styleOnlyAnimatesVisualsItOwns() {
+void StyleTest::styleInteractionsAreEventDriven() {
     auto* themeManager = vkui::VkThemeManager::instance();
     const bool animationsWereEnabled = themeManager->animationsEnabled();
     struct AnimationSettingGuard {
@@ -468,65 +474,65 @@ void StyleTest::styleOnlyAnimatesVisualsItOwns() {
     } restore{themeManager, animationsWereEnabled};
     themeManager->setAnimationsEnabled(true);
 
-    QWidget host;
-    QToolButton button(&host);
-    button.setGeometry(8, 8, 32, 32);
-    QLineEdit styledEditor(&host);
-    styledEditor.setGeometry(48, 8, 120, 32);
-    styledEditor.setStyleSheet(QStringLiteral(
-        "QLineEdit{background:transparent;border:none;border-radius:0;padding:4px 10px;}"));
-    host.resize(180, 48);
-    host.show();
+    InspectableToolButton button;
+    button.setAutoRaise(true);
+    button.resize(36, 36);
+
+    QStyleOptionToolButton normal;
+    button.initStyleOption(&normal);
+    normal.state &= ~QStyle::State_MouseOver;
+    QStyleOptionToolButton hovered = normal;
+    hovered.state |= QStyle::State_MouseOver;
+    const auto render = [&button](const QStyleOptionToolButton& option) {
+        QImage image(button.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        button.style()->drawComplexControl(QStyle::CC_ToolButton, &option, &painter, &button);
+        return image;
+    };
+    QVERIFY2(render(normal) != render(hovered),
+             "Hover must remain visible through the QStyleOption state");
+
+    button.show();
     QCoreApplication::processEvents();
 
-    PaintCounter buttonCounter;
-    PaintCounter editorCounter;
-    button.installEventFilter(&buttonCounter);
-    styledEditor.installEventFilter(&editorCounter);
-
-    QEvent buttonEnter(QEvent::Enter);
-    QApplication::sendEvent(&button, &buttonEnter);
-    QTest::qWait(220);
-    QEvent editorEnter(QEvent::Enter);
-    QApplication::sendEvent(&styledEditor, &editorEnter);
-    QTest::qWait(220);
-
-    QVERIFY2(buttonCounter.paints > 2, "VkStyle-owned button hover should remain animated");
-    QVERIFY2(editorCounter.paints <= 2,
-             "Style-sheet-owned editor must not run an invisible VkUI animation");
-}
-
-void StyleTest::paintQueriesDoNotRetargetInputAnimations() {
-    auto* themeManager = vkui::VkThemeManager::instance();
-    const bool animationsWereEnabled = themeManager->animationsEnabled();
-    struct AnimationSettingGuard {
-        vkui::VkThemeManager* manager;
-        bool enabled;
-        ~AnimationSettingGuard() {
-            manager->setAnimationsEnabled(enabled);
-        }
-    } restore{themeManager, animationsWereEnabled};
-    themeManager->setAnimationsEnabled(true);
-
-    QWidget host;
-    QToolButton button(&host);
-    host.resize(120, 60);
-    button.setGeometry(10, 10, 32, 32);
-    host.show();
-    QCoreApplication::processEvents();
-
-    vkui::VkWidgetAnimationManager manager;
-    manager.watch(&button);
-
+    PaintCounter counter;
+    button.installEventFilter(&counter);
     QEvent enter(QEvent::Enter);
     QApplication::sendEvent(&button, &enter);
-    QTRY_VERIFY_WITH_TIMEOUT(manager.progress(&button, false, false, false, false).hover > 0.99,
-                             1000);
+    QCoreApplication::processEvents();
+    const int paintsAfterStateChange = counter.paints;
+    QTest::qWait(220);
+    QCOMPARE(counter.paints, paintsAfterStateChange);
+}
 
-    QEvent leave(QEvent::Leave);
-    QApplication::sendEvent(&button, &leave);
-    QTRY_VERIFY_WITH_TIMEOUT(manager.progress(&button, true, false, false, false).hover < 0.01,
-                             1000);
+void StyleTest::hiddenAnimationsSettleAtTheirTarget() {
+    auto* themeManager = vkui::VkThemeManager::instance();
+    const bool animationsWereEnabled = themeManager->animationsEnabled();
+    struct AnimationSettingGuard {
+        vkui::VkThemeManager* manager;
+        bool enabled;
+        ~AnimationSettingGuard() {
+            manager->setAnimationsEnabled(enabled);
+        }
+    } restore{themeManager, animationsWereEnabled};
+    themeManager->setAnimationsEnabled(true);
+
+    QWidget owner;
+    owner.show();
+    QCoreApplication::processEvents();
+    vkui::VkWidgetAnimation animation(&owner);
+    qreal value = 0.0;
+    bool completed = false;
+    animation.start(0.0, 1.0, vkui::VkMotionRole::EmphasizedEnter,
+                    [&value](qreal frame) { value = frame; },
+                    [&completed] { completed = true; });
+    QVERIFY(animation.isRunning());
+
+    owner.hide();
+    QVERIFY(!animation.isRunning());
+    QCOMPARE(value, 1.0);
+    QVERIFY(completed);
 }
 
 QTEST_MAIN(StyleTest)
