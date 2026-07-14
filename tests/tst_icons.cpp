@@ -34,7 +34,7 @@ void IconTest::everySymbolHasARenderableResource() {
         vkui::VkSymbol::PhotoLibrary, vkui::VkSymbol::Focus,
         vkui::VkSymbol::FocusTarget, vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
         vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,       vkui::VkSymbol::Clear,
-        vkui::VkSymbol::DefaultTemplate,
+        vkui::VkSymbol::DefaultTemplate, vkui::VkSymbol::UnsavedIndicator,
     };
     for (const vkui::VkSymbol symbol : symbols) {
         const QIcon rendered = vkui::icon(symbol);

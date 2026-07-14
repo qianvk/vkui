@@ -53,6 +53,7 @@ enum class VkSymbol {
     Reveal,
     Clear,
     DefaultTemplate,
+    UnsavedIndicator,
 };
 
 enum class VkIconRole {

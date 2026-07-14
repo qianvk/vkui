@@ -45,5 +45,6 @@
         <file alias="reveal.svg">icons/reveal.svg</file>
         <file alias="clear.svg">icons/clear.svg</file>
         <file alias="default-template.svg">icons/default-template.svg</file>
+        <file alias="unsaved-indicator.svg">icons/unsaved-indicator.svg</file>
     </qresource>
 </RCC>

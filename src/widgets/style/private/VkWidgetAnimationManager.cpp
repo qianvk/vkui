@@ -62,16 +62,35 @@ void VkWidgetAnimationManager::watch(QWidget* widget) {
         return;
     }
     state->values[channelIndex(Channel::Hover)] = widget->underMouse() ? 1.0 : 0.0;
-    state->values[channelIndex(Channel::Focus)] =
-        widget->hasFocus() && state->keyboardFocusVisible ? 1.0 : 0.0;
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+    if (const auto* button = qobject_cast<const QAbstractButton*>(widget)) {
+        state->values[channelIndex(Channel::Press)] = button->isDown() ? 1.0 : 0.0;
+        state->values[channelIndex(Channel::Selection)] = button->isChecked() ? 1.0 : 0.0;
+    }
+#else
     if (const auto* button = qobject_cast<const QAbstractButton*>(widget)) {
         state->values[channelIndex(Channel::Selection)] = button->isChecked() ? 1.0 : 0.0;
     }
+#endif
+    state->values[channelIndex(Channel::Focus)] =
+        widget->hasFocus() && state->keyboardFocusVisible ? 1.0 : 0.0;
     state->targets = state->values;
 
     widget->setAttribute(Qt::WA_Hover, true);
     widget->installEventFilter(this);
     state->observed = true;
+
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+    if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
+        connect(button, &QAbstractButton::pressed, this,
+                [this, widget] { setTarget(widget, Channel::Press, 1.0); });
+        connect(button, &QAbstractButton::released, this,
+                [this, widget] { setTarget(widget, Channel::Press, 0.0); });
+        connect(button, &QAbstractButton::toggled, this, [this, widget](bool checked) {
+            setTarget(widget, Channel::Selection, checked ? 1.0 : 0.0);
+        });
+    }
+#endif
 }
 
 void VkWidgetAnimationManager::unwatch(QWidget* widget) {
@@ -90,6 +109,24 @@ VkWidgetAnimationManager::Progress VkWidgetAnimationManager::progress(QWidget* w
                 selected ? 1.0 : 0.0};
     }
 
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+    const auto found = m_states.constFind(widget);
+    if (found == m_states.cend() || !found.value()->observed) {
+        return {hovered ? 1.0 : 0.0, pressed ? 1.0 : 0.0, focused ? 1.0 : 0.0,
+                selected ? 1.0 : 0.0};
+    }
+
+    // Painting must be read-only. Retargeting animations from QStyleOption state here can make
+    // nested style passes disagree and continuously schedule another frame while the UI is idle.
+    const WidgetState* state = found.value();
+    const bool managesSelection = qobject_cast<const QAbstractButton*>(widget) != nullptr;
+
+    return {state->values[channelIndex(Channel::Hover)],
+            state->values[channelIndex(Channel::Press)],
+            state->values[channelIndex(Channel::Focus)],
+            managesSelection ? state->values[channelIndex(Channel::Selection)]
+                             : (selected ? 1.0 : 0.0)};
+#else
     WidgetState* state = ensureState(widget);
     setTarget(widget, Channel::Hover, hovered ? 1.0 : 0.0);
     setTarget(widget, Channel::Press, pressed ? 1.0 : 0.0);
@@ -100,6 +137,7 @@ VkWidgetAnimationManager::Progress VkWidgetAnimationManager::progress(QWidget* w
             state->values[channelIndex(Channel::Press)],
             state->values[channelIndex(Channel::Focus)],
             state->values[channelIndex(Channel::Selection)]};
+#endif
 }
 
 bool VkWidgetAnimationManager::eventFilter(QObject* watched, QEvent* event) {
@@ -143,6 +181,13 @@ bool VkWidgetAnimationManager::eventFilter(QObject* watched, QEvent* event) {
         setTarget(widget, Channel::Focus, 0.0);
         setTarget(widget, Channel::Press, 0.0);
         break;
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+    case QEvent::Hide:
+    case QEvent::WindowDeactivate:
+        setTarget(widget, Channel::Hover, 0.0);
+        setTarget(widget, Channel::Press, 0.0);
+        break;
+#endif
     case QEvent::EnabledChange:
         setTarget(widget, Channel::Press, 0.0);
         widget->update();
@@ -215,6 +260,10 @@ void VkWidgetAnimationManager::removeState(QWidget* widget) {
     if (!state) {
         return;
     }
+
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+    QObject::disconnect(widget, nullptr, this, nullptr);
+#endif
 
     for (QVariantAnimation* animation : state->animations) {
         if (animation) {

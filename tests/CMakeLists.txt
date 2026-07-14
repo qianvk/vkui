@@ -45,5 +45,6 @@ if(WIN32 AND VKUI_BUILD_SHARED)
     )
     target_sources(tst_style PRIVATE
         ${PROJECT_SOURCE_DIR}/src/widgets/style/private/VkStylePainter.cpp
+        ${PROJECT_SOURCE_DIR}/src/widgets/style/private/VkWidgetAnimationManager.cpp
     )
 endif()
