@@ -6,7 +6,6 @@ namespace vkui {
 
 class VkStyle;
 class VkPopupSurfaceStyler;
-class VkWidgetAnimationManager;
 
 class VkStylePrivate final {
   public:
@@ -14,7 +13,6 @@ class VkStylePrivate final {
     ~VkStylePrivate();
 
     VkStyle* q = nullptr;
-    VkWidgetAnimationManager* animations = nullptr;
     VkPopupSurfaceStyler* popupSurfaces = nullptr;
 };
 

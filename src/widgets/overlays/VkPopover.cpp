@@ -40,14 +40,6 @@ bool validPlacement(VkPopoverPlacement placement) noexcept {
     return false;
 }
 
-QRectF scaledRect(const QRectF& rect, qreal scale) {
-    return QRectF(rect.x() * scale, rect.y() * scale, rect.width() * scale, rect.height() * scale);
-}
-
-QPointF scaledPoint(const QPointF& point, qreal scale) {
-    return QPointF(point.x() * scale, point.y() * scale);
-}
-
 VkPopoverGeometryMetrics popoverGeometryMetrics(const VkMetricTokens& metrics) {
     return {
         metrics.spacing12,           metrics.popoverCornerRadius,
@@ -59,7 +51,7 @@ VkPopoverGeometryMetrics popoverGeometryMetrics(const VkMetricTokens& metrics) {
 
 } // namespace
 
-VkPopoverPrivate::VkPopoverPrivate(VkPopover* popover) : q(popover), animation(this) {
+VkPopoverPrivate::VkPopoverPrivate(VkPopover* popover) : q(popover), animation(popover) {
     auto* manager = VkThemeManager::instance();
     geometryMetrics = popoverGeometryMetrics(manager->theme().metrics());
     themeChangedConnection = connect(manager, &VkThemeManager::themeChanged, q, [this](quint64) {
@@ -73,9 +65,6 @@ VkPopoverPrivate::VkPopoverPrivate(VkPopover* popover) : q(popover), animation(t
         // its actual color input and remains hot for accent-only changes.
         q->update();
     });
-    animationsEnabledConnection =
-        connect(manager, &VkThemeManager::animationsEnabledChanged, q,
-                [this](bool enabled) { handleAnimationsEnabledChanged(enabled); });
 }
 
 VkPopoverPrivate::~VkPopoverPrivate() {
@@ -181,10 +170,9 @@ void VkPopoverPrivate::openFor(QWidget* newAnchor, const QRect& rectInAnchor) {
     state = State::Opening;
     const bool freshOpen = previousState == State::Closed;
     if (freshOpen) {
-        currentScale = 0.96;
         currentOpacity = 0.0;
     }
-    applyAnimationFrame(currentScale, currentOpacity);
+    applyOpacityFrame(currentOpacity);
 
     q->show();
     if (content) {
@@ -202,11 +190,12 @@ void VkPopoverPrivate::closeAnimated() {
 
     Q_EMIT q->aboutToClose();
     state = State::Closing;
-    const bool enabled = VkThemeManager::instance()->animationsEnabled();
-    animation.startClosing(
-        currentScale, currentOpacity, enabled,
-        [this](qreal scale, qreal opacity) { applyAnimationFrame(scale, opacity); },
-        [this] { finishClosing(); });
+    const qreal startOpacity = currentOpacity;
+    animation.start(0.0, 1.0, VkMotionRole::Exit,
+                    [this, startOpacity](qreal progress) {
+                        applyOpacityFrame(startOpacity * (1.0 - progress));
+                    },
+                    [this] { finishClosing(); });
 }
 
 void VkPopoverPrivate::closeImmediately() {
@@ -218,7 +207,7 @@ void VkPopoverPrivate::closeImmediately() {
         state = State::Closing;
     }
     animation.stop();
-    applyAnimationFrame(0.975, 0.0);
+    applyOpacityFrame(0.0);
     finishClosing();
 }
 
@@ -228,10 +217,6 @@ void VkPopoverPrivate::shutdown() {
     if (themeChangedConnection) {
         disconnect(themeChangedConnection);
         themeChangedConnection = {};
-    }
-    if (animationsEnabledConnection) {
-        disconnect(animationsEnabledConnection);
-        animationsEnabledConnection = {};
     }
     if (contentDestroyedConnection) {
         disconnect(contentDestroyedConnection);
@@ -474,59 +459,38 @@ bool VkPopoverPrivate::repositionNow() {
     if (finalPath.isEmpty()) {
         return false;
     }
-    applyAnimationFrame(currentScale, currentOpacity);
+    const QRect popupRect = finalPlacement.popupRect;
+    if (q->geometry() != popupRect) {
+        q->setGeometry(popupRect);
+    }
+    const QRect contentRect = finalPlacement.contentRect.toAlignedRect().intersected(q->rect());
+    if (content && content->geometry() != contentRect) {
+        content->setGeometry(contentRect);
+    }
     return true;
 }
 
-void VkPopoverPrivate::applyAnimationFrame(qreal scale, qreal opacity) {
-    if (!q || !finalPlacement.isValid()) {
+void VkPopoverPrivate::applyOpacityFrame(qreal opacity) {
+    if (!q) {
         return;
     }
-    currentScale = std::clamp(scale, 0.90, 1.05);
     currentOpacity = std::clamp(opacity, 0.0, 1.0);
-
-    const QRect finalRect = finalPlacement.popupRect;
-    const QPointF origin = QPointF(finalRect.topLeft()) + finalPlacement.arrowTip;
-    QRect geometry;
-    if (qFuzzyCompare(currentScale, 1.0)) {
-        geometry = finalRect;
-    } else {
-        const QPointF finalTopLeft(finalRect.topLeft());
-        const QPointF animatedTopLeft = origin + (finalTopLeft - origin) * currentScale;
-        geometry = QRect(qRound(animatedTopLeft.x()), qRound(animatedTopLeft.y()),
-                         std::max(1, qRound(finalRect.width() * currentScale)),
-                         std::max(1, qRound(finalRect.height() * currentScale)));
+    if (!qFuzzyCompare(q->windowOpacity() + 1.0, currentOpacity + 1.0)) {
+        q->setWindowOpacity(currentOpacity);
     }
-    q->setGeometry(geometry);
-
-    const VkMetricTokens& metrics = VkThemeManager::instance()->theme().metrics();
-    const QRectF body = scaledRect(finalPlacement.bodyRect, currentScale);
-    const QRectF contentRect = scaledRect(finalPlacement.contentRect, currentScale);
-    const QPointF tip = scaledPoint(finalPlacement.arrowTip, currentScale);
-    const QPointF base = scaledPoint(finalPlacement.arrowBaseCenter, currentScale);
-    currentPath = VkPopoverPath::create(body, finalPlacement.resolvedPlacement, tip, base,
-                                        metrics.popoverArrowWidth * currentScale,
-                                        metrics.popoverCornerRadius * currentScale);
-    if (content) {
-        content->setGeometry(contentRect.toAlignedRect().intersected(q->rect()));
-    }
-    q->setWindowOpacity(currentOpacity);
-    q->update();
 }
 
 void VkPopoverPrivate::startOpenAnimation() {
-    const bool enabled = VkThemeManager::instance()->animationsEnabled();
-    animation.startOpening(
-        currentScale, currentOpacity, enabled,
-        [this](qreal scale, qreal opacity) { applyAnimationFrame(scale, opacity); },
-        [this] { finishOpening(); });
+    animation.start(currentOpacity, 1.0, VkMotionRole::EmphasizedEnter,
+                    [this](qreal opacity) { applyOpacityFrame(opacity); },
+                    [this] { finishOpening(); });
 }
 
 void VkPopoverPrivate::finishOpening() {
     if (state != State::Opening) {
         return;
     }
-    applyAnimationFrame(1.0, 1.0);
+    applyOpacityFrame(1.0);
     state = State::Open;
     Q_EMIT q->opened();
 }
@@ -541,30 +505,12 @@ void VkPopoverPrivate::finishClosing() {
     internalHide = false;
     detachOpenFilters();
     state = State::Closed;
-    currentScale = 1.0;
     currentOpacity = 1.0;
     q->setWindowOpacity(1.0);
     if (finalPlacement.isValid()) {
         q->setGeometry(finalPlacement.popupRect);
     }
     Q_EMIT q->closed();
-}
-
-void VkPopoverPrivate::handleAnimationsEnabledChanged(bool enabled) {
-    if (enabled) {
-        return;
-    }
-    if (state == State::Opening) {
-        animation.startOpening(
-            currentScale, currentOpacity, false,
-            [this](qreal scale, qreal opacity) { applyAnimationFrame(scale, opacity); },
-            [this] { finishOpening(); });
-    } else if (state == State::Closing) {
-        animation.startClosing(
-            currentScale, currentOpacity, false,
-            [this](qreal scale, qreal opacity) { applyAnimationFrame(scale, opacity); },
-            [this] { finishClosing(); });
-    }
 }
 
 void VkPopoverPrivate::handleAnchorDestroyed() {
@@ -774,7 +720,7 @@ bool VkPopoverPrivate::handleKeyPress(QKeyEvent* event) {
 
 void VkPopoverPrivate::paint(QPaintEvent* event) {
     Q_UNUSED(event)
-    if (currentPath.isEmpty() || finalPath.isEmpty()) {
+    if (finalPath.isEmpty()) {
         return;
     }
 
@@ -789,22 +735,17 @@ void VkPopoverPrivate::paint(QPaintEvent* event) {
         finalPath, finalPlacement.popupRect.size(), q->devicePixelRatioF(), colors.shadow,
         metrics.popoverShadowRadius, QPointF(0.0, metrics.spacing2));
     if (!shadow.isNull()) {
-        painter.save();
         // The point overload lets QPainter apply the pixmap DPR exactly once.
-        // Scaling the stable final-geometry cache in logical coordinates keeps
-        // its blur symmetric and aligned with the path throughout animation.
-        painter.scale(currentScale, currentScale);
         painter.drawPixmap(QPointF(0.0, 0.0), shadow);
-        painter.restore();
     }
 
-    painter.fillPath(currentPath, colors.popoverBackground);
+    painter.fillPath(finalPath, colors.popoverBackground);
     QPen borderPen(colors.border);
-    borderPen.setWidthF(std::max<qreal>(0.5, metrics.borderWidth * currentScale));
+    borderPen.setWidthF(std::max<qreal>(0.5, metrics.borderWidth));
     borderPen.setJoinStyle(Qt::RoundJoin);
     painter.setPen(borderPen);
     painter.setBrush(Qt::NoBrush);
-    painter.drawPath(currentPath);
+    painter.drawPath(finalPath);
 }
 
 VkPopover::VkPopover(QWidget* parent)

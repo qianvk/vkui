@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "VkPopoverAnimation_p.h"
+#include "../../animation/private/VkWidgetAnimation_p.h"
 #include "VkPopoverPlacementEngine_p.h"
 #include "VkPopoverShadowCache_p.h"
 
@@ -83,11 +83,10 @@ class VkPopoverPrivate final : public QObject {
     [[nodiscard]] QSizeF desiredContentSize() const;
     [[nodiscard]] QScreen* screenForAnchor(const QRectF& globalAnchor) const;
 
-    void applyAnimationFrame(qreal scale, qreal opacity);
+    void applyOpacityFrame(qreal opacity);
     void startOpenAnimation();
     void finishOpening();
     void finishClosing();
-    void handleAnimationsEnabledChanged(bool enabled);
     void handleAnchorDestroyed();
 
     VkPopover* q = nullptr;
@@ -98,7 +97,6 @@ class VkPopoverPrivate final : public QObject {
     QPointer<QScreen> observedScreen;
 
     QMetaObject::Connection themeChangedConnection;
-    QMetaObject::Connection animationsEnabledConnection;
     QMetaObject::Connection contentDestroyedConnection;
     QMetaObject::Connection anchorDestroyedConnection;
     QMetaObject::Connection windowScreenConnection;
@@ -109,14 +107,12 @@ class VkPopoverPrivate final : public QObject {
     bool filtersAttached = false;
     bool repositionQueued = false;
     bool internalHide = false;
-    qreal currentScale = 1.0;
     qreal currentOpacity = 1.0;
     VkPopoverGeometryMetrics geometryMetrics;
 
     VkPopoverPlacementResult finalPlacement;
     QPainterPath finalPath;
-    QPainterPath currentPath;
-    VkPopoverAnimation animation;
+    VkWidgetAnimation animation;
     VkPopoverShadowCache shadowCache;
 };
 

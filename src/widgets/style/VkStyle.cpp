@@ -2,7 +2,6 @@
 
 #include "private/VkStylePainter_p.h"
 #include "private/VkStyle_p.h"
-#include "private/VkWidgetAnimationManager_p.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemModel>
@@ -56,6 +55,24 @@ namespace {
 
 bool hasState(const QStyleOption* option, QStyle::StateFlag state) {
     return option && option->state.testFlag(state);
+}
+
+struct InteractionState final {
+    qreal hover = 0.0;
+    qreal press = 0.0;
+    qreal focus = 0.0;
+    qreal selection = 0.0;
+};
+
+InteractionState interactionState(const QStyleOption* option, bool selected = false) {
+    const bool keyboardFocus = hasState(option, QStyle::State_HasFocus) &&
+                               hasState(option, QStyle::State_KeyboardFocusChange);
+    return {
+        hasState(option, QStyle::State_MouseOver) ? 1.0 : 0.0,
+        hasState(option, QStyle::State_Sunken) ? 1.0 : 0.0,
+        keyboardFocus ? 1.0 : 0.0,
+        selected ? 1.0 : 0.0,
+    };
 }
 
 bool usesVkUiFocusRing(const QWidget* widget) {
@@ -535,8 +552,7 @@ class VkRuntimeThemeSynchronizer final : public QObject {
 };
 
 VkStylePrivate::VkStylePrivate(VkStyle* owner)
-    : q(owner), animations(new VkWidgetAnimationManager(owner)),
-      popupSurfaces(new VkPopupSurfaceStyler(owner)) {}
+    : q(owner), popupSurfaces(new VkPopupSurfaceStyler(owner)) {}
 
 VkStylePrivate::~VkStylePrivate() = default;
 
@@ -573,26 +589,9 @@ void VkStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option
         return;
     }
     const bool enabled = hasState(option, State_Enabled);
-    const bool hovered = hasState(option, State_MouseOver);
-    const bool pressed = hasState(option, State_Sunken);
-    const bool focused = hasState(option, State_HasFocus);
     const bool selected = hasState(option, State_On) || hasState(option, State_Selected);
-    const bool tracksSelection = element == PE_PanelButtonCommand ||
-                                 element == PE_PanelButtonTool || element == PE_IndicatorCheckBox ||
-                                 element == PE_IndicatorRadioButton;
-    const bool itemViewIndicator = element == PE_IndicatorItemViewItemCheck;
-    const bool animatedElement =
-        tracksSelection || itemViewIndicator || element == PE_PanelLineEdit;
     const bool selectionTarget = selected || hasState(option, State_NoChange);
-    VkWidgetAnimationManager::Progress progress{hovered ? 1.0 : 0.0, pressed ? 1.0 : 0.0,
-                                                focused ? 1.0 : 0.0, selectionTarget ? 1.0 : 0.0};
-    if (animatedElement && !itemViewIndicator) {
-        // Bind input tracking only when VkStyle owns the animated visual. A style-sheet-owned
-        // primitive may bypass this path entirely and must not schedule invisible animation frames.
-        d->animations->watch(const_cast<QWidget*>(widget));
-        progress = d->animations->progress(const_cast<QWidget*>(widget), hovered, pressed, focused,
-                                           tracksSelection && selectionTarget);
-    }
+    const InteractionState progress = interactionState(option, selectionTarget);
 
     switch (element) {
     case PE_PanelButtonCommand: {
@@ -1036,20 +1035,8 @@ void VkStyle::drawComplexControl(ComplexControl control, const QStyleOptionCompl
     const auto& colors = theme.colors();
     const auto& metrics = theme.metrics();
     const bool enabled = hasState(option, State_Enabled);
-    const bool hovered = hasState(option, State_MouseOver);
-    const bool pressed = hasState(option, State_Sunken);
-    const bool focused = hasState(option, State_HasFocus);
     const bool selected = hasState(option, State_On);
-    const bool animatedControl = control == CC_ToolButton || control == CC_ComboBox ||
-                                 control == CC_SpinBox || control == CC_Slider ||
-                                 control == CC_ScrollBar;
-    VkWidgetAnimationManager::Progress progress{hovered ? 1.0 : 0.0, pressed ? 1.0 : 0.0,
-                                                focused ? 1.0 : 0.0, selected ? 1.0 : 0.0};
-    if (animatedControl) {
-        d->animations->watch(const_cast<QWidget*>(widget));
-        progress = d->animations->progress(const_cast<QWidget*>(widget), hovered, pressed, focused,
-                                           selected);
-    }
+    const InteractionState progress = interactionState(option, selected);
 
     switch (control) {
     case CC_ToolButton: {
@@ -1608,6 +1595,11 @@ void VkStyle::polish(QApplication* application) {
 
 void VkStyle::polish(QWidget* widget) {
     QProxyStyle::polish(widget);
+    if (usesVkUiFocusRing(widget)) {
+        // Qt widgets already invalidate themselves when interaction state changes. The style only
+        // needs hover delivery; rendering remains a pure function of QStyleOption.
+        widget->setAttribute(Qt::WA_Hover, true);
+    }
     d->popupSurfaces->polish(widget);
 }
 
@@ -1616,8 +1608,10 @@ void VkStyle::unpolish(QApplication* application) {
 }
 
 void VkStyle::unpolish(QWidget* widget) {
-    d->animations->unwatch(widget);
     d->popupSurfaces->unpolish(widget);
+    if (usesVkUiFocusRing(widget)) {
+        widget->setAttribute(Qt::WA_Hover, false);
+    }
     QProxyStyle::unpolish(widget);
 }
 
