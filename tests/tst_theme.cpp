@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <QApplication>
+#include <QOperatingSystemVersion>
 #include <QPalette>
 #include <QSet>
 #include <QSignalSpy>
@@ -71,6 +72,12 @@ void ThemeTest::resolvedThemeIsComplete() {
     QVERIFY(metrics.popoverShadowRadius > 0.0);
 #if defined(Q_OS_MACOS)
     QCOMPARE(metrics.cornerRadiusLarge, 16.0);
+#elif defined(Q_OS_WIN)
+    const QOperatingSystemVersion version = QOperatingSystemVersion::current();
+    const bool windows11OrGreater =
+        version.majorVersion() > 10 ||
+        (version.majorVersion() == 10 && version.microVersion() >= 22000);
+    QCOMPARE(metrics.cornerRadiusLarge, windows11OrGreater ? 8.0 : 0.0);
 #else
     QCOMPARE(metrics.cornerRadiusLarge, 10.0);
 #endif
