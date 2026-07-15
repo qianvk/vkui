@@ -9,6 +9,7 @@
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
 #include <QtGui/QCloseEvent>
+#include <QtGui/QEnterEvent>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
@@ -397,14 +398,24 @@ QScreen* VkPopoverPrivate::screenForAnchor(const QRectF& globalAnchor) const {
     return QGuiApplication::primaryScreen();
 }
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
-QAbstractButton* buttonAtGlobalPoint(const QPoint& globalPoint, QWidget* expectedWindow,
-                                     QWidget* popover) {
-    QWidget* widget = QApplication::widgetAt(globalPoint);
+QAbstractButton* buttonAtGlobalPoint(const QPoint& globalPoint, QWidget* expectedWindow) {
+    if (!expectedWindow) {
+        return nullptr;
+    }
+
+    const QPoint windowPoint = expectedWindow->mapFromGlobal(globalPoint);
+    if (!expectedWindow->rect().contains(windowPoint)) {
+        return nullptr;
+    }
+
+    // A translucent top-level popover still owns its rectangular native hit-test area. Looking
+    // through the anchor window explicitly finds controls covered only by transparent shadow or
+    // arrow padding; QApplication::widgetAt() would return the popover itself in that case.
+    QWidget* widget = expectedWindow->childAt(windowPoint);
+    if (!widget) {
+        widget = expectedWindow;
+    }
     while (widget) {
-        if (widget == popover || (popover && popover->isAncestorOf(widget))) {
-            return nullptr;
-        }
         if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
             return button->isEnabled() && button->isVisible() &&
                            (!expectedWindow || button->window() == expectedWindow)
@@ -418,7 +429,31 @@ QAbstractButton* buttonAtGlobalPoint(const QPoint& globalPoint, QWidget* expecte
     }
     return nullptr;
 }
-#endif
+
+void synchronizeButtonHover(QWidget* window, QAbstractButton* target, const QPoint& globalPoint) {
+    if (!window) {
+        return;
+    }
+    const auto buttons = window->findChildren<QAbstractButton*>();
+    for (QAbstractButton* button : buttons) {
+        if (!button || !button->isVisible()) {
+            continue;
+        }
+        const bool shouldBeHovered = button == target;
+        if (button->underMouse() == shouldBeHovered) {
+            continue;
+        }
+        if (shouldBeHovered) {
+            const QPointF localPosition(button->mapFromGlobal(globalPoint));
+            const QPointF scenePosition(window->mapFromGlobal(globalPoint));
+            QEnterEvent enterEvent(localPosition, scenePosition, QPointF(globalPoint));
+            QCoreApplication::sendEvent(button, &enterEvent);
+        } else {
+            QEvent leaveEvent(QEvent::Leave);
+            QCoreApplication::sendEvent(button, &leaveEvent);
+        }
+    }
+}
 
 bool VkPopoverPrivate::repositionNow() {
     if (!anchor || !content) {
@@ -566,27 +601,44 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
             }
         }
         const QPoint globalPoint = globalPosition.toPoint();
-        const bool insidePopover = q->geometry().contains(globalPoint);
-        const QRect anchorRect =
-            anchor ? anchorGlobalRect().toAlignedRect().adjusted(-1, -1, 1, 1) : QRect();
-        const bool insideAnchor = anchorRect.contains(globalPoint);
-        if (pointerPress && !insidePopover && !insideAnchor) {
-#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        const QPoint popoverPoint = q->mapFromGlobal(globalPoint);
+        const bool insidePopover = finalPath.contains(QPointF(popoverPoint));
+        // The arrow tip can overlap the anchor's native hit rectangle. The anchor owns that
+        // intersection so clicking the active button still toggles its popover.
+        const bool insideAnchor = anchor && anchorGlobalRect().contains(globalPosition);
+        if (pointerPress && (!insidePopover || insideAnchor)) {
             QPointer<QAbstractButton> forwardedButton =
-                buttonAtGlobalPoint(globalPoint, anchorWindow, q);
-            closeAnimated();
+                buttonAtGlobalPoint(globalPoint, anchorWindow);
             if (forwardedButton) {
-                QTimer::singleShot(0, q, [forwardedButton] {
+                QPointer<QWidget> forwardedWindow = anchorWindow;
+                const bool activatesCurrentAnchor = forwardedButton == anchor.data();
+                if (activatesCurrentAnchor) {
+                    synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                    QTimer::singleShot(0, forwardedButton, [forwardedButton] {
+                        if (forwardedButton && forwardedButton->isEnabled() &&
+                            forwardedButton->isVisible()) {
+                            forwardedButton->click();
+                        }
+                    });
+                    return true;
+                }
+                // Finish the old native window before invoking the next anchor. Keeping a fading
+                // popover above the new one leaves Qt's underMouse state attached to both anchors.
+                closeImmediately();
+                synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                // Bind the queued replay to the destination, not this popover. Closing a modal-like
+                // popover can unwind a nested event loop and destroy `q` before the next turn.
+                QTimer::singleShot(0, forwardedButton,
+                                   [forwardedButton, forwardedWindow, globalPoint] {
                     if (forwardedButton && forwardedButton->isEnabled() &&
                         forwardedButton->isVisible()) {
                         forwardedButton->click();
+                        synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
                     }
                 });
                 return true;
             }
-#else
             closeAnimated();
-#endif
         }
     }
 
