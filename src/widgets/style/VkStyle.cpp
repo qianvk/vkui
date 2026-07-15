@@ -10,6 +10,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QCursor>
+#include <QDialogButtonBox>
 #include <QEvent>
 #include <QFrame>
 #include <QHash>
@@ -73,6 +74,21 @@ InteractionState interactionState(const QStyleOption* option, bool selected = fa
         keyboardFocus ? 1.0 : 0.0,
         selected ? 1.0 : 0.0,
     };
+}
+
+bool isDestructiveDialogButton(const QWidget* widget) {
+    auto* button = qobject_cast<const QAbstractButton*>(widget);
+    if (!button) {
+        return false;
+    }
+    for (const QWidget* ancestor = widget->parentWidget(); ancestor;
+         ancestor = ancestor->parentWidget()) {
+        if (auto* buttonBox = qobject_cast<const QDialogButtonBox*>(ancestor)) {
+            return buttonBox->buttonRole(const_cast<QAbstractButton*>(button)) ==
+                   QDialogButtonBox::DestructiveRole;
+        }
+    }
+    return false;
 }
 
 bool usesVkUiFocusRing(const QWidget* widget) {
@@ -596,18 +612,29 @@ void VkStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option
     switch (element) {
     case PE_PanelButtonCommand: {
         const auto* button = qstyleoption_cast<const QStyleOptionButton*>(option);
+        const bool destructiveButton = isDestructiveDialogButton(widget);
         const bool defaultButton =
             button && button->features.testFlag(QStyleOptionButton::DefaultButton);
-        const qreal emphasis = defaultButton ? 1.0 : progress.selection;
-        QColor fill = VkStylePainter::mix(colors.controlFill, colors.accent, emphasis);
+        const qreal emphasis = (defaultButton || destructiveButton) ? 1.0 : progress.selection;
+        const QColor emphasizedFill =
+            destructiveButton ? colors.destructive : colors.accent;
+        const QColor emphasizedHover =
+            destructiveButton
+                ? VkStylePainter::mix(colors.destructive, colors.textPrimary, 0.12)
+                : colors.accentHovered;
+        const QColor emphasizedPress =
+            destructiveButton
+                ? VkStylePainter::mix(colors.destructive, colors.contentBackground, 0.18)
+                : colors.accentPressed;
+        QColor fill = VkStylePainter::mix(colors.controlFill, emphasizedFill, emphasis);
         const QColor hoverFill =
-            VkStylePainter::mix(colors.controlFillHovered, colors.accentHovered, emphasis);
+            VkStylePainter::mix(colors.controlFillHovered, emphasizedHover, emphasis);
         const QColor pressFill =
-            VkStylePainter::mix(colors.controlFillPressed, colors.accentPressed, emphasis);
+            VkStylePainter::mix(colors.controlFillPressed, emphasizedPress, emphasis);
         fill = VkStylePainter::mix(fill, hoverFill, progress.hover);
         fill = VkStylePainter::mix(fill, pressFill, progress.press);
         QColor border = VkStylePainter::mix(
-            colors.border, VkStylePainter::mix(colors.accent, colors.borderStrong, 0.22), emphasis);
+            colors.border, VkStylePainter::mix(emphasizedFill, colors.borderStrong, 0.22), emphasis);
         if (!enabled) {
             fill = colors.controlFillDisabled;
             border = VkStylePainter::multiplyAlpha(colors.border, 0.7);
@@ -815,10 +842,12 @@ void VkStyle::drawControl(ControlElement element, const QStyleOption* option, QP
             return;
         }
         QStyleOptionButton copy = *button;
-        const bool emphasized =
-            selected || copy.features.testFlag(QStyleOptionButton::DefaultButton);
+        const bool emphasized = selected || isDestructiveDialogButton(widget) ||
+                                copy.features.testFlag(QStyleOptionButton::DefaultButton);
+        const QColor emphasizedFill =
+            isDestructiveDialogButton(widget) ? colors.destructive : colors.accent;
         copy.palette.setColor(QPalette::ButtonText,
-                              enabled ? (emphasized ? VkStylePainter::contrastingText(colors.accent)
+                              enabled ? (emphasized ? VkStylePainter::contrastingText(emphasizedFill)
                                                     : colors.textPrimary)
                                       : colors.textDisabled);
         QProxyStyle::drawControl(element, &copy, painter, widget);
@@ -1499,6 +1528,13 @@ int VkStyle::styleHint(StyleHint hint, const QStyleOption* option, const QWidget
         return 0;
     case SH_ItemView_ShowDecorationSelected:
         return 1;
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    case SH_DialogButtonLayout:
+        // VkStyle delegates to Fusion for unsupported controls, but dialog action order is a
+        // platform convention rather than a visual theme detail. Preserve the native macOS
+        // ordering for every QDialogButtonBox and QMessageBox using semantic button roles.
+        return QDialogButtonBox::MacLayout;
+#endif
     default:
         return QProxyStyle::styleHint(hint, option, widget, returnData);
     }
@@ -1596,8 +1632,8 @@ void VkStyle::polish(QApplication* application) {
 void VkStyle::polish(QWidget* widget) {
     QProxyStyle::polish(widget);
     if (usesVkUiFocusRing(widget)) {
-        // Qt widgets already invalidate themselves when interaction state changes. The style only
-        // needs hover delivery; rendering remains a pure function of QStyleOption.
+        // QStyleOption::State_MouseOver is defined for hover-aware widgets. Keep event delivery in
+        // the style, as recommended by Qt, so every control receives the same behavior.
         widget->setAttribute(Qt::WA_Hover, true);
     }
     d->popupSurfaces->polish(widget);

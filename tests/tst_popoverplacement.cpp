@@ -3,8 +3,10 @@
 #include "widgets/overlays/private/VkPopoverPlacementEngine_p.h"
 
 #include <QApplication>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPointer>
+#include <QPushButton>
 #include <QtTest>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/overlays/VkPopover.h>
@@ -56,6 +58,7 @@ class PopoverPlacementTest final : public QObject {
     void rejectsGeometryWithoutRoomForAnArrow();
     void anchorDestructionClosesAnOpenPopover();
     void anchorMovementRepositionsWithoutRecreation();
+    void outsideButtonClickClosesAndForwardsOnce();
     void interruptedAnimationRetargetsCleanly();
 };
 
@@ -224,6 +227,36 @@ void PopoverPlacementTest::anchorMovementRepositionsWithoutRecreation() {
     QTRY_VERIFY(popover.pos() != original);
     QVERIFY(popover.isOpen());
     popover.closeImmediately();
+    manager->setAnimationsEnabled(animations);
+}
+
+void PopoverPlacementTest::outsideButtonClickClosesAndForwardsOnce() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool animations = manager->animationsEnabled();
+    manager->setAnimationsEnabled(false);
+
+    QWidget window;
+    window.resize(520, 320);
+    auto* layout = new QHBoxLayout(&window);
+    auto* anchor = new QPushButton(QStringLiteral("Anchor"), &window);
+    auto* adjacent = new QPushButton(QStringLiteral("Adjacent"), &window);
+    layout->addWidget(anchor);
+    layout->addWidget(adjacent);
+    window.show();
+
+    vkui::VkPopover popover(&window);
+    auto* content = new QLabel(QStringLiteral("Popover content"));
+    content->setMinimumSize(280, 140);
+    popover.setContentWidget(content);
+    popover.setPreferredPlacement(vkui::VkPopoverPlacement::Below);
+    popover.openFor(anchor);
+    QTRY_VERIFY(popover.isOpen());
+
+    QSignalSpy clickSpy(adjacent, &QPushButton::clicked);
+    QTest::mouseClick(adjacent, Qt::LeftButton);
+    QTRY_VERIFY(!popover.isOpen());
+    QTRY_COMPARE(clickSpy.count(), 1);
+
     manager->setAnimationsEnabled(animations);
 }
 

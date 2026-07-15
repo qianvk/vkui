@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QFrame>
 #include <QImage>
 #include <QLineEdit>
@@ -154,6 +155,7 @@ class StyleTest final : public QObject {
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
     void styleInteractionsAreEventDriven();
+    void dialogButtonsUsePlatformOrder();
     void hiddenAnimationsSettleAtTheirTarget();
 
   private:
@@ -504,6 +506,15 @@ void StyleTest::styleInteractionsAreEventDriven() {
     const int paintsAfterStateChange = counter.paints;
     QTest::qWait(220);
     QCOMPARE(counter.paints, paintsAfterStateChange);
+}
+
+void StyleTest::dialogButtonsUsePlatformOrder() {
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    QCOMPARE(qApp->style()->styleHint(QStyle::SH_DialogButtonLayout),
+             static_cast<int>(QDialogButtonBox::MacLayout));
+#else
+    QVERIFY(qApp->style()->styleHint(QStyle::SH_DialogButtonLayout) >= 0);
+#endif
 }
 
 void StyleTest::hiddenAnimationsSettleAtTheirTarget() {

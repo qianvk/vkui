@@ -27,6 +27,7 @@ vkui_add_test(tst_switch tst_switch.cpp)
 vkui_add_test(tst_segmentedcontrol tst_segmentedcontrol.cpp)
 vkui_add_test(tst_popoverplacement tst_popoverplacement.cpp)
 vkui_add_test(tst_popoverpath tst_popoverpath.cpp)
+vkui_add_test(tst_popoverinteraction tst_popoverinteraction.cpp)
 vkui_add_test(tst_style tst_style.cpp)
 
 # Windows shared libraries export only the public ABI. Pure private helpers are
