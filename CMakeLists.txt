@@ -61,6 +61,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Windows resolves project DLLs beside each executable. A single runtime
+# directory also gives tests and the gallery one predictable launch location.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets Svg)
 if(VKUI_BUILD_EXAMPLES)
