@@ -98,6 +98,7 @@ target_sources(vkui_core
         src/core/theme/private/VkThemeManager_p.h
         src/core/icons/VkIcon.cpp
         src/core/icons/VkFileIcon.cpp
+        src/core/icons/private/VkResourceInitializer_p.h
         src/core/icons/private/VkSvgIconEngine_p.h
         src/core/icons/private/VkSvgIconEngine.cpp
         src/core/icons/private/VkIconCache_p.h
