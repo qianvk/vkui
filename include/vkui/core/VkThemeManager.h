@@ -13,6 +13,7 @@
 namespace vkui {
 
 class VkThemeManagerPrivate;
+struct VkThemeManagerApplicationStatic;
 
 /** Owns the process-wide appearance request and resolved semantic theme. */
 class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
@@ -48,6 +49,8 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     void animationsEnabledChanged(bool enabled);
 
   private:
+    friend struct VkThemeManagerApplicationStatic;
+
     explicit VkThemeManager(QObject* parent = nullptr);
 
     Q_DISABLE_COPY_MOVE(VkThemeManager)
