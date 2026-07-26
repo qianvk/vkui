@@ -10,6 +10,12 @@ class QLabel;
 class QListView;
 class QStackedWidget;
 class QStringListModel;
+class QToolButton;
+class QWidget;
+
+namespace vkui {
+class VkWindowAgent;
+}
 
 class GalleryWindow final : public QMainWindow {
     Q_OBJECT
@@ -25,6 +31,8 @@ class GalleryWindow final : public QMainWindow {
     };
 
     void rebuildCentralWidget();
+    void registerWindowChrome(QWidget* navigationTitleBar, QWidget* contentTitleBar,
+                              const QList<QWidget*>& interactiveWidgets);
     void applyLanguage(Language language);
     void updateWindowTitle();
 
@@ -36,4 +44,6 @@ class GalleryWindow final : public QMainWindow {
     QStringListModel* navigationModel_ = nullptr;
     QComboBox* appearanceBox_ = nullptr;
     QComboBox* languageBox_ = nullptr;
+    vkui::VkWindowAgent* windowAgent_ = nullptr;
+    bool nativeSystemButtonsAvailable_ = false;
 };

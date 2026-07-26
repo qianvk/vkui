@@ -47,4 +47,7 @@
         <file alias="default-template.svg">icons/default-template.svg</file>
         <file alias="unsaved-indicator.svg">icons/unsaved-indicator.svg</file>
     </qresource>
+    <qresource prefix="/vkui/fonts">
+        <file alias="FiraCodeNerdFont-Regular.ttf">fonts/FiraCodeNerdFont-Regular.ttf</file>
+    </qresource>
 </RCC>

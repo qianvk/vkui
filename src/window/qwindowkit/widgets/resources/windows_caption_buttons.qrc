@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/qwindowkit/widgets/windows">
+        <file>caption/minimize.svg</file>
+        <file>caption/maximize.svg</file>
+        <file>caption/restore.svg</file>
+        <file>caption/close.svg</file>
+    </qresource>
+</RCC>

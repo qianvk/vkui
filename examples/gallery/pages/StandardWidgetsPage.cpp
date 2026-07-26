@@ -3,7 +3,6 @@
 #include "StandardWidgetsPage.h"
 
 #include "../GalleryFileTreeView.h"
-#include "../GalleryFonts.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -29,6 +28,7 @@
 #include <QToolButton>
 #include <QTreeView>
 #include <QVBoxLayout>
+#include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkIcon.h>
 #include <vkui/widgets/VkControlSize.h>
 
@@ -43,12 +43,13 @@ QLabel* makeIntroduction(const QString& text, QWidget* parent) {
 
 QStandardItemModel* makeListModel(QObject* parent) {
     auto* model = new QStandardItemModel(parent);
-    model->appendRow(
-        new QStandardItem(gallery::nerdIcon(0xF1C9), StandardWidgetsPage::tr("Quarterly report")));
-    model->appendRow(new QStandardItem(gallery::nerdIcon(0xF07B, vkui::VkIconRole::Accent),
-                                       StandardWidgetsPage::tr("Design resources")));
-    model->appendRow(
-        new QStandardItem(gallery::nerdIcon(0xF1E0), StandardWidgetsPage::tr("Shared with me")));
+    model->appendRow(new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::TextFile),
+                                       StandardWidgetsPage::tr("Quarterly report")));
+    model->appendRow(new QStandardItem(
+        vkui::fileIcon(vkui::VkFileGlyph::FolderClosed, vkui::VkIconRole::Accent),
+        StandardWidgetsPage::tr("Design resources")));
+    model->appendRow(new QStandardItem(vkui::icon(vkui::VkSymbol::Share),
+                                       StandardWidgetsPage::tr("Shared with me")));
     return model;
 }
 
@@ -165,17 +166,23 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     auto* tree = new GalleryFileTreeView(navigation);
     auto* treeModel = new QStandardItemModel(tree);
     auto makeFolder = [](const QString& text) {
-        auto* item = new QStandardItem(gallery::nerdIcon(0xF07B, vkui::VkIconRole::Accent), text);
+        auto* item =
+            new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::FolderClosed,
+                                             vkui::VkIconRole::Accent),
+                              text);
         item->setData(true, Qt::UserRole + 1);
         return item;
     };
     auto* rootItem = makeFolder(tr("vkui"));
     auto* sourceItem = makeFolder(tr("Source"));
-    sourceItem->appendRow(new QStandardItem(gallery::nerdIcon(0xF1C9), tr("VkStyle.cpp")));
-    sourceItem->appendRow(new QStandardItem(gallery::nerdIcon(0xF1C9), tr("VkSwitch.cpp")));
+    sourceItem->appendRow(
+        new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::CodeFile), tr("VkStyle.cpp")));
+    sourceItem->appendRow(
+        new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::CodeFile), tr("VkSwitch.cpp")));
     rootItem->appendRow(sourceItem);
     rootItem->appendRow(makeFolder(tr("Empty folder")));
-    rootItem->appendRow(new QStandardItem(gallery::nerdIcon(0xF15B), tr("README.md")));
+    rootItem->appendRow(
+        new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::TextFile), tr("README.md")));
     treeModel->appendRow(rootItem);
     tree->setModel(treeModel);
     tree->setIconSize(QSize(18, 18));
@@ -184,7 +191,9 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     auto updateFolderIcon = [treeModel](const QModelIndex& index, bool open) {
         QStandardItem* item = treeModel->itemFromIndex(index);
         if (item && item->data(Qt::UserRole + 1).toBool()) {
-            item->setIcon(gallery::nerdIcon(open ? 0xF07C : 0xF07B, vkui::VkIconRole::Accent));
+            item->setIcon(vkui::fileIcon(open ? vkui::VkFileGlyph::FolderOpen
+                                              : vkui::VkFileGlyph::FolderClosed,
+                                         vkui::VkIconRole::Accent));
         }
     };
     connect(tree, &QTreeView::expanded, tree,

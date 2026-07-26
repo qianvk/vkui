@@ -131,7 +131,7 @@ Qt::ArrowType arrowTypeForPrimitive(QStyle::PrimitiveElement element) {
 QColor textSelectionColor(const vkui::VkTheme& theme, bool active) {
     QColor color = active ? theme.colors().accent : theme.colors().accentHovered;
     const bool dark = theme.effectiveAppearance() == vkui::VkAppearance::Dark;
-    color.setAlphaF(dark ? (active ? 0.34 : 0.24) : (active ? 0.22 : 0.16));
+    color.setAlphaF(dark ? (active ? 0.34F : 0.24F) : (active ? 0.22F : 0.16F));
     return color;
 }
 

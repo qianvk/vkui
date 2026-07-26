@@ -7,6 +7,7 @@
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkColorTokens.h>
 #include <vkui/core/VkIcon.h>
+#include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkMetricTokens.h>
 #include <vkui/core/VkMotion.h>
 #include <vkui/core/VkTheme.h>

@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkIcon.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
@@ -154,20 +155,21 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
 
     auto* fileTypes = new QHBoxLayout;
     struct FontIconEntry {
-        char32_t codePoint;
+        vkui::VkFileGlyph glyph;
         vkui::VkIconRole role;
         const char* name;
     };
     const QList<FontIconEntry> fileEntries{
-        {0xF07B, vkui::VkIconRole::Accent, QT_TR_NOOP("Folder")},
-        {0xF1C9, vkui::VkIconRole::Secondary, QT_TR_NOOP("Source file")},
-        {0xF1C1, vkui::VkIconRole::Destructive, QT_TR_NOOP("PDF file")},
-        {0xF1C5, vkui::VkIconRole::Accent, QT_TR_NOOP("Image file")},
-        {0xF1C6, vkui::VkIconRole::Secondary, QT_TR_NOOP("Archive")},
+        {vkui::VkFileGlyph::FolderClosed, vkui::VkIconRole::Accent, QT_TR_NOOP("Folder")},
+        {vkui::VkFileGlyph::CodeFile, vkui::VkIconRole::Secondary,
+         QT_TR_NOOP("Source file")},
+        {vkui::VkFileGlyph::PdfFile, vkui::VkIconRole::Destructive, QT_TR_NOOP("PDF file")},
+        {vkui::VkFileGlyph::ImageFile, vkui::VkIconRole::Accent, QT_TR_NOOP("Image file")},
+        {vkui::VkFileGlyph::ArchiveFile, vkui::VkIconRole::Secondary, QT_TR_NOOP("Archive")},
     };
     for (const FontIconEntry& entry : fileEntries) {
         auto* button = new QToolButton(fontGroup);
-        button->setIcon(gallery::nerdIcon(entry.codePoint, entry.role));
+        button->setIcon(vkui::fileIcon(entry.glyph, entry.role));
         button->setIconSize(QSize(24, 24));
         button->setText(tr(entry.name));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -193,7 +195,7 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
     folderPreview->setProperty("folderColor", initialColor);
     auto applyFolderColor = [folderPreview, colorValue](const QColor& color) {
         folderPreview->setProperty("folderColor", color);
-        folderPreview->setIcon(gallery::nerdIcon(0xF07B, color));
+        folderPreview->setIcon(vkui::fileIcon(vkui::VkFileGlyph::FolderClosed, color));
         colorValue->setText(color.name(QColor::HexArgb));
     };
     applyFolderColor(initialColor);
