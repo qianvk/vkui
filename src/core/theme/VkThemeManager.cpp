@@ -2,9 +2,11 @@
 
 #include "private/VkThemeManager_p.h"
 
-#include <QtCore/QApplicationStatic>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QGlobalStatic>
+#include <QtCore/QMutex>
 #include <QtCore/QOperatingSystemVersion>
+#include <QtCore/QPointer>
 #include <QtCore/QString>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QPalette>
@@ -12,18 +14,18 @@
 #include <vkui/core/VkThemeManager.h>
 
 namespace vkui {
+namespace {
 
-struct VkThemeManagerApplicationStatic final {
-    VkThemeManager value;
+struct ThemeManagerStorage final {
+    ~ThemeManagerStorage() {
+        delete manager.data();
+    }
 
-    VkThemeManagerApplicationStatic() : value(nullptr) {}
+    QMutex mutex;
+    QPointer<VkThemeManager> manager;
 };
 
-// QObject singletons must be destroyed before QCoreApplication tears down its
-// platform integration. This is especially important for Windows GUI backends.
-Q_APPLICATION_STATIC(VkThemeManagerApplicationStatic, themeManagerStorage)
-
-namespace {
+Q_GLOBAL_STATIC(ThemeManagerStorage, themeManagerStorage)
 
 QGuiApplication* currentGuiApplication() {
     return qobject_cast<QGuiApplication*>(QCoreApplication::instance());
@@ -462,11 +464,20 @@ void VkThemeManagerPrivate::attachToApplication() {
     if (currentApplication == nullptr || currentApplication == application) {
         return;
     }
+    if (q->thread() != currentApplication->thread()) {
+        qWarning("VkThemeManager must be used from the GUI application's thread");
+        return;
+    }
 
     if (colorSchemeConnection) {
         QObject::disconnect(colorSchemeConnection);
     }
 
+    // Application ownership preserves pre-application configuration while
+    // guaranteeing that the QObject dies before static library teardown.
+    if (q->parent() == nullptr) {
+        q->setParent(currentApplication);
+    }
     application = currentApplication;
     styleHints = currentApplication->styleHints();
     colorSchemeConnection =
@@ -539,15 +550,19 @@ void VkThemeManagerPrivate::handleSystemColorSchemeChange() {
 }
 
 VkThemeManager* VkThemeManager::instance() {
-    VkThemeManager* const manager = &themeManagerStorage->value;
+    ThemeManagerStorage* const storage = themeManagerStorage();
+    QMutexLocker locker(&storage->mutex);
+    if (storage->manager.isNull()) {
+        storage->manager = new VkThemeManager;
+    }
+    VkThemeManager* const manager = storage->manager.data();
+    locker.unlock();
     manager->d->attachToApplication();
     return manager;
 }
 
 VkThemeManager::VkThemeManager(QObject* parent)
-    : QObject(parent), d(std::make_unique<VkThemeManagerPrivate>(this)) {
-    d->attachToApplication();
-}
+    : QObject(parent), d(std::make_unique<VkThemeManagerPrivate>(this)) {}
 
 VkThemeManager::~VkThemeManager() = default;
 

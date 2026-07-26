@@ -21,6 +21,7 @@ function(vkui_add_test test_name source_file)
 endfunction()
 
 vkui_add_test(tst_theme tst_theme.cpp)
+vkui_add_test(tst_theme_lifecycle tst_theme_lifecycle.cpp)
 vkui_add_test(tst_icons tst_icons.cpp)
 vkui_add_test(tst_motion tst_motion.cpp)
 vkui_add_test(tst_switch tst_switch.cpp)
