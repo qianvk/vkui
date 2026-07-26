@@ -19,7 +19,10 @@ namespace vkui {
 namespace {
 
 constexpr int kTitleBarHeight = 44;
-#ifndef Q_OS_MAC
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+constexpr int kMacCloseButtonReserve = 24;
+constexpr QPoint kMacCloseButtonPosition{18, 15};
+#else
 constexpr int kSystemButtonReserve = 56;
 #endif
 
@@ -126,9 +129,9 @@ void VkFramelessDialog::buildUi() {
     titleLayout->setContentsMargins(18, 0, 10, 0);
     titleLayout->setSpacing(8);
 
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
     nativeButtonReserve_ = new QWidget(titleBar_);
-    nativeButtonReserve_->setFixedWidth(24);
+    nativeButtonReserve_->setFixedWidth(kMacCloseButtonReserve);
     titleLayout->addWidget(nativeButtonReserve_);
 #endif
 
@@ -150,7 +153,7 @@ void VkFramelessDialog::buildUi() {
     connect(fallbackCloseButton_, &QToolButton::clicked, this, &QDialog::reject);
     titleLayout->addWidget(fallbackCloseButton_, 0, Qt::AlignVCenter);
 
-#ifndef Q_OS_MAC
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     nativeButtonReserve_ = new QWidget(titleBar_);
     nativeButtonReserve_->setFixedWidth(kSystemButtonReserve);
     titleLayout->addWidget(nativeButtonReserve_);
@@ -175,16 +178,19 @@ void VkFramelessDialog::installWindowChrome() {
         Q_ASSERT(titleBarAdded);
         windowAgent_->setSystemButtonVisibility(
             VkWindowAgent::SystemButtonVisibility::AlwaysVisible);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        // A close-only utility window must position the single traffic light
+        // explicitly. Centering it in the three-button reservation can move
+        // it outside the visible title surface on compact dialogs.
+        windowAgent_->setSystemButtonPosition(VkWindowAgent::SystemButton::Close,
+                                              kMacCloseButtonPosition);
+#endif
         windowAgent_->setHitTestVisible(fallbackCloseButton_, true);
     }
 
     fallbackCloseButton_->setVisible(!platformCloseAvailable);
     if (nativeButtonReserve_ != nullptr) {
-#ifdef Q_OS_MAC
         nativeButtonReserve_->setVisible(platformCloseAvailable);
-#else
-        nativeButtonReserve_->setVisible(platformCloseAvailable);
-#endif
     }
 }
 
