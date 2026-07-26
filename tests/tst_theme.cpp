@@ -71,7 +71,10 @@ void ThemeTest::resolvedThemeIsComplete() {
     QVERIFY(metrics.popoverScreenMargin > 0.0);
     QVERIFY(metrics.popoverShadowRadius > 0.0);
 #if defined(Q_OS_MACOS)
-    QCOMPARE(metrics.cornerRadiusLarge, 16.0);
+    const QOperatingSystemVersion version = QOperatingSystemVersion::current();
+    const qreal expectedRadius =
+        version.majorVersion() >= 27 ? 16.0 : (version.majorVersion() >= 26 ? 14.0 : 12.0);
+    QCOMPARE(metrics.cornerRadiusLarge, expectedRadius);
 #elif defined(Q_OS_WIN)
     const QOperatingSystemVersion version = QOperatingSystemVersion::current();
     const bool windows11OrGreater =
