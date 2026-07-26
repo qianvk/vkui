@@ -18,14 +18,31 @@ download/upload, lock, and visibility symbols. These application-command icons s
 view box, rounded outline geometry, semantic two-channel color, and deterministic metrics across
 platforms.
 
-Nerd Font glyphs remain a Gallery-only option for dense file-type or developer-tool surfaces. They
-are not used for primary desktop commands: font fallback, private-codepoint mapping, baseline
-alignment, and glyph-version drift make them less predictable than owned SVG assets for buttons,
-menus, accessibility states, and high-DPI rendering. The font is not part of either library target.
-See `THIRD_PARTY_NOTICES.md` for its upstream licenses.
+`VkUI::Core` also bundles Fira Code Nerd Font for dense file-system surfaces. Applications use
+`VkFileGlyph`, never a private code point:
 
-Gallery Nerd glyph icons support either a live semantic `VkIconRole` or an explicit `QColor`. The
-Icons page includes an interactive folder-color picker. The file-system tree uses the Nerd Font
-closed/open folder glyphs and a small `QTreeView::drawBranches()` override to render continuous
-leading and terminal connector lines without native disclosure arrows, frames, selection chrome,
-or scroll bars.
+```cpp
+const auto metrics = vkui::fileIconMetrics(tree->font(), tree->devicePixelRatioF());
+tree->setIconSize(metrics.glyphSlotSize);
+item->setIcon(vkui::fileIcon(vkui::VkFileGlyph::FolderClosed,
+                             vkui::VkIconRole::Accent));
+```
+
+The public set covers closed/open folders and generic, text, source, image, PDF, and archive files.
+The font is registered process-locally on first use after `QGuiApplication` construction. Repeated
+initialization is idempotent, and the operating system font collection is never modified.
+
+`fileIcon()` accepts a live semantic `VkIconRole`, a live application `QPalette::ColorRole`, or an
+explicit `QColor`. Theme generation and palette cache keys participate in raster caching, while the
+icon engine normalizes the Qt 6.6/6.7 high-DPI `scaledPixmap()` convention. For a delegate with a
+widget-specific palette, call `drawFileGlyph()` with the current palette during painting.
+
+`fileIconMetrics()` has no process-wide font or DPR cache. Recompute it for `QEvent::FontChange`,
+`QEvent::ApplicationFontChange`, and device-pixel-ratio changes; it returns both logical and physical
+slot sizes. The stable maximum glyph slot prevents file-tree columns from moving when a folder
+opens or a file type changes.
+
+File glyphs remain separate from primary desktop commands. Owned SVG assets are still preferred for
+buttons, menus, and general application actions because they provide more predictable geometry and
+semantic two-channel rendering. See `THIRD_PARTY_NOTICES.md` for the bundled font's upstream
+licenses.

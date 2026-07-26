@@ -30,6 +30,11 @@ vkui_add_test(tst_popoverpath tst_popoverpath.cpp)
 vkui_add_test(tst_popoverinteraction tst_popoverinteraction.cpp)
 vkui_add_test(tst_style tst_style.cpp)
 
+if(TARGET VkUI::Window)
+    vkui_add_test(tst_window tst_window.cpp)
+    target_link_libraries(tst_window PRIVATE VkUI::Window)
+endif()
+
 # Windows shared libraries export only the public ABI. Pure private helpers are
 # compiled into the tests that exercise them so testability never makes those
 # implementation symbols part of the installed DLL contract.

@@ -17,12 +17,38 @@ option(VKUI_BUILD_SHARED "Build VkUI as shared libraries" ON)
 option(VKUI_BUILD_EXAMPLES "Build the component gallery" ON)
 option(VKUI_BUILD_TESTS "Build unit tests" ON)
 option(VKUI_INSTALL "Generate installation rules" ON)
+option(VKUI_BUILD_WINDOW "Build the integrated native window module" ON)
+option(VKUI_BUILD_WINDOW_QUICK
+       "Build the internal Qt Quick migration validation target" OFF)
+option(VKUI_WINDOW_FORCE_QT_CONTEXT
+       "Use the portable Qt frameless context instead of native contexts" OFF)
+option(VKUI_WINDOW_ENABLE_STYLE_AGENT "Build native window style integration" ON)
+option(VKUI_WINDOW_ENABLE_WINDOWS_SYSTEM_BORDERS
+       "Preserve Windows system resize borders" ON)
 option(VKUI_ENABLE_WARNINGS "Enable additional compiler warnings" ON)
 option(VKUI_ENABLE_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
 option(VKUI_EXPORT_COMPILE_COMMANDS "Generate a clangd compilation database" ON)
 option(VKUI_SYNC_COMPILE_COMMANDS
        "Refresh compile_commands.json in the source root for clangd and Neovim"
        ON)
+
+if(VKUI_BUILD_WINDOW_QUICK AND NOT VKUI_BUILD_WINDOW)
+    message(FATAL_ERROR
+        "VKUI_BUILD_WINDOW_QUICK requires VKUI_BUILD_WINDOW because the Quick "
+        "module shares the integrated native window implementation.")
+endif()
+
+if(VKUI_BUILD_WINDOW_QUICK AND VKUI_INSTALL)
+    message(FATAL_ERROR
+        "VKUI_BUILD_WINDOW_QUICK is an internal validation target and is not "
+        "installable. Configure with VKUI_INSTALL=OFF to build it.")
+endif()
+
+if(VKUI_BUILD_EXAMPLES AND NOT VKUI_BUILD_WINDOW)
+    message(FATAL_ERROR
+        "VKUI_BUILD_EXAMPLES requires VKUI_BUILD_WINDOW because the component "
+        "gallery demonstrates VkUI's integrated frameless window.")
+endif()
 
 if(VKUI_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -66,10 +92,12 @@ target_sources(vkui_core
         include/vkui/core/VkTypographyTokens.h
         include/vkui/core/VkMotion.h
         include/vkui/core/VkIcon.h
+        include/vkui/core/VkFileIcon.h
         src/core/theme/VkTheme.cpp
         src/core/theme/VkThemeManager.cpp
         src/core/theme/private/VkThemeManager_p.h
         src/core/icons/VkIcon.cpp
+        src/core/icons/VkFileIcon.cpp
         src/core/icons/private/VkSvgIconEngine_p.h
         src/core/icons/private/VkSvgIconEngine.cpp
         src/core/icons/private/VkIconCache_p.h
@@ -146,19 +174,44 @@ set_target_properties(vkui_widgets PROPERTIES
     SOVERSION 0
 )
 
+if(VKUI_BUILD_WINDOW)
+    if(APPLE)
+        enable_language(OBJCXX)
+    endif()
+    include(cmake/VkUIWindow.cmake)
+endif()
+
 if(NOT VKUI_BUILD_SHARED)
     target_compile_definitions(vkui_core PUBLIC VKUI_STATIC)
     target_compile_definitions(vkui_widgets PUBLIC VKUI_STATIC)
+    if(TARGET vkui_window)
+        target_compile_definitions(vkui_window PUBLIC VKUI_STATIC)
+    endif()
+    if(TARGET vkui_window_quick)
+        target_compile_definitions(vkui_window_quick PUBLIC VKUI_STATIC)
+    endif()
 endif()
 
 if(VKUI_ENABLE_WARNINGS)
     vkui_enable_compiler_warnings(vkui_core)
     vkui_enable_compiler_warnings(vkui_widgets)
+    if(TARGET vkui_window)
+        vkui_enable_compiler_warnings(vkui_window)
+    endif()
+    if(TARGET vkui_window_quick)
+        vkui_enable_compiler_warnings(vkui_window_quick)
+    endif()
 endif()
 
 if(VKUI_ENABLE_SANITIZERS)
     vkui_enable_sanitizers(vkui_core)
     vkui_enable_sanitizers(vkui_widgets)
+    if(TARGET vkui_window)
+        vkui_enable_sanitizers(vkui_window)
+    endif()
+    if(TARGET vkui_window_quick)
+        vkui_enable_sanitizers(vkui_window_quick)
+    endif()
 endif()
 
 if(VKUI_BUILD_EXAMPLES)
@@ -199,7 +252,32 @@ if(VKUI_INSTALL)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
-    install(DIRECTORY include/vkui DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    if(TARGET vkui_window)
+        install(TARGETS vkui_window
+            EXPORT VkUIWindowTargets
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+        install(EXPORT VkUIWindowTargets
+            FILE VkUIWindowTargets.cmake
+            NAMESPACE VkUI::
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VkUI
+        )
+    endif()
+    install(DIRECTORY include/vkui DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        PATTERN "Window.h" EXCLUDE
+        PATTERN "window" EXCLUDE
+    )
+    if(TARGET vkui_window)
+        install(FILES include/vkui/Window.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vkui
+        )
+        install(DIRECTORY include/vkui/window
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vkui
+        )
+    endif()
 
     install(EXPORT VkUICoreTargets
         FILE VkUICoreTargets.cmake
@@ -230,6 +308,16 @@ if(VKUI_INSTALL)
     install(FILES LICENSE README.md CHANGELOG.md THIRD_PARTY_NOTICES.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui
     )
+    install(FILES resources/fonts/LICENSE-FIRACODE-NERD-FONT.txt
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui/licenses
+        RENAME FiraCodeNerdFont-LICENSE.txt
+    )
+    if(TARGET vkui_window)
+        install(FILES src/window/qwindowkit/LICENSE
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui/licenses
+            RENAME QWindowKit-LICENSE.txt
+        )
+    endif()
     install(DIRECTORY resources/translations/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui/translations
         FILES_MATCHING PATTERN "*.ts"

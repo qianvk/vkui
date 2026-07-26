@@ -7,6 +7,9 @@
 #include <vkui/Widgets.h>
 
 int main(int argc, char* argv[]) {
+    // Frameless native windows require this before QApplication creates any
+    // native widget siblings.
+    QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
     QApplication application(argc, argv);
     QApplication::setApplicationName(QStringLiteral("vkui Gallery"));
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));

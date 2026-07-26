@@ -12,7 +12,7 @@ Only three public widgets fill clear gaps: `VkSwitch`, `VkSegmentedControl`, and
 Search fields, navigation sidebars, cards, and settings rows remain compositions made from standard
 widgets in application code.
 
-## Core and Widgets
+## Core, Widgets, and Window
 
 `VkUI::Core` has no QWidget subclasses and depends only on Qt Core, Gui, and Svg. It owns resolved
 appearance, semantic token value types, icon rendering, and motion policy. Non-widget code can use
@@ -27,6 +27,14 @@ this layer without taking a Qt Widgets dependency.
 The Popover is not owned by `VkStyle`: opening, placement, focus, and close policy are component
 behavior rather than style behavior. Keeping it independent also allows downstream applications to
 use it without making style installation part of its lifetime.
+
+`VkUI::Window` is a separate optional boundary. Native frameless behavior uses
+Qt private platform integration and must therefore match the exact Qt build
+used by the application. Keeping it outside `VkUI::Widgets` lets ordinary
+controls remain portable and private-API-free. The migrated implementation is
+compiled directly into the module; its QWK namespace and source layout are
+private compatibility details. Public applications use only the `vkui`
+wrappers.
 
 ## Public policy, private mechanisms
 
@@ -51,8 +59,7 @@ style.
 
 ## Header boundary
 
-Installed headers live under `include/vkui`. `Core.h` and `Widgets.h` are convenience umbrellas;
+Installed headers live under `include/vkui`. `Core.h`, `Widgets.h`, and `Window.h` are convenience umbrellas;
 the headers beneath `core`, `widgets/style`, `widgets/controls`, and `widgets/overlays` are the
 public API. Headers beneath any `src/**/private` directory are implementation details, may change
 without notice, and are never installed. No ABI stability is promised before 1.0.0.
-

@@ -9,6 +9,10 @@ releases are tagged.
 - Added optional palette-aware QSS file overlays without making QSS the default theme engine.
 - Added semantic application-command SVG symbols for save, reset, duplicate, media, focus, project,
   rename, reveal, and remove actions.
+- Added named, theme- and palette-aware file glyphs with one-time bundled-font registration,
+  adaptive file-row metrics, and Qt 6.6-compatible high-DPI rendering.
+- Added the integrated `VkUI::Window` module, multi-title-bar gallery chrome,
+  close-only frameless dialogs, and safe destructive message prompts.
 - Added configurable combo-box label elision and corrected content-aware width accounting.
 - Removed the nested private-editor frame from spin boxes and editable combo boxes.
 

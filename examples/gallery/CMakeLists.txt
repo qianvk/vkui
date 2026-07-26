@@ -2,7 +2,6 @@
 
 qt_add_executable(vkui_gallery
     main.cpp
-    gallery.qrc
     GalleryFonts.h
     GalleryFonts.cpp
     GalleryFileTreeView.h
@@ -27,7 +26,7 @@ qt_add_executable(vkui_gallery
     pages/LocalizationPage.cpp
 )
 
-target_link_libraries(vkui_gallery PRIVATE VkUI::Widgets Qt6::Widgets)
+target_link_libraries(vkui_gallery PRIVATE VkUI::Widgets VkUI::Window Qt6::Widgets)
 
 # Gallery text is the project's translatable UI. Embedding the catalogs in the
 # executable keeps VkUI::Core free of an auxiliary resource target when it is

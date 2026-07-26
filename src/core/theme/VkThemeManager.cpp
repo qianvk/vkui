@@ -293,7 +293,7 @@ VkMotionTokens defaultMotion() {
 QColor textSelectionColor(const VkColorTokens& colors, VkAppearance appearance, bool active) {
     QColor color = active ? colors.accent : colors.accentHovered;
     const bool dark = appearance == VkAppearance::Dark;
-    color.setAlphaF(dark ? (active ? 0.34 : 0.24) : (active ? 0.22 : 0.16));
+    color.setAlphaF(dark ? (active ? 0.34F : 0.24F) : (active ? 0.22F : 0.16F));
     return color;
 }
 
