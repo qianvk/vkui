@@ -25,6 +25,7 @@ jobs:
         with:
           version: '6.8.3'
           cache: true
+          cache-key-prefix: vkui-qt-full-v1
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
       - uses: seanmiddleditch/gha-setup-ninja@v5
@@ -53,6 +54,7 @@ jobs:
         with:
           version: '6.8.3'
           cache: true
+          cache-key-prefix: vkui-qt-full-v1
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Build and install vkui
         run: |
