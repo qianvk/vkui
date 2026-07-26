@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+#include "private/VkResourceInitializer_p.h"
+
 #include <QtCore/QCoreApplication>
-#include <QtCore/QResource>
 #include <QtCore/QThread>
 #include <QtCore/QtMath>
 #include <QtGui/QFontDatabase>
@@ -21,11 +22,6 @@
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
-
-static void vkuiEnsureFileIconResourcesInitialized() {
-    // Keep the generated resource object linked when VkUI::Core is static.
-    Q_INIT_RESOURCE(vkui);
-}
 
 namespace vkui {
 namespace {
@@ -361,7 +357,7 @@ bool initializeFileIconFont() {
     }
 
     std::call_once(state.registrationFlag, [&state] {
-        vkuiEnsureFileIconResourcesInitialized();
+        detail::ensureResourcesInitialized();
         const int id = QFontDatabase::addApplicationFont(QString::fromLatin1(kBundledFontPath));
         const QStringList families = QFontDatabase::applicationFontFamilies(id);
         if (!families.isEmpty()) {
