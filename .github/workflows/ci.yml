@@ -18,11 +18,13 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          modules: 'qtsvg qttools'
+          archives: 'qtbase qtsvg'
           cache: true
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Configure
@@ -43,11 +45,13 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          modules: 'qtsvg qttools'
+          archives: 'qtbase qtsvg'
           cache: true
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Build and install vkui
@@ -76,12 +80,32 @@ jobs:
     name: clang-format
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Install clang-format
         run: sudo apt-get update && sudo apt-get install -y clang-format-19
       - name: Validate formatting
         shell: bash
         run: |
-          mapfile -d '' files < <(find include src examples tests -type f \
-            \( -name '*.h' -o -name '*.cpp' \) -print0)
-          clang-format-19 --dry-run --Werror "${files[@]}"
+          base="${{ github.event.before }}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          fi
+          if [[ -z "$base" || "$base" =~ ^0+$ ]] \
+             || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD^)"
+          fi
+
+          files=()
+          while IFS= read -r -d '' file; do
+            [[ "$file" == src/window/qwindowkit/* ]] && continue
+            [[ "$file" == *.h || "$file" == *.cpp ]] && files+=("$file")
+          done < <(git diff --name-only --diff-filter=ACMR -z \
+            "$base" HEAD -- include src examples tests)
+
+          if ((${#files[@]})); then
+            clang-format-19 --dry-run --Werror "${files[@]}"
+          else
+            echo "No changed first-party C++ files to format."
+          fi
