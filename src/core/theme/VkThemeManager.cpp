@@ -2,6 +2,7 @@
 
 #include "private/VkThemeManager_p.h"
 
+#include <QtCore/QApplicationStatic>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QOperatingSystemVersion>
 #include <QtCore/QString>
@@ -11,6 +12,17 @@
 #include <vkui/core/VkThemeManager.h>
 
 namespace vkui {
+
+struct VkThemeManagerApplicationStatic final {
+    VkThemeManager value;
+
+    VkThemeManagerApplicationStatic() : value(nullptr) {}
+};
+
+// QObject singletons must be destroyed before QCoreApplication tears down its
+// platform integration. This is especially important for Windows GUI backends.
+Q_APPLICATION_STATIC(VkThemeManagerApplicationStatic, themeManagerStorage)
+
 namespace {
 
 QGuiApplication* currentGuiApplication() {
@@ -527,9 +539,9 @@ void VkThemeManagerPrivate::handleSystemColorSchemeChange() {
 }
 
 VkThemeManager* VkThemeManager::instance() {
-    static VkThemeManager manager;
-    manager.d->attachToApplication();
-    return &manager;
+    VkThemeManager* const manager = &themeManagerStorage->value;
+    manager->d->attachToApplication();
+    return manager;
 }
 
 VkThemeManager::VkThemeManager(QObject* parent)
