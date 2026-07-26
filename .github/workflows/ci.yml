@@ -24,7 +24,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          archives: 'qtbase qtsvg'
+          archives: 'qtbase qtsvg qttools'
           cache: true
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Configure
@@ -51,7 +51,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          archives: 'qtbase qtsvg'
+          archives: 'qtbase qtsvg qttools'
           cache: true
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Build and install vkui
