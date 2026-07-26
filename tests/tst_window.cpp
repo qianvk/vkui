@@ -94,10 +94,13 @@ void WindowTest::framelessDialogUsesCloseOnlyChromeAndHostGeometry() {
     QVERIFY(!dialog.isResizable());
     QCOMPARE(dialog.size(), QSize(800, 640));
     QCOMPARE(dialog.frameGeometry().center(), host.frameGeometry().center());
-#ifdef Q_OS_MAC
-    // Leave traffic-light placement to AppKit's current platform geometry.
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    // Close-only dialogs use the same leading position as native utility
+    // windows rather than a centered three-button reservation.
     QVERIFY(
-        !dialog.windowAgent()->hasSystemButtonPosition(vkui::VkWindowAgent::SystemButton::Close));
+        dialog.windowAgent()->hasSystemButtonPosition(vkui::VkWindowAgent::SystemButton::Close));
+    QCOMPARE(dialog.windowAgent()->systemButtonPosition(vkui::VkWindowAgent::SystemButton::Close),
+             QPoint(18, 15));
 #endif
 
     // Headless QPA plugins must use the portable context instead of treating
