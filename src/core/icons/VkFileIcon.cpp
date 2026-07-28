@@ -58,6 +58,8 @@ char32_t glyphCodePoint(const VkFileGlyph glyph) noexcept {
         return 0xf1c1;
     case VkFileGlyph::ArchiveFile:
         return 0xf1c6;
+    case VkFileGlyph::BookFile:
+        return 0xf02d;
     }
     return 0;
 }
@@ -67,10 +69,10 @@ QString glyphText(const VkFileGlyph glyph) {
     return codePoint == 0 ? QString{} : QString::fromUcs4(&codePoint, 1);
 }
 
-constexpr std::array<VkFileGlyph, 8> kFileGlyphs{
+constexpr std::array<VkFileGlyph, 9> kFileGlyphs{
     VkFileGlyph::FolderClosed, VkFileGlyph::FolderOpen,  VkFileGlyph::File,
     VkFileGlyph::TextFile,     VkFileGlyph::CodeFile,    VkFileGlyph::ImageFile,
-    VkFileGlyph::PdfFile,      VkFileGlyph::ArchiveFile,
+    VkFileGlyph::PdfFile,      VkFileGlyph::ArchiveFile, VkFileGlyph::BookFile,
 };
 
 qreal normalizedDevicePixelRatio(const qreal value) noexcept {
