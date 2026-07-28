@@ -166,6 +166,7 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
         {vkui::VkFileGlyph::PdfFile, vkui::VkIconRole::Destructive, QT_TR_NOOP("PDF file")},
         {vkui::VkFileGlyph::ImageFile, vkui::VkIconRole::Accent, QT_TR_NOOP("Image file")},
         {vkui::VkFileGlyph::ArchiveFile, vkui::VkIconRole::Secondary, QT_TR_NOOP("Archive")},
+        {vkui::VkFileGlyph::BookFile, vkui::VkIconRole::Accent, QT_TR_NOOP("Book")},
     };
     for (const FontIconEntry& entry : fileEntries) {
         auto* button = new QToolButton(fontGroup);

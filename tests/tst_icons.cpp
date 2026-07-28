@@ -221,6 +221,7 @@ void IconTest::everyFileGlyphRendersWithoutClipping() {
         vkui::VkFileGlyph::ImageFile,
         vkui::VkFileGlyph::PdfFile,
         vkui::VkFileGlyph::ArchiveFile,
+        vkui::VkFileGlyph::BookFile,
     };
     for (const vkui::VkFileGlyph glyph : glyphs) {
         const QIcon rendered = vkui::fileIcon(glyph, QColor(31, 93, 220));

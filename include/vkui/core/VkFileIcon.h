@@ -34,6 +34,7 @@ enum class VkFileGlyph {
     ImageFile,
     PdfFile,
     ArchiveFile,
+    BookFile,
 };
 
 /**
