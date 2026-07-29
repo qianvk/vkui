@@ -61,6 +61,8 @@ class VkPopoverPrivate final : public QObject {
     void setCrossAxisAlignment(VkPopoverCrossAxisAlignment alignment);
     void setBoundaryWidget(QWidget* boundary);
     [[nodiscard]] QWidget* boundaryWidgetValue() const noexcept;
+    void setBoundaryPlacements(VkPopoverBoundaryPlacements placements);
+    [[nodiscard]] VkPopoverBoundaryPlacements boundaryPlacementsValue() const noexcept;
     void setClosePolicy(VkPopoverClosePolicy policy) noexcept;
 
     void openFor(QWidget* anchor, const QRect& anchorRectInAnchor);
@@ -79,6 +81,7 @@ class VkPopoverPrivate final : public QObject {
     VkPopoverClosePolicy closePolicy =
         VkPopoverClosePolicyFlag::OutsideClick | VkPopoverClosePolicyFlag::EscapeKey |
         VkPopoverClosePolicyFlag::AnchorDestroyed | VkPopoverClosePolicyFlag::WindowDeactivated;
+    VkPopoverBoundaryPlacements boundaryPlacements = VkPopoverBoundaryPlacementFlag::All;
 
   protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
