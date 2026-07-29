@@ -32,7 +32,6 @@ enum class VkSymbol {
     Grid,
     List,
     Edit,
-    Bookmark,
     Trash,
     Download,
     Upload,
@@ -55,6 +54,7 @@ enum class VkSymbol {
     Clear,
     DefaultTemplate,
     UnsavedIndicator,
+    Bookmark,
 };
 
 enum class VkIconRole {
