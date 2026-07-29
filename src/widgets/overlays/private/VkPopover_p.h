@@ -7,6 +7,7 @@
 #include "VkPopoverShadowCache_p.h"
 
 #include <QtCore/QMetaObject>
+#include <QtCore/QMargins>
 #include <QtCore/QPointer>
 #include <QtCore/QRect>
 #include <QtGui/QPainterPath>
@@ -49,6 +50,9 @@ class VkPopoverPrivate final : public QObject {
 
     void setContentWidget(QWidget* content);
     [[nodiscard]] QWidget* contentWidget() const noexcept;
+    void setContentMargins(const QMargins& margins);
+    [[nodiscard]] QMargins contentMargins() const noexcept;
+    void refreshGeometry();
 
     void setPreferredPlacement(VkPopoverPlacement placement);
     void setClosePolicy(VkPopoverClosePolicy policy) noexcept;
@@ -108,6 +112,7 @@ class VkPopoverPrivate final : public QObject {
     bool repositionQueued = false;
     bool internalHide = false;
     qreal currentOpacity = 1.0;
+    QMargins contentMarginOverride{-1, -1, -1, -1};
     VkPopoverGeometryMetrics geometryMetrics;
 
     VkPopoverPlacementResult finalPlacement;
