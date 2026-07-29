@@ -128,6 +128,7 @@ void IconTest::everySymbolHasARenderableResource() {
         vkui::VkSymbol::FocusTarget, vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
         vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,       vkui::VkSymbol::Clear,
         vkui::VkSymbol::DefaultTemplate, vkui::VkSymbol::UnsavedIndicator,
+        vkui::VkSymbol::BookmarkFilled,
     };
     for (const vkui::VkSymbol symbol : symbols) {
         const QIcon rendered = vkui::icon(symbol);
