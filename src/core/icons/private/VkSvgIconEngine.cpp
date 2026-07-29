@@ -67,6 +67,8 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("edit");
     case VkSymbol::Bookmark:
         return QStringLiteral("bookmark");
+    case VkSymbol::BookmarkFilled:
+        return QStringLiteral("bookmark-filled");
     case VkSymbol::Trash:
         return QStringLiteral("trash");
     case VkSymbol::Download:
