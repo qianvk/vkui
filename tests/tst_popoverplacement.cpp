@@ -61,6 +61,7 @@ class PopoverPlacementTest final : public QObject {
     void outsideButtonClickClosesAndForwardsOnce();
     void interruptedAnimationRetargetsCleanly();
     void customMarginsAndRefreshResizeOpenPopover();
+    void startAlignedResizeKeepsLeadingEdgeAndArrowAim();
 };
 
 void PopoverPlacementTest::forcedPlacements_data() {
@@ -243,20 +244,70 @@ void PopoverPlacementTest::customMarginsAndRefreshResizeOpenPopover() {
     content->setFixedSize(120, 80);
     popover.setContentWidget(content);
     popover.setContentMargins(QMargins(5, 4, 5, 4));
+    popover.setCrossAxisAlignment(
+        vkui::VkPopoverCrossAxisAlignment::Start);
     QCOMPARE(
         popover.contentMargins(),
         QMargins(5, 4, 5, 4));
+    QCOMPARE(
+        popover.crossAxisAlignment(),
+        vkui::VkPopoverCrossAxisAlignment::Start);
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
     const int originalWidth = popover.width();
+    const int originalLeft = popover.x();
     content->setFixedWidth(220);
     popover.refreshGeometry();
     QVERIFY(popover.width() > originalWidth);
+    QCOMPARE(popover.x(), originalLeft);
     QVERIFY(
         content->geometry().right()
         < popover.rect().right());
     popover.closeImmediately();
     manager->setAnimationsEnabled(animations);
+}
+
+void PopoverPlacementTest::
+    startAlignedResizeKeepsLeadingEdgeAndArrowAim()
+{
+    auto narrowInput = baseInput();
+    narrowInput.preferredPlacement =
+        vkui::VkPopoverPlacement::Below;
+    narrowInput.crossAxisAlignment =
+        vkui::VkPopoverCrossAxisAlignment::Start;
+    narrowInput.contentSize.setWidth(120.0);
+    auto wideInput = narrowInput;
+    wideInput.contentSize.setWidth(320.0);
+
+    const auto narrow =
+        vkui::VkPopoverPlacementEngine::calculate(
+            narrowInput);
+    const auto wide =
+        vkui::VkPopoverPlacementEngine::calculate(
+            wideInput);
+    QVERIFY(narrow.isValid());
+    QVERIFY(wide.isValid());
+    QCOMPARE(
+        wide.popupRect.left(),
+        narrow.popupRect.left());
+    QVERIFY(
+        wide.popupRect.right()
+        > narrow.popupRect.right());
+
+    const qreal anchorCenter =
+        narrowInput.anchorRect.center().x();
+    const qreal narrowTip =
+        narrow.popupRect.left()
+        + narrow.arrowTip.x();
+    const qreal wideTip =
+        wide.popupRect.left()
+        + wide.arrowTip.x();
+    QVERIFY(
+        qAbs(narrowTip - anchorCenter)
+        <= 1.0);
+    QVERIFY(
+        qAbs(wideTip - anchorCenter)
+        <= 1.0);
 }
 
 void PopoverPlacementTest::outsideButtonClickClosesAndForwardsOnce() {

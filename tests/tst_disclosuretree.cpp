@@ -84,6 +84,22 @@ void DisclosureTreeTest::
         overlay->property("surfaceCount").toInt(),
         1);
     QVERIFY(overlay->property("travel").toInt() > 0);
+    QTRY_VERIFY(
+        overlay->property("progress").toReal()
+        > 0.0);
+    QCOMPARE(
+        overlay->property("seamGap").toInt(),
+        0);
+    QCOMPARE(
+        overlay->property(
+                   "branchRelativeSpan")
+            .toInt(),
+        overlay->property("travel").toInt());
+    QCOMPARE(
+        overlay->property("siblingOffset").toInt()
+            - overlay->property("firstChildTop")
+                  .toInt(),
+        overlay->property("travel").toInt());
 
     // Popovers may adapt their content width while disclosure is running.
     // A horizontal-only resize must preserve the reversible surface.

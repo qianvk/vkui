@@ -37,10 +37,11 @@ treeItemGeometry(
 /**
  * A QTreeView with Finder-style, reversible disclosure motion.
  *
- * Children and all following siblings are captured once and translated as a
- * single surface. This keeps their relative geometry invariant, limits every
- * animation frame to one clipped pixmap draw, and lets an opposite click
- * reverse the active QTimeLine without rebuilding the motion segment.
+ * Children and all following siblings are captured in one expanded surface.
+ * The complete surface translates from minus the branch height to zero, so
+ * descendants emerge from the folder edge while every relative item position
+ * stays invariant and no blank seam can form. An opposite click reverses the
+ * same geometry path without rebuilding the motion segment.
  */
 class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView
 {
