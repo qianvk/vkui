@@ -91,10 +91,17 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     void setPreferredPlacement(VkPopoverPlacement placement);
     [[nodiscard]] VkPopoverPlacement preferredPlacement() const noexcept;
 
-    void setCrossAxisAlignment(
-        VkPopoverCrossAxisAlignment alignment);
-    [[nodiscard]] VkPopoverCrossAxisAlignment
-    crossAxisAlignment() const noexcept;
+    void setCrossAxisAlignment(VkPopoverCrossAxisAlignment alignment);
+    [[nodiscard]] VkPopoverCrossAxisAlignment crossAxisAlignment() const noexcept;
+
+    /**
+     * Restricts placement to a widget's current global rectangle.
+     *
+     * The boundary is resolved whenever either widget moves or resizes.
+     * Passing nullptr restores the screen's available geometry.
+     */
+    void setBoundaryWidget(QWidget* boundary);
+    [[nodiscard]] QWidget* boundaryWidget() const noexcept;
 
     /**
      * Sets the enabled dismissal reasons. All four reasons are enabled by

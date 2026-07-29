@@ -70,6 +70,7 @@ class DisclosureTreeTest final : public QObject {
 
   private slots:
     void geometryBoundsIconTextAndPill();
+    void compactBranchesKeepSelectionOutOfIndent();
     void disclosureUsesReversibleSharedBoundary();
     void everyFrameKeepsChildAndSiblingVisuallyJoined();
     void longBranchKeepsTrueTrailingChildAtSeam();
@@ -95,6 +96,55 @@ void DisclosureTreeTest::geometryBoundsIconTextAndPill() {
     const vkui::VkTreeItemGeometry rootGeometry = vkui::treeItemGeometry(option, metrics);
     QCOMPARE(rootGeometry.pillRect.left(), 2);
     QVERIFY(option.rect.adjusted(2, 0, -2, 0).contains(rootGeometry.pillRect));
+}
+
+void DisclosureTreeTest::compactBranchesKeepSelectionOutOfIndent() {
+    QStandardItemModel model;
+    auto* folder = new QStandardItem(QStringLiteral("Folder"));
+    folder->appendRow(new QStandardItem(QStringLiteral("Child")));
+    model.appendRow(folder);
+
+    vkui::VkDisclosureTreeView tree;
+    tree.setModel(&model);
+    tree.setRootIsDecorated(false);
+    tree.setUniformRowHeights(true);
+    tree.setSelectionBehavior(QAbstractItemView::SelectItems);
+    tree.setNativeBranchesVisible(false);
+    tree.setDisclosureSurfaceColor(Qt::white);
+    QPalette palette = tree.palette();
+    palette.setColor(QPalette::Base, Qt::white);
+    palette.setColor(QPalette::Window, Qt::white);
+    palette.setColor(QPalette::Highlight, QColor(20, 100, 220));
+    tree.setPalette(palette);
+    tree.resize(320, 160);
+    tree.expand(model.index(0, 0));
+    tree.show();
+    QTest::qWait(20);
+
+    const QModelIndex child = model.index(0, 0, model.index(0, 0));
+    const QRect childRect = tree.visualRect(child);
+    QVERIFY(childRect.isValid());
+    QVERIFY(childRect.left() > tree.viewport()->rect().left());
+    tree.setCurrentIndex(child);
+    QCoreApplication::processEvents();
+    const QImage selected = tree.viewport()->grab().toImage();
+    tree.clearSelection();
+    tree.setCurrentIndex(QModelIndex());
+    QCoreApplication::processEvents();
+    const QImage plain = tree.viewport()->grab().toImage();
+
+    const qreal ratio = selected.devicePixelRatio();
+    const int left = qRound(tree.viewport()->rect().left() * ratio);
+    const int right = qRound(childRect.left() * ratio) - 1;
+    const int top = qRound(childRect.top() * ratio);
+    const int bottom = qRound((childRect.bottom() + 1) * ratio) - 1;
+    QVERIFY(right >= left);
+    for (int y = top; y <= bottom; ++y) {
+        for (int x = left; x <= right; ++x) {
+            QCOMPARE(selected.pixelColor(x, y), plain.pixelColor(x, y));
+            QCOMPARE(plain.pixelColor(x, y), QColor(Qt::white));
+        }
+    }
 }
 
 void DisclosureTreeTest::disclosureUsesReversibleSharedBoundary() {

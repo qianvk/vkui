@@ -50,6 +50,9 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     explicit VkDisclosureTreeView(QWidget* parent = nullptr);
     ~VkDisclosureTreeView() override;
 
+    void setNativeBranchesVisible(bool visible);
+    [[nodiscard]] bool nativeBranchesVisible() const noexcept;
+
     void setExpandedAnimated(const QModelIndex& index, bool expanded);
     void finishDisclosureAnimation();
 
@@ -64,6 +67,10 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
 
   protected:
     void changeEvent(QEvent* event) override;
+    void drawBranches(QPainter* painter, const QRect& rect,
+                      const QModelIndex& index) const override;
+    void drawRow(QPainter* painter, const QStyleOptionViewItem& option,
+                 const QModelIndex& index) const override;
     void resizeEvent(QResizeEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
     void updateGeometries() override;
@@ -82,6 +89,7 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     int m_disclosureCollapsedScrollMaximum = 0;
     int m_disclosureExpandedScrollMaximum = 0;
     bool m_restoringDisclosureScroll = false;
+    bool m_nativeBranchesVisible = true;
 };
 
 } // namespace vkui

@@ -61,6 +61,7 @@ class PopoverPlacementTest final : public QObject {
     void outsideButtonClickClosesAndForwardsOnce();
     void interruptedAnimationRetargetsCleanly();
     void customMarginsAndRefreshResizeOpenPopover();
+    void boundaryWidgetConstrainsAndTracksPopover();
     void startAlignedResizeKeepsLeadingEdgeAndArrowAim();
 };
 
@@ -264,6 +265,44 @@ void PopoverPlacementTest::customMarginsAndRefreshResizeOpenPopover() {
         content->geometry().right()
         < popover.rect().right());
     popover.closeImmediately();
+    manager->setAnimationsEnabled(animations);
+}
+
+void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool animations = manager->animationsEnabled();
+    manager->setAnimationsEnabled(false);
+
+    QWidget window;
+    window.setGeometry(120, 90, 640, 520);
+    QWidget boundary(&window);
+    boundary.setGeometry(40, 30, 420, 360);
+    QPushButton anchor(QStringLiteral("Anchor"), &boundary);
+    anchor.setGeometry(18, 12, 90, 30);
+    window.show();
+
+    vkui::VkPopover popover(&window);
+    auto* content = new QWidget;
+    content->setFixedSize(360, 520);
+    popover.setContentWidget(content);
+    popover.setBoundaryWidget(&boundary);
+    QCOMPARE(popover.boundaryWidget(), &boundary);
+    popover.openFor(&anchor);
+    QTRY_VERIFY(popover.isOpen());
+
+    const auto boundaryGlobalRect = [&boundary] {
+        return QRect(boundary.mapToGlobal(QPoint()), boundary.size());
+    };
+    QVERIFY(boundaryGlobalRect().contains(popover.geometry()));
+    const QRect initial = popover.geometry();
+
+    boundary.resize(360, 300);
+    QTRY_VERIFY(popover.geometry() != initial);
+    QVERIFY(boundaryGlobalRect().contains(popover.geometry()));
+
+    popover.closeImmediately();
+    popover.setBoundaryWidget(nullptr);
+    QCOMPARE(popover.boundaryWidget(), nullptr);
     manager->setAnimationsEnabled(animations);
 }
 
