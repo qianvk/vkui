@@ -32,6 +32,7 @@ enum class VkSymbol {
     Grid,
     List,
     Edit,
+    Bookmark,
     Trash,
     Download,
     Upload,
