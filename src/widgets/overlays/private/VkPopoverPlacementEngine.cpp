@@ -40,6 +40,30 @@ bool containsRect(const QRectF& outer, const QRectF& inner) noexcept {
            inner.bottom() <= outer.bottom() + kGeometryEpsilon;
 }
 
+VkPopoverBoundaryPlacementFlag boundaryFlagFor(const VkPopoverPlacement placement) noexcept {
+    switch (placement) {
+    case VkPopoverPlacement::Below:
+        return VkPopoverBoundaryPlacementFlag::Below;
+    case VkPopoverPlacement::Above:
+        return VkPopoverBoundaryPlacementFlag::Above;
+    case VkPopoverPlacement::Right:
+        return VkPopoverBoundaryPlacementFlag::Right;
+    case VkPopoverPlacement::Left:
+        return VkPopoverBoundaryPlacementFlag::Left;
+    case VkPopoverPlacement::Automatic:
+        return VkPopoverBoundaryPlacementFlag::None;
+    }
+    return VkPopoverBoundaryPlacementFlag::None;
+}
+
+QRectF usableGeometry(const QRectF& available, const qreal margin) noexcept {
+    const qreal usableLeft = std::ceil(available.left() + margin);
+    const qreal usableTop = std::ceil(available.top() + margin);
+    const qreal usableRight = std::floor(available.right() - margin);
+    const qreal usableBottom = std::floor(available.bottom() - margin);
+    return {usableLeft, usableTop, usableRight - usableLeft, usableBottom - usableTop};
+}
+
 struct Candidate final {
     VkPopoverPlacementResult result;
     bool desiredGeometryFits = false;
@@ -271,7 +295,7 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
     int popupTop = qRound(popupY);
     popupLeft = std::clamp(popupLeft, qCeil(usable.left()), qFloor(usable.right()) - popupWidth);
     popupTop = std::clamp(popupTop, qCeil(usable.top()), qFloor(usable.bottom()) - popupHeight);
-    const QRect popupRect(popupLeft, popupTop, popupWidth, popupHeight);
+    QRect popupRect(popupLeft, popupTop, popupWidth, popupHeight);
 
     QRectF bodyRect;
     switch (placement) {
@@ -294,6 +318,29 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
     const qreal effectiveRadius =
         std::min({radius, bodyRect.width() / 2.0, bodyRect.height() / 2.0});
     const qreal clearance = effectiveRadius + arrowWidth / 2.0;
+
+    // Prefer moving the body along the cross axis over drawing a long,
+    // diagonal arrow. Cross-axis alignment remains stable until rounded-corner
+    // clearance would otherwise push the arrow base away from its target.
+    if (vertical) {
+        const qreal minimumOffset = bodyRect.left() + clearance;
+        const qreal maximumOffset = bodyRect.right() - clearance;
+        const qreal minimumLeft = targetX - maximumOffset;
+        const qreal maximumLeft = targetX - minimumOffset;
+        popupLeft = qRound(clamped(popupRect.left(), minimumLeft, maximumLeft));
+        popupLeft =
+            std::clamp(popupLeft, qCeil(usable.left()), qFloor(usable.right()) - popupWidth);
+        popupRect.moveLeft(popupLeft);
+    } else {
+        const qreal minimumOffset = bodyRect.top() + clearance;
+        const qreal maximumOffset = bodyRect.bottom() - clearance;
+        const qreal minimumTop = targetY - maximumOffset;
+        const qreal maximumTop = targetY - minimumOffset;
+        popupTop = qRound(clamped(popupRect.top(), minimumTop, maximumTop));
+        popupTop = std::clamp(popupTop, qCeil(usable.top()), qFloor(usable.bottom()) - popupHeight);
+        popupRect.moveTop(popupTop);
+    }
+
     QPointF arrowBase;
     QPointF arrowTip;
 
@@ -304,11 +351,9 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
             return candidate;
         }
         const qreal baseGlobal = clamped(anchor.center().x(), minimumBase, maximumBase);
-        // Rounded corners constrain the base, not the tip. Letting the tip
-        // target the anchor center preserves exact identification even when
-        // this produces an intentionally skewed curved arrow.
+        const qreal anchorTarget = clamped(baseGlobal, anchor.left(), anchor.right());
         const qreal tipGlobal =
-            clamped(targetX, popupRect.left(), popupRect.left() + popupRect.width());
+            clamped(anchorTarget, popupRect.left(), popupRect.left() + popupRect.width());
         const qreal baseY =
             placement == VkPopoverPlacement::Below ? bodyRect.top() : bodyRect.bottom();
         const qreal tipY =
@@ -322,8 +367,9 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
             return candidate;
         }
         const qreal baseGlobal = clamped(anchor.center().y(), minimumBase, maximumBase);
+        const qreal anchorTarget = clamped(baseGlobal, anchor.top(), anchor.bottom());
         const qreal tipGlobal =
-            clamped(targetY, popupRect.top(), popupRect.top() + popupRect.height());
+            clamped(anchorTarget, popupRect.top(), popupRect.top() + popupRect.height());
         const qreal baseX =
             placement == VkPopoverPlacement::Right ? bodyRect.left() : bodyRect.right();
         const qreal tipX =
@@ -376,11 +422,7 @@ VkPopoverPlacementResult VkPopoverPlacementEngine::calculate(const VkPopoverPlac
     QRectF anchor = input.anchorRect.normalized();
     const qreal margin = nonNegative(input.screenMargin);
     const QRectF available = input.availableGeometry.normalized();
-    const qreal usableLeft = std::ceil(available.left() + margin);
-    const qreal usableTop = std::ceil(available.top() + margin);
-    const qreal usableRight = std::floor(available.right() - margin);
-    const qreal usableBottom = std::floor(available.bottom() - margin);
-    const QRectF usable(usableLeft, usableTop, usableRight - usableLeft, usableBottom - usableTop);
+    const QRectF usable = usableGeometry(available, margin);
     if (usable.width() < 1.0 || usable.height() < 1.0) {
         return invalid;
     }
@@ -389,8 +431,22 @@ VkPopoverPlacementResult VkPopoverPlacementEngine::calculate(const VkPopoverPlac
     std::vector<Candidate> candidates;
     candidates.reserve(order.size());
     for (std::size_t index = 0; index < order.size(); ++index) {
+        QRectF candidateAvailable = available;
+        const VkPopoverBoundaryPlacementFlag flag = boundaryFlagFor(order[index]);
+        if (input.boundaryPlacements.testFlag(flag)) {
+            if (!isFinite(input.boundaryGeometry) || !input.boundaryGeometry.isValid() ||
+                input.boundaryGeometry.isEmpty()) {
+                continue;
+            }
+            candidateAvailable =
+                candidateAvailable.intersected(input.boundaryGeometry.normalized());
+        }
+        const QRectF candidateUsable = usableGeometry(candidateAvailable, margin);
+        if (candidateUsable.width() < 1.0 || candidateUsable.height() < 1.0) {
+            continue;
+        }
         Candidate candidate =
-            makeCandidate(input, anchor, usable, order[index], static_cast<int>(index));
+            makeCandidate(input, anchor, candidateUsable, order[index], static_cast<int>(index));
         if (candidate.result.valid) {
             candidates.push_back(std::move(candidate));
         }

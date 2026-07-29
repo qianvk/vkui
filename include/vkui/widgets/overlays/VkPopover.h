@@ -25,6 +25,17 @@ enum class VkPopoverPlacement {
     Left,
 };
 
+/** Directions to which an optional widget boundary is applied. */
+enum class VkPopoverBoundaryPlacementFlag {
+    None = 0x00,
+    Below = 0x01,
+    Above = 0x02,
+    Right = 0x04,
+    Left = 0x08,
+    All = 0x0F,
+};
+Q_DECLARE_FLAGS(VkPopoverBoundaryPlacements, VkPopoverBoundaryPlacementFlag)
+
 /**
  * Alignment on the axis perpendicular to the placement direction.
  *
@@ -123,6 +134,15 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     [[nodiscard]] QWidget* boundaryWidget() const noexcept;
 
     /**
+     * Selects which resolved directions use boundaryWidget().
+     *
+     * All directions are constrained by default. This allows controls near a
+     * panel edge to constrain Below while still flipping Above on screen.
+     */
+    void setBoundaryPlacements(VkPopoverBoundaryPlacements placements);
+    [[nodiscard]] VkPopoverBoundaryPlacements boundaryPlacements() const noexcept;
+
+    /**
      * Sets the enabled dismissal reasons. All four reasons are enabled by
      * default; VkPopoverClosePolicyFlag::None leaves dismissal to the caller.
      */
@@ -175,7 +195,10 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
 } // namespace vkui
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(vkui::VkPopoverClosePolicy)
+Q_DECLARE_OPERATORS_FOR_FLAGS(vkui::VkPopoverBoundaryPlacements)
 Q_DECLARE_METATYPE(vkui::VkPopoverPlacement)
+Q_DECLARE_METATYPE(vkui::VkPopoverBoundaryPlacementFlag)
+Q_DECLARE_METATYPE(vkui::VkPopoverBoundaryPlacements)
 Q_DECLARE_METATYPE(vkui::VkPopoverCrossAxisAlignment)
 Q_DECLARE_METATYPE(vkui::VkPopoverClosePolicyFlag)
 Q_DECLARE_METATYPE(vkui::VkPopoverClosePolicy)

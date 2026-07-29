@@ -209,6 +209,18 @@ QWidget* VkPopoverPrivate::boundaryWidgetValue() const noexcept {
     return boundaryWidget;
 }
 
+void VkPopoverPrivate::setBoundaryPlacements(const VkPopoverBoundaryPlacements placements) {
+    if (boundaryPlacements == placements) {
+        return;
+    }
+    boundaryPlacements = placements;
+    queueReposition();
+}
+
+VkPopoverBoundaryPlacements VkPopoverPrivate::boundaryPlacementsValue() const noexcept {
+    return boundaryPlacements;
+}
+
 void VkPopoverPrivate::setClosePolicy(VkPopoverClosePolicy policy) noexcept {
     closePolicy = policy;
 }
@@ -594,8 +606,9 @@ bool VkPopoverPrivate::repositionNow() {
     input.crossAxisAlignment = crossAxisAlignment;
     QRect availableGeometry = observedScreen->availableGeometry();
     if (boundaryWidget) {
-        const QRect boundaryGeometry(boundaryWidget->mapToGlobal(QPoint()), boundaryWidget->size());
-        availableGeometry = availableGeometry.intersected(boundaryGeometry);
+        input.boundaryGeometry =
+            QRectF(boundaryWidget->mapToGlobal(QPoint()), boundaryWidget->size());
+        input.boundaryPlacements = boundaryPlacements;
     }
     input.availableGeometry = QRectF(availableGeometry);
     input.screenMargin = metrics.popoverScreenMargin;
@@ -1042,6 +1055,14 @@ void VkPopover::setBoundaryWidget(QWidget* boundary) {
 
 QWidget* VkPopover::boundaryWidget() const noexcept {
     return d->boundaryWidgetValue();
+}
+
+void VkPopover::setBoundaryPlacements(const VkPopoverBoundaryPlacements placements) {
+    d->setBoundaryPlacements(placements);
+}
+
+VkPopoverBoundaryPlacements VkPopover::boundaryPlacements() const noexcept {
+    return d->boundaryPlacementsValue();
 }
 
 void VkPopover::setClosePolicy(VkPopoverClosePolicy policy) {

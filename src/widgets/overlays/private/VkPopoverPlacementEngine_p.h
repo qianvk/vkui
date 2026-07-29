@@ -17,9 +17,10 @@ struct VkPopoverPlacementInput final {
     QRectF anchorRect;
     QSizeF contentSize;
     VkPopoverPlacement preferredPlacement = VkPopoverPlacement::Automatic;
-    VkPopoverCrossAxisAlignment crossAxisAlignment =
-        VkPopoverCrossAxisAlignment::Center;
+    VkPopoverCrossAxisAlignment crossAxisAlignment = VkPopoverCrossAxisAlignment::Center;
     QRectF availableGeometry;
+    QRectF boundaryGeometry;
+    VkPopoverBoundaryPlacements boundaryPlacements = VkPopoverBoundaryPlacementFlag::None;
     qreal screenMargin = 0.0;
     qreal anchorGap = 0.0;
     qreal bodyCornerRadius = 0.0;

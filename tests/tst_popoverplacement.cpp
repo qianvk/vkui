@@ -65,6 +65,7 @@ class PopoverPlacementTest final : public QObject {
     void interruptedAnimationRetargetsCleanly();
     void customMarginsAndRefreshResizeOpenPopover();
     void boundaryWidgetConstrainsAndTracksPopover();
+    void directionalBoundaryFlipsBeforeClamping();
     void popupWindowUsesFixedTransientSemantics();
     void widgetFlipsPreferredPlacementAtScreenEdge();
     void startAlignedResizeKeepsLeadingEdgeAndArrowAim();
@@ -211,8 +212,12 @@ void PopoverPlacementTest::suppliedAnchorSubRectangleChangesAim() {
     QVERIFY(right.isValid());
     const qreal leftTip = left.popupRect.left() + left.arrowTip.x();
     const qreal rightTip = right.popupRect.left() + right.arrowTip.x();
+    const qreal leftBase = left.popupRect.left() + left.arrowBaseCenter.x();
+    const qreal rightBase = right.popupRect.left() + right.arrowBaseCenter.x();
     QVERIFY(qAbs(leftTip - leftInput.anchorRect.center().x()) <= 1.0);
     QVERIFY(qAbs(rightTip - rightInput.anchorRect.center().x()) <= 1.0);
+    QVERIFY(qAbs(leftTip - leftBase) <= 1.0);
+    QVERIFY(qAbs(rightTip - rightBase) <= 1.0);
     QVERIFY(rightTip > leftTip + 80.0);
 }
 
@@ -324,6 +329,8 @@ void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
     popover.setBoundaryWidget(&boundary);
     QCOMPARE(popover.preferredContentSize(), QSize(360, 520));
     QCOMPARE(popover.boundaryWidget(), &boundary);
+    QCOMPARE(popover.boundaryPlacements(),
+             vkui::VkPopoverBoundaryPlacements(vkui::VkPopoverBoundaryPlacementFlag::All));
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
 
@@ -349,6 +356,28 @@ void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
     popover.setBoundaryWidget(nullptr);
     QCOMPARE(popover.boundaryWidget(), nullptr);
     manager->setAnimationsEnabled(animations);
+}
+
+void PopoverPlacementTest::directionalBoundaryFlipsBeforeClamping() {
+    auto input = baseInput();
+    input.availableGeometry = QRectF(0.0, 0.0, 800.0, 600.0);
+    input.boundaryGeometry = QRectF(250.0, 280.0, 300.0, 120.0);
+    input.boundaryPlacements = vkui::VkPopoverBoundaryPlacementFlag::Below;
+    input.anchorRect = QRectF(380.0, 288.0, 40.0, 24.0);
+    input.contentSize = QSizeF(260.0, 180.0);
+    input.preferredPlacement = vkui::VkPopoverPlacement::Below;
+
+    const auto flipped = vkui::VkPopoverPlacementEngine::calculate(input);
+    QVERIFY(flipped.isValid());
+    QCOMPARE(flipped.resolvedPlacement, vkui::VkPopoverPlacement::Above);
+    QVERIFY(flipped.contentRect.height() >= input.contentSize.height() - 1.0);
+    verifyInsideAvailableGeometry(input, flipped);
+
+    input.contentSize = QSizeF(180.0, 12.0);
+    const auto below = vkui::VkPopoverPlacementEngine::calculate(input);
+    QVERIFY(below.isValid());
+    QCOMPARE(below.resolvedPlacement, vkui::VkPopoverPlacement::Below);
+    QVERIFY(input.boundaryGeometry.contains(QRectF(below.popupRect)));
 }
 
 void PopoverPlacementTest::popupWindowUsesFixedTransientSemantics() {
