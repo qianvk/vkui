@@ -152,6 +152,28 @@ void VkPopoverPrivate::setCrossAxisAlignment(
     queueReposition();
 }
 
+void VkPopoverPrivate::setBoundaryWidget(QWidget* boundary) {
+    if (boundary == boundaryWidget || boundary == q) {
+        return;
+    }
+    if (boundary && boundary->thread() != q->thread()) {
+        return;
+    }
+    if (filtersAttached && boundaryWidget) {
+        boundaryWidget->removeEventFilter(this);
+    }
+    boundaryWidget = boundary;
+    if (filtersAttached && boundaryWidget && boundaryWidget != anchor &&
+        boundaryWidget != anchorWindow && boundaryWidget != content) {
+        boundaryWidget->installEventFilter(this);
+    }
+    queueReposition();
+}
+
+QWidget* VkPopoverPrivate::boundaryWidgetValue() const noexcept {
+    return boundaryWidget;
+}
+
 void VkPopoverPrivate::setClosePolicy(VkPopoverClosePolicy policy) noexcept {
     closePolicy = policy;
 }
@@ -272,6 +294,10 @@ void VkPopoverPrivate::attachOpenFilters() {
     if (content) {
         content->installEventFilter(this);
     }
+    if (boundaryWidget && boundaryWidget != anchor && boundaryWidget != anchorWindow &&
+        boundaryWidget != content) {
+        boundaryWidget->installEventFilter(this);
+    }
     if (qApp) {
         qApp->installEventFilter(this);
     }
@@ -295,6 +321,10 @@ void VkPopoverPrivate::detachOpenFilters() {
     }
     if (content) {
         content->removeEventFilter(this);
+    }
+    if (boundaryWidget && boundaryWidget != anchor && boundaryWidget != anchorWindow &&
+        boundaryWidget != content) {
+        boundaryWidget->removeEventFilter(this);
     }
     if (qApp) {
         qApp->removeEventFilter(this);
@@ -500,7 +530,12 @@ bool VkPopoverPrivate::repositionNow() {
     input.contentSize = desiredContentSize();
     input.preferredPlacement = preferredPlacement;
     input.crossAxisAlignment = crossAxisAlignment;
-    input.availableGeometry = QRectF(observedScreen->availableGeometry());
+    QRect availableGeometry = observedScreen->availableGeometry();
+    if (boundaryWidget) {
+        const QRect boundaryGeometry(boundaryWidget->mapToGlobal(QPoint()), boundaryWidget->size());
+        availableGeometry = availableGeometry.intersected(boundaryGeometry);
+    }
+    input.availableGeometry = QRectF(availableGeometry);
     input.screenMargin = metrics.popoverScreenMargin;
     input.anchorGap = metrics.popoverAnchorGap;
     input.bodyCornerRadius = metrics.popoverCornerRadius;
@@ -732,6 +767,22 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
         default:
             break;
         }
+    } else if (watched == boundaryWidget) {
+        switch (event->type()) {
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::ParentChange:
+        case QEvent::LayoutRequest:
+        case QEvent::Show:
+            queueReposition();
+            break;
+        case QEvent::Hide:
+        case QEvent::Close:
+            closeAnimated();
+            break;
+        default:
+            break;
+        }
     } else if (anchor) {
         // Moving an intermediate parent changes the anchor's global position
         // without necessarily delivering a move event to the anchor itself.
@@ -889,6 +940,14 @@ void VkPopover::setCrossAxisAlignment(
 VkPopoverCrossAxisAlignment
 VkPopover::crossAxisAlignment() const noexcept {
     return d->crossAxisAlignment;
+}
+
+void VkPopover::setBoundaryWidget(QWidget* boundary) {
+    d->setBoundaryWidget(boundary);
+}
+
+QWidget* VkPopover::boundaryWidget() const noexcept {
+    return d->boundaryWidgetValue();
 }
 
 void VkPopover::setClosePolicy(VkPopoverClosePolicy policy) {

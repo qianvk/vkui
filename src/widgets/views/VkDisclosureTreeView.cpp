@@ -234,6 +234,18 @@ VkDisclosureTreeView::~VkDisclosureTreeView() {
     finishDisclosureAnimation();
 }
 
+void VkDisclosureTreeView::setNativeBranchesVisible(const bool visible) {
+    if (m_nativeBranchesVisible == visible) {
+        return;
+    }
+    m_nativeBranchesVisible = visible;
+    viewport()->update();
+}
+
+bool VkDisclosureTreeView::nativeBranchesVisible() const noexcept {
+    return m_nativeBranchesVisible;
+}
+
 void VkDisclosureTreeView::setDisclosureSurfaceColor(const QColor& color) {
     if (m_disclosureSurfaceColor == color) {
         return;
@@ -275,6 +287,8 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
     }
     const QRect captureRect(0, affectedTop, viewport()->width(),
                             viewport()->height() - affectedTop);
+    const int followingCaptureHeight =
+        std::max(captureRect.height(), window() == nullptr ? 0 : window()->height());
     const bool currentState = isExpanded(index);
     updateGeometries();
     const int currentScrollMaximum =
@@ -313,8 +327,9 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
             expandedContinuationY = visualRect(continuation).top();
         }
     };
-    const auto captureCollapsedState = [this, &index, &continuation, affectedTop, &captureRect,
-                                        &collapsedContinuationY, &followingRows]() {
+    const auto captureCollapsedState = [this, &index, &continuation, affectedTop,
+                                        followingCaptureHeight, &collapsedContinuationY,
+                                        &followingRows]() {
         followingRows.clear();
         if (continuation.isValid()) {
             collapsedContinuationY = visualRect(continuation).top();
@@ -326,7 +341,7 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
                 rowRect.setHeight(std::max(1, sizeHintForIndex(following).height()));
             }
             rowRect.translate(0, -affectedTop);
-            if (rowRect.top() >= captureRect.height()) {
+            if (rowRect.top() >= followingCaptureHeight) {
                 break;
             }
             followingRows.append({QPersistentModelIndex(following), rowRect});
@@ -463,19 +478,49 @@ void VkDisclosureTreeView::changeEvent(QEvent* event) {
     QTreeView::changeEvent(event);
 }
 
+void VkDisclosureTreeView::drawBranches(QPainter* painter, const QRect& rect,
+                                        const QModelIndex& index) const {
+    if (m_nativeBranchesVisible) {
+        QTreeView::drawBranches(painter, rect, index);
+    }
+}
+
+void VkDisclosureTreeView::drawRow(QPainter* painter, const QStyleOptionViewItem& option,
+                                   const QModelIndex& index) const {
+    if (!m_nativeBranchesVisible && painter) {
+        painter->fillRect(QRect(viewport()->rect().left(), option.rect.top(),
+                                viewport()->rect().width(), option.rect.height()),
+                          disclosureSurfaceColor());
+    }
+    QTreeView::drawRow(painter, option, index);
+    const int itemLeft = visualRect(index).left();
+    if (!m_nativeBranchesVisible && painter && itemLeft > viewport()->rect().left()) {
+        // QTreeView's native selected-row surface can extend through the
+        // hierarchy branch rectangle even when drawBranches() is empty.
+        // Clearing that strip after the native row pass keeps selection and
+        // hover strictly inside the delegate's icon-and-label surface.
+        const QRect branchRect(viewport()->rect().left(), option.rect.top(),
+                               itemLeft - viewport()->rect().left(), option.rect.height());
+        painter->fillRect(branchRect, disclosureSurfaceColor());
+    }
+}
+
 void VkDisclosureTreeView::resizeEvent(QResizeEvent* event) {
-    const bool preserveHorizontalResize = m_disclosureOverlay != nullptr && event != nullptr &&
-                                          event->oldSize().height() == event->size().height();
-    if (!preserveHorizontalResize) {
+    const bool preserveDisclosure = m_disclosureOverlay != nullptr && event != nullptr;
+    if (!preserveDisclosure) {
         finishDisclosureAnimation();
     }
     QTreeView::resizeEvent(event);
-    if (preserveHorizontalResize && m_disclosureOverlay != nullptr) {
+    if (preserveDisclosure && m_disclosureOverlay != nullptr) {
         QRect geometry = m_disclosureOverlay->geometry();
         geometry.setLeft(0);
         geometry.setWidth(viewport()->width());
         geometry.setHeight(std::max(0, viewport()->height() - geometry.top()));
-        m_disclosureOverlay->setGeometry(geometry);
+        if (geometry.height() <= 0) {
+            finishDisclosureAnimation();
+        } else {
+            m_disclosureOverlay->setGeometry(geometry);
+        }
     }
 }
 

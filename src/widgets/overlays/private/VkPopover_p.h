@@ -57,6 +57,8 @@ class VkPopoverPrivate final : public QObject {
     void setPreferredPlacement(VkPopoverPlacement placement);
     void setCrossAxisAlignment(
         VkPopoverCrossAxisAlignment alignment);
+    void setBoundaryWidget(QWidget* boundary);
+    [[nodiscard]] QWidget* boundaryWidgetValue() const noexcept;
     void setClosePolicy(VkPopoverClosePolicy policy) noexcept;
 
     void openFor(QWidget* anchor, const QRect& anchorRectInAnchor);
@@ -101,6 +103,7 @@ class VkPopoverPrivate final : public QObject {
     QPointer<QWidget> content;
     QPointer<QWidget> anchor;
     QPointer<QWidget> anchorWindow;
+    QPointer<QWidget> boundaryWidget;
     QRect anchorLocalRect;
     QPointer<QScreen> observedScreen;
 
