@@ -190,9 +190,13 @@ VkTreeItemGeometry treeItemGeometry(const QStyleOptionViewItem& option,
                             availableTextRect.height());
     const int visualLeft = std::min(iconRect.left(), textRect.left());
     const int visualRight = std::max(iconRect.right(), textRect.right());
+    // Keep the rounded selection surface inside the item viewport. Allowing
+    // its nominal padding to extend past a root row's left edge clips away the
+    // rounded corner and leaves a square block beside the icon.
+    const int pillLeft = std::max(option.rect.left() + 2, visualLeft - pillHorizontalPadding);
+    const int pillRight = std::min(option.rect.right() - 2, visualRight + pillHorizontalPadding);
     return {iconRect, availableTextRect, textRect,
-            QRect(visualLeft - pillHorizontalPadding, option.rect.top() + 2,
-                  visualRight - visualLeft + 1 + 2 * pillHorizontalPadding,
+            QRect(pillLeft, option.rect.top() + 2, std::max(0, pillRight - pillLeft + 1),
                   std::max(0, option.rect.height() - 4))};
 }
 
