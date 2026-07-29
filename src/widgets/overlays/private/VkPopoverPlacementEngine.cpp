@@ -62,6 +62,40 @@ QRectF contentRectFor(const QRectF& body, const QMarginsF& margins) {
     return content;
 }
 
+VkPopoverCrossAxisAlignment physicalHorizontalAlignment(
+    const VkPopoverPlacementInput& input) noexcept {
+    if (input.layoutDirection != Qt::RightToLeft) {
+        return input.crossAxisAlignment;
+    }
+    if (input.crossAxisAlignment ==
+        VkPopoverCrossAxisAlignment::Start) {
+        return VkPopoverCrossAxisAlignment::End;
+    }
+    if (input.crossAxisAlignment ==
+        VkPopoverCrossAxisAlignment::End) {
+        return VkPopoverCrossAxisAlignment::Start;
+    }
+    return VkPopoverCrossAxisAlignment::Center;
+}
+
+qreal alignedOrigin(
+    const VkPopoverCrossAxisAlignment alignment,
+    const qreal anchorStart,
+    const qreal anchorEnd,
+    const qreal anchorCenter,
+    const qreal totalExtent,
+    const qreal outer) noexcept {
+    switch (alignment) {
+    case VkPopoverCrossAxisAlignment::Start:
+        return anchorStart - outer;
+    case VkPopoverCrossAxisAlignment::End:
+        return anchorEnd - totalExtent + outer;
+    case VkPopoverCrossAxisAlignment::Center:
+        return anchorCenter - totalExtent / 2.0;
+    }
+    return anchorCenter - totalExtent / 2.0;
+}
+
 std::vector<VkPopoverPlacement> placementOrder(const VkPopoverPlacementInput& input) {
     if (input.preferredPlacement != VkPopoverPlacement::Automatic) {
         return {input.preferredPlacement};
@@ -108,30 +142,69 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
 
     const qreal targetX = anchor.center().x();
     const qreal targetY = anchor.center().y();
+    const VkPopoverCrossAxisAlignment
+        horizontalAlignment =
+            physicalHorizontalAlignment(input);
     QRectF desired;
     switch (placement) {
     case VkPopoverPlacement::Below: {
         const qreal tipY = anchor.bottom() + gap;
-        desired =
-            QRectF(targetX - requestedWidth / 2.0, tipY - outer, requestedWidth, requestedHeight);
+        desired = QRectF(
+            alignedOrigin(
+                horizontalAlignment,
+                anchor.left(),
+                anchor.right(),
+                targetX,
+                requestedWidth,
+                outer),
+            tipY - outer,
+            requestedWidth,
+            requestedHeight);
         break;
     }
     case VkPopoverPlacement::Above: {
         const qreal tipY = anchor.top() - gap;
-        desired = QRectF(targetX - requestedWidth / 2.0, tipY - (requestedHeight - outer),
-                         requestedWidth, requestedHeight);
+        desired = QRectF(
+            alignedOrigin(
+                horizontalAlignment,
+                anchor.left(),
+                anchor.right(),
+                targetX,
+                requestedWidth,
+                outer),
+            tipY - (requestedHeight - outer),
+            requestedWidth,
+            requestedHeight);
         break;
     }
     case VkPopoverPlacement::Right: {
         const qreal tipX = anchor.right() + gap;
-        desired =
-            QRectF(tipX - outer, targetY - requestedHeight / 2.0, requestedWidth, requestedHeight);
+        desired = QRectF(
+            tipX - outer,
+            alignedOrigin(
+                input.crossAxisAlignment,
+                anchor.top(),
+                anchor.bottom(),
+                targetY,
+                requestedHeight,
+                outer),
+            requestedWidth,
+            requestedHeight);
         break;
     }
     case VkPopoverPlacement::Left: {
         const qreal tipX = anchor.left() - gap;
-        desired = QRectF(tipX - (requestedWidth - outer), targetY - requestedHeight / 2.0,
-                         requestedWidth, requestedHeight);
+        desired = QRectF(
+            tipX - (requestedWidth - outer),
+            alignedOrigin(
+                input.crossAxisAlignment,
+                anchor.top(),
+                anchor.bottom(),
+                targetY,
+                requestedHeight,
+                outer),
+            requestedWidth,
+            requestedHeight);
         break;
     }
     case VkPopoverPlacement::Automatic:
@@ -190,20 +263,56 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
     qreal popupY = 0.0;
     switch (placement) {
     case VkPopoverPlacement::Below:
-        popupX = clamped(targetX - totalWidth / 2.0, usable.left(), usable.right() - popupWidth);
+        popupX = clamped(
+            alignedOrigin(
+                horizontalAlignment,
+                anchor.left(),
+                anchor.right(),
+                targetX,
+                totalWidth,
+                outer),
+            usable.left(),
+            usable.right() - popupWidth);
         popupY = resolvedTipY - outer;
         break;
     case VkPopoverPlacement::Above:
-        popupX = clamped(targetX - totalWidth / 2.0, usable.left(), usable.right() - popupWidth);
+        popupX = clamped(
+            alignedOrigin(
+                horizontalAlignment,
+                anchor.left(),
+                anchor.right(),
+                targetX,
+                totalWidth,
+                outer),
+            usable.left(),
+            usable.right() - popupWidth);
         popupY = resolvedTipY - (totalHeight - outer);
         break;
     case VkPopoverPlacement::Right:
         popupX = resolvedTipX - outer;
-        popupY = clamped(targetY - totalHeight / 2.0, usable.top(), usable.bottom() - popupHeight);
+        popupY = clamped(
+            alignedOrigin(
+                input.crossAxisAlignment,
+                anchor.top(),
+                anchor.bottom(),
+                targetY,
+                totalHeight,
+                outer),
+            usable.top(),
+            usable.bottom() - popupHeight);
         break;
     case VkPopoverPlacement::Left:
         popupX = resolvedTipX - (totalWidth - outer);
-        popupY = clamped(targetY - totalHeight / 2.0, usable.top(), usable.bottom() - popupHeight);
+        popupY = clamped(
+            alignedOrigin(
+                input.crossAxisAlignment,
+                anchor.top(),
+                anchor.bottom(),
+                targetY,
+                totalHeight,
+                outer),
+            usable.top(),
+            usable.bottom() - popupHeight);
         break;
     case VkPopoverPlacement::Automatic:
         return candidate;

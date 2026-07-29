@@ -24,6 +24,19 @@ enum class VkPopoverPlacement {
     Left,
 };
 
+/**
+ * Alignment on the axis perpendicular to the placement direction.
+ *
+ * Start and End are layout-direction aware. For a popover above or below its
+ * anchor, Start keeps the leading body edge stable while content width
+ * changes; the arrow remains aimed independently at the anchor.
+ */
+enum class VkPopoverCrossAxisAlignment {
+    Center,
+    Start,
+    End,
+};
+
 /** Independent reasons for dismissing an open popover. */
 enum class VkPopoverClosePolicyFlag {
     None = 0x00,
@@ -78,6 +91,11 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     void setPreferredPlacement(VkPopoverPlacement placement);
     [[nodiscard]] VkPopoverPlacement preferredPlacement() const noexcept;
 
+    void setCrossAxisAlignment(
+        VkPopoverCrossAxisAlignment alignment);
+    [[nodiscard]] VkPopoverCrossAxisAlignment
+    crossAxisAlignment() const noexcept;
+
     /**
      * Sets the enabled dismissal reasons. All four reasons are enabled by
      * default; VkPopoverClosePolicyFlag::None leaves dismissal to the caller.
@@ -122,5 +140,6 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(vkui::VkPopoverClosePolicy)
 Q_DECLARE_METATYPE(vkui::VkPopoverPlacement)
+Q_DECLARE_METATYPE(vkui::VkPopoverCrossAxisAlignment)
 Q_DECLARE_METATYPE(vkui::VkPopoverClosePolicyFlag)
 Q_DECLARE_METATYPE(vkui::VkPopoverClosePolicy)

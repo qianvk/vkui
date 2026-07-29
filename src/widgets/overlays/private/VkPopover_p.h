@@ -55,6 +55,8 @@ class VkPopoverPrivate final : public QObject {
     void refreshGeometry();
 
     void setPreferredPlacement(VkPopoverPlacement placement);
+    void setCrossAxisAlignment(
+        VkPopoverCrossAxisAlignment alignment);
     void setClosePolicy(VkPopoverClosePolicy policy) noexcept;
 
     void openFor(QWidget* anchor, const QRect& anchorRectInAnchor);
@@ -68,6 +70,8 @@ class VkPopoverPrivate final : public QObject {
     void paint(QPaintEvent* event);
 
     VkPopoverPlacement preferredPlacement = VkPopoverPlacement::Automatic;
+    VkPopoverCrossAxisAlignment crossAxisAlignment =
+        VkPopoverCrossAxisAlignment::Center;
     VkPopoverClosePolicy closePolicy =
         VkPopoverClosePolicyFlag::OutsideClick | VkPopoverClosePolicyFlag::EscapeKey |
         VkPopoverClosePolicyFlag::AnchorDestroyed | VkPopoverClosePolicyFlag::WindowDeactivated;

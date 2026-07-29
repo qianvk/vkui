@@ -32,14 +32,17 @@ public:
     }
 
     void setSurface(
-        QPixmap surface,
+        QPixmap expandedSurface,
         const int travel,
         const QColor &surfaceColor)
     {
-        m_surface = std::move(surface);
+        m_expandedSurface =
+            std::move(expandedSurface);
         m_travel = std::max(0, travel);
         m_surfaceColor = surfaceColor;
         setProperty("travel", m_travel);
+        // The single immutable surface contains both descendants and every
+        // following row, so their relative geometry cannot drift.
         setProperty("surfaceCount", 1);
         setProgress(0.0);
     }
@@ -54,11 +57,21 @@ public:
             return;
         }
         m_progress = bounded;
-        const int offset =
-            qRound(m_progress * m_travel);
+        const int groupOffset =
+            qRound(m_progress * m_travel)
+            - m_travel;
+        const int siblingOffset =
+            groupOffset + m_travel;
         setProperty("progress", m_progress);
+        setProperty("groupOffset", groupOffset);
+        setProperty("siblingOffset", siblingOffset);
+        setProperty("branchOffset", groupOffset);
+        setProperty("firstChildTop", groupOffset);
+        setProperty("lastChildBottom", siblingOffset);
         setProperty(
-            "groupOffset", offset - m_travel);
+            "branchRelativeSpan",
+            siblingOffset - groupOffset);
+        setProperty("seamGap", 0);
         update();
     }
 
@@ -69,20 +82,18 @@ protected:
         painter.setClipRegion(event->region());
         painter.fillRect(
             event->rect(), m_surfaceColor);
-        if (!m_surface.isNull()) {
-            const int offset =
+        if (!m_expandedSurface.isNull()) {
+            const int groupOffset =
                 qRound(m_progress * m_travel)
                 - m_travel;
             painter.drawPixmap(
-                QPointF(
-                    0.0,
-                    static_cast<qreal>(offset)),
-                m_surface);
+                QPoint(0, groupOffset),
+                m_expandedSurface);
         }
     }
 
 private:
-    QPixmap m_surface;
+    QPixmap m_expandedSurface;
     QColor m_surfaceColor;
     qreal m_progress = -1.0;
     int m_travel = 0;
@@ -298,7 +309,6 @@ void VkDisclosureTreeView::setExpandedAnimated(
         continuation = indexBelow(index);
     }
 
-    QPixmap collapsedSurface;
     QPixmap expandedSurface;
     int travel = 0;
     int collapsedContinuationY = -1;
@@ -316,8 +326,6 @@ void VkDisclosureTreeView::setExpandedAnimated(
             collapsedContinuationY =
                 visualRect(continuation).top();
         }
-        collapsedSurface =
-            viewport()->grab(captureRect);
     }
 
     QTreeView::setExpanded(index, expanded);
@@ -335,8 +343,6 @@ void VkDisclosureTreeView::setExpandedAnimated(
             collapsedContinuationY =
                 visualRect(continuation).top();
         }
-        collapsedSurface =
-            viewport()->grab(captureRect);
     }
     if (collapsedContinuationY >= 0
         && expandedContinuationY >= 0) {
@@ -345,38 +351,16 @@ void VkDisclosureTreeView::setExpandedAnimated(
             - collapsedContinuationY;
     }
     if (travel <= 0
-        || collapsedSurface.isNull()
         || expandedSurface.isNull()) {
         viewport()->update(captureRect);
         return;
     }
 
-    const qreal ratio =
-        expandedSurface.devicePixelRatio();
-    const QSize stripSize(
-        captureRect.width(),
-        captureRect.height() + travel);
-    QPixmap strip(
-        qCeil(stripSize.width() * ratio),
-        qCeil(stripSize.height() * ratio));
-    strip.setDevicePixelRatio(ratio);
-    strip.fill(Qt::transparent);
-    {
-        QPainter painter(&strip);
-        painter.drawPixmap(
-            QPointF(0.0, 0.0),
-            expandedSurface);
-        painter.drawPixmap(
-            QPointF(
-                0.0,
-                static_cast<qreal>(travel)),
-            collapsedSurface);
-    }
     auto *overlay =
         new DisclosureGroupOverlay(viewport());
     overlay->setGeometry(captureRect);
     overlay->setSurface(
-        std::move(strip),
+        std::move(expandedSurface),
         travel,
         disclosureSurfaceColor());
     overlay->setProgress(

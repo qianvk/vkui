@@ -143,6 +143,15 @@ void VkPopoverPrivate::setPreferredPlacement(VkPopoverPlacement placement) {
     queueReposition();
 }
 
+void VkPopoverPrivate::setCrossAxisAlignment(
+    const VkPopoverCrossAxisAlignment alignment) {
+    if (crossAxisAlignment == alignment) {
+        return;
+    }
+    crossAxisAlignment = alignment;
+    queueReposition();
+}
+
 void VkPopoverPrivate::setClosePolicy(VkPopoverClosePolicy policy) noexcept {
     closePolicy = policy;
 }
@@ -490,6 +499,7 @@ bool VkPopoverPrivate::repositionNow() {
     input.anchorRect = anchorGlobalRect();
     input.contentSize = desiredContentSize();
     input.preferredPlacement = preferredPlacement;
+    input.crossAxisAlignment = crossAxisAlignment;
     input.availableGeometry = QRectF(observedScreen->availableGeometry());
     input.screenMargin = metrics.popoverScreenMargin;
     input.anchorGap = metrics.popoverAnchorGap;
@@ -869,6 +879,16 @@ void VkPopover::setPreferredPlacement(VkPopoverPlacement placement) {
 
 VkPopoverPlacement VkPopover::preferredPlacement() const noexcept {
     return d->preferredPlacement;
+}
+
+void VkPopover::setCrossAxisAlignment(
+    const VkPopoverCrossAxisAlignment alignment) {
+    d->setCrossAxisAlignment(alignment);
+}
+
+VkPopoverCrossAxisAlignment
+VkPopover::crossAxisAlignment() const noexcept {
+    return d->crossAxisAlignment;
 }
 
 void VkPopover::setClosePolicy(VkPopoverClosePolicy policy) {
