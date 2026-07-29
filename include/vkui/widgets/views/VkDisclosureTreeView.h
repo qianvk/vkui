@@ -34,13 +34,12 @@ treeItemGeometry(const QStyleOptionViewItem& option, const VkFileIconMetrics& me
 /**
  * A QTreeView with Finder-style, reversible disclosure motion.
  *
- * Expanded descendants and collapsed following rows are captured in two
- * viewport-bounded surfaces. One eased reveal boundary exposes descendants
- * above it and moves every following row below it, keeping the two regions
- * synchronized without allocating a pixmap as tall as a large model branch.
- * The moving surface ends on a complete item boundary, so descendants and
- * following rows retain their normal seam throughout the motion. An opposite
- * click reverses the same geometry path without rebuilding the motion segment.
+ * Expanded descendants retain their complete branch coordinates while only
+ * rows intersecting the viewport are painted each frame. One eased reveal
+ * boundary moves the true trailing descendant and every following row
+ * together, so their seam cannot drift even for branches much taller than the
+ * viewport. This avoids allocating a branch-height pixmap. An opposite click
+ * reverses the same geometry path without rebuilding the motion segment.
  * Internal current-index auto-scrolling is held until the transaction ends;
  * explicit wheel and scrollbar gestures still take precedence immediately.
  */
@@ -71,7 +70,6 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
 
   private:
     [[nodiscard]] bool isDescendantOf(const QModelIndex& index, const QModelIndex& ancestor) const;
-    [[nodiscard]] int expandedBranchHeight(const QModelIndex& index) const;
 
     QTimeLine* m_disclosureTimeline = nullptr;
     QPointer<QWidget> m_disclosureOverlay;

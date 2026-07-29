@@ -16,8 +16,10 @@ namespace {
 constexpr int VisualKindRole = Qt::UserRole + 73;
 constexpr int ChildKind = 1;
 constexpr int SiblingKind = 2;
+constexpr int TrailingChildKind = 3;
 const QColor ChildColor(40, 120, 220);
 const QColor SiblingColor(220, 40, 40);
+const QColor TrailingChildColor(40, 170, 90);
 
 class SeamProbeDelegate final : public QStyledItemDelegate {
   public:
@@ -31,9 +33,11 @@ class SeamProbeDelegate final : public QStyledItemDelegate {
                const QModelIndex& index) const override {
         painter->fillRect(option.rect, QColor(Qt::white));
         const int kind = index.data(VisualKindRole).toInt();
-        if (kind == ChildKind || kind == SiblingKind) {
+        if (kind == ChildKind || kind == SiblingKind || kind == TrailingChildKind) {
             painter->fillRect(option.rect.adjusted(8, 3, -8, -3),
-                              kind == ChildKind ? ChildColor : SiblingColor);
+                              kind == ChildKind
+                                  ? ChildColor
+                                  : (kind == SiblingKind ? SiblingColor : TrailingChildColor));
         }
     }
 };
@@ -68,7 +72,7 @@ class DisclosureTreeTest final : public QObject {
     void geometryBoundsIconTextAndPill();
     void disclosureUsesReversibleSharedBoundary();
     void everyFrameKeepsChildAndSiblingVisuallyJoined();
-    void longBranchUsesViewportBoundedReveal();
+    void longBranchKeepsTrueTrailingChildAtSeam();
 };
 
 void DisclosureTreeTest::geometryBoundsIconTextAndPill() {
@@ -246,7 +250,7 @@ void DisclosureTreeTest::everyFrameKeepsChildAndSiblingVisuallyJoined() {
     theme->setAnimationsEnabled(originalAnimations);
 }
 
-void DisclosureTreeTest::longBranchUsesViewportBoundedReveal() {
+void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
     auto* theme = vkui::VkThemeManager::instance();
     const bool originalAnimations = theme->animationsEnabled();
     theme->setAnimationsEnabled(true);
@@ -255,7 +259,7 @@ void DisclosureTreeTest::longBranchUsesViewportBoundedReveal() {
     auto* folder = new QStandardItem(QStringLiteral("第一卷"));
     for (int row = 0; row < 120; ++row) {
         auto* chapter = new QStandardItem(QStringLiteral("第%1章").arg(row + 1));
-        chapter->setData(ChildKind, VisualKindRole);
+        chapter->setData(row == 119 ? TrailingChildKind : ChildKind, VisualKindRole);
         folder->appendRow(chapter);
     }
     auto* nextVolume = new QStandardItem(QStringLiteral("第二卷"));
@@ -289,9 +293,9 @@ void DisclosureTreeTest::longBranchUsesViewportBoundedReveal() {
              overlay);
     const int totalTravel = overlay->property("totalTravel").toInt();
     const int visualTravel = overlay->property("visualTravel").toInt();
-    QVERIFY(totalTravel > visualTravel);
-    QVERIFY(visualTravel >= overlay->height());
-    QVERIFY(visualTravel < overlay->height() + 28);
+    QCOMPARE(visualTravel, totalTravel);
+    QVERIFY(totalTravel > overlay->height());
+    QCOMPARE(overlay->property("trailingItemText").toString(), QStringLiteral("第120章"));
 
     int previousOffset = -1;
     const QString frameDirectory = qEnvironmentVariable("VKUI_DISCLOSURE_FRAME_DIRECTORY");
@@ -315,26 +319,32 @@ void DisclosureTreeTest::longBranchUsesViewportBoundedReveal() {
                         QStringLiteral("long-frame-%1.png").arg(time, 3, 10, QLatin1Char('0')))));
         }
         const ColorBand child = colorBand(frame, ChildColor);
+        const ColorBand trailingChild = colorBand(frame, TrailingChildColor);
         const ColorBand sibling = colorBand(frame, SiblingColor);
         if (offset > 0) {
-            QVERIFY2(child.first >= 0, qPrintable(QStringLiteral("Long branch left a blank "
-                                                                 "frame at %1 ms")
-                                                      .arg(time)));
+            QVERIFY2(child.first >= 0 || trailingChild.first >= 0,
+                     qPrintable(QStringLiteral("Long branch left a blank "
+                                               "frame at %1 ms")
+                                    .arg(time)));
         }
-        if (child.first >= 0 && sibling.first >= 0) {
+        if (offset > 0 && sibling.first >= 0) {
+            QVERIFY2(trailingChild.first >= 0,
+                     qPrintable(QStringLiteral("True trailing child missing at %1 ms; sibling=%2")
+                                    .arg(time)
+                                    .arg(sibling.first)));
             const int normalGap = qRound(6.0 * std::max(1.0, frame.devicePixelRatio()));
-            QVERIFY2(sibling.first - child.last - 1 <= normalGap,
+            QVERIFY2(sibling.first - trailingChild.last - 1 <= normalGap,
                      qPrintable(QStringLiteral("Long branch seam opened "
                                                "at %1 ms: childLast=%2 "
                                                "siblingFirst=%3 offset=%4")
                                     .arg(time)
-                                    .arg(child.last)
+                                    .arg(trailingChild.last)
                                     .arg(sibling.first)
                                     .arg(offset)));
         }
         if (time == 8) {
             QVERIFY(offset > 0);
-            QVERIFY(offset < visualTravel / 2);
+            QVERIFY(offset <= 56);
         }
     }
 

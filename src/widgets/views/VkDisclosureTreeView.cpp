@@ -11,6 +11,8 @@
 #include <QTimeLine>
 #include <QWheelEvent>
 #include <algorithm>
+#include <cmath>
+#include <functional>
 #include <utility>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/views/VkDisclosureTreeView.h>
@@ -56,8 +58,15 @@ int firstContentReveal(const QPixmap& surface, const int boundary, const QColor&
     return 1;
 }
 
+struct DisclosureRow final {
+    QPersistentModelIndex index;
+    QRect rect;
+};
+
 class DisclosureGroupOverlay final : public QWidget {
   public:
+    using RowPainter = std::function<void(QPainter&, const QPersistentModelIndex&, const QRect&)>;
+
     explicit DisclosureGroupOverlay(QWidget* parent) : QWidget(parent) {
         setObjectName(QStringLiteral("vkDisclosureGroupTransition"));
         setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -66,22 +75,25 @@ class DisclosureGroupOverlay final : public QWidget {
         setFocusPolicy(Qt::NoFocus);
     }
 
-    void setSurface(QPixmap expandedSurface, QPixmap collapsedSurface, const int totalTravel,
-                    const int visualTravel, const int contentRevealThreshold,
-                    const QColor& surfaceColor) {
-        m_expandedSurface = std::move(expandedSurface);
+    void setRows(QVector<DisclosureRow> rows, RowPainter rowPainter, QPixmap collapsedSurface,
+                 const int totalTravel, const int contentRevealThreshold,
+                 const QColor& surfaceColor) {
+        m_rows = std::move(rows);
+        m_rowPainter = std::move(rowPainter);
         m_collapsedSurface = std::move(collapsedSurface);
         m_totalTravel = std::max(0, totalTravel);
-        m_visualTravel = std::clamp(visualTravel, 0, m_totalTravel);
         m_contentRevealThreshold =
-            std::clamp(contentRevealThreshold, 1, std::max(1, m_visualTravel));
+            std::clamp(contentRevealThreshold, 1, std::max(1, m_totalTravel));
         m_surfaceColor = surfaceColor;
-        setProperty("travel", m_visualTravel);
-        setProperty("visualTravel", m_visualTravel);
+        setProperty("travel", m_totalTravel);
+        setProperty("visualTravel", m_totalTravel);
         setProperty("totalTravel", m_totalTravel);
-        // Match QTreeView's bounded animation strategy: expanded rows are
-        // revealed above one moving boundary while the collapsed following
-        // rows move below it. Memory stays independent of branch length.
+        setProperty("rowCount", m_rows.size());
+        setProperty("trailingItemText",
+                    m_rows.isEmpty() ? QString() : m_rows.constLast().index.data().toString());
+        // Following rows remain a bounded snapshot. Descendants are painted
+        // from persistent model indexes, so a long branch never needs a
+        // branch-height pixmap and its true trailing item remains at the seam.
         setProperty("surfaceCount", 2);
         setProgress(0.0);
     }
@@ -93,7 +105,7 @@ class DisclosureGroupOverlay final : public QWidget {
         }
         m_progress = bounded;
         const int siblingOffset = visibleReveal();
-        const int groupOffset = siblingOffset - m_visualTravel;
+        const int groupOffset = siblingOffset - m_totalTravel;
         setProperty("progress", m_progress);
         setProperty("groupOffset", groupOffset);
         setProperty("siblingOffset", siblingOffset);
@@ -111,10 +123,21 @@ class DisclosureGroupOverlay final : public QWidget {
         painter.setClipRegion(event->region());
         painter.fillRect(event->rect(), m_surfaceColor);
         const int reveal = visibleReveal();
-        if (!m_expandedSurface.isNull() && reveal > 0) {
+        if (!m_rows.isEmpty() && m_rowPainter && reveal > 0) {
             painter.save();
-            painter.setClipRect(QRect(0, 0, width(), reveal), Qt::IntersectClip);
-            painter.drawPixmap(QPoint(0, reveal - m_visualTravel), m_expandedSurface);
+            const int visibleBranchHeight = std::min(reveal, height());
+            painter.setClipRect(QRect(0, 0, width(), visibleBranchHeight), Qt::IntersectClip);
+            const int groupOffset = reveal - m_totalTravel;
+            const int sourceTop = -groupOffset;
+            const int sourceBottom = sourceTop + visibleBranchHeight;
+            auto row = std::lower_bound(m_rows.cbegin(), m_rows.cend(), sourceTop,
+                                        [](const DisclosureRow& candidate, const int y) {
+                                            return candidate.rect.bottom() < y;
+                                        });
+            for (; row != m_rows.cend() && row->rect.top() < sourceBottom; ++row) {
+                QRect destination = row->rect.translated(0, groupOffset);
+                m_rowPainter(painter, row->index, destination);
+            }
             painter.restore();
         }
         if (!m_collapsedSurface.isNull()) {
@@ -124,22 +147,22 @@ class DisclosureGroupOverlay final : public QWidget {
 
   private:
     [[nodiscard]] int visibleReveal() const {
-        if (m_progress <= 0.0 || m_visualTravel <= 0) {
+        if (m_progress <= 0.0 || m_totalTravel <= 0) {
             return 0;
         }
         if (m_progress >= 1.0) {
-            return m_visualTravel;
+            return m_totalTravel;
         }
-        const int reveal = std::clamp(qRound(m_progress * m_visualTravel), 0, m_visualTravel);
+        const int reveal = std::clamp(qRound(m_progress * m_totalTravel), 0, m_totalTravel);
         return reveal < m_contentRevealThreshold ? 0 : reveal;
     }
 
-    QPixmap m_expandedSurface;
+    QVector<DisclosureRow> m_rows;
+    RowPainter m_rowPainter;
     QPixmap m_collapsedSurface;
     QColor m_surfaceColor;
     qreal m_progress = -1.0;
     int m_totalTravel = 0;
-    int m_visualTravel = 0;
     int m_contentRevealThreshold = 1;
 };
 
@@ -254,18 +277,29 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
         continuation = indexBelow(index);
     }
 
-    QPixmap expandedSurface;
+    QVector<DisclosureRow> expandedRows;
     QPixmap collapsedSurface;
     int totalTravel = 0;
     int collapsedContinuationY = -1;
     int expandedContinuationY = -1;
-    const auto captureExpandedState = [this, &index, &continuation, &captureRect, &totalTravel,
-                                       &expandedContinuationY, &expandedSurface]() {
-        totalTravel = expandedBranchHeight(index);
+    const auto captureExpandedState = [this, &index, &continuation, affectedTop, &totalTravel,
+                                       &expandedContinuationY, &expandedRows]() {
+        expandedRows.clear();
+        totalTravel = 0;
+        for (QModelIndex descendant = indexBelow(index);
+             descendant.isValid() && isDescendantOf(descendant, index);
+             descendant = indexBelow(descendant)) {
+            QRect rowRect = visualRect(descendant);
+            if (rowRect.height() <= 0) {
+                rowRect.setHeight(std::max(1, sizeHintForIndex(descendant).height()));
+            }
+            rowRect.translate(0, -affectedTop);
+            expandedRows.append({QPersistentModelIndex(descendant), rowRect});
+            totalTravel = std::max(totalTravel, rowRect.bottom() + 1);
+        }
         if (continuation.isValid()) {
             expandedContinuationY = visualRect(continuation).top();
         }
-        expandedSurface = viewport()->grab(captureRect);
     };
     const auto captureCollapsedState = [this, &continuation, &captureRect, &collapsedContinuationY,
                                         &collapsedSurface]() {
@@ -290,90 +324,67 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
     if (collapsedContinuationY >= 0 && expandedContinuationY >= 0) {
         totalTravel = expandedContinuationY - collapsedContinuationY;
     }
-    int visualTravel = std::min(totalTravel, captureRect.height());
-    if (totalTravel > captureRect.height()) {
-        // End the moving descendant surface on a complete item boundary.
-        // A viewport grab commonly ends in the middle of a row; using that
-        // arbitrary cut would make its text/content gap visibly separate from
-        // the first following row. Qt's own QTreeView animation likewise sums
-        // complete item heights when choosing the animated extent.
-        QModelIndex descendant = indexBelow(index);
-        while (descendant.isValid() && isDescendantOf(descendant, index)) {
-            const QRect descendantRect = visualRect(descendant);
-            const int rowBoundary = descendantRect.bottom() + 1 - affectedTop;
-            if (rowBoundary >= captureRect.height()) {
-                visualTravel = std::min(totalTravel, rowBoundary);
-                break;
-            }
-            descendant = indexBelow(descendant);
-        }
+    if (!expandedRows.isEmpty()) {
+        // The true trailing descendant defines the seam. This deliberately
+        // rejects viewport-height approximations: the last child and the first
+        // following sibling must share one boundary for the entire motion.
+        totalTravel = expandedRows.constLast().rect.bottom() + 1;
     }
-    if (totalTravel <= 0 || visualTravel <= 0 || expandedSurface.isNull() ||
-        collapsedSurface.isNull()) {
+    if (totalTravel <= 0 || expandedRows.isEmpty() || collapsedSurface.isNull()) {
         viewport()->update(captureRect);
         return;
     }
 
-    const int expandedSurfaceHeight = qRound(expandedSurface.deviceIndependentSize().height());
-    if (expandedSurfaceHeight < visualTravel) {
-        // The aligned boundary may be at most one row below the viewport.
-        // Paint only that small offscreen tail. This avoids allocating or
-        // traversing the full branch while preserving an exact row-to-row
-        // seam for long volumes and directories.
-        const qreal ratio = std::max(1.0, expandedSurface.devicePixelRatio());
-        QPixmap extendedSurface(
-            QSize(qRound(captureRect.width() * ratio), qRound(visualTravel * ratio)));
-        extendedSurface.setDevicePixelRatio(ratio);
-        extendedSurface.fill(disclosureSurfaceColor());
-        QPainter surfacePainter(&extendedSurface);
-        surfacePainter.drawPixmap(QPoint(0, 0), expandedSurface);
-        surfacePainter.setClipRect(QRect(0, expandedSurfaceHeight, captureRect.width(),
-                                         visualTravel - expandedSurfaceHeight));
-
-        QStyleOptionViewItem baseOption;
-        initViewItemOption(&baseOption);
-        baseOption.widget = this;
-        QModelIndex descendant = indexBelow(index);
-        while (descendant.isValid() && isDescendantOf(descendant, index)) {
-            const QRect viewportRect = visualRect(descendant);
-            const QRect surfaceRect = viewportRect.translated(0, -affectedTop);
-            if (surfaceRect.top() >= visualTravel) {
-                break;
-            }
-            if (surfaceRect.bottom() >= expandedSurfaceHeight) {
-                QStyleOptionViewItem option(baseOption);
-                option.rect = surfaceRect;
-                option.state &=
-                    ~(QStyle::State_Selected | QStyle::State_HasFocus | QStyle::State_MouseOver |
-                      QStyle::State_Open | QStyle::State_Children);
-                if (selectionModel() != nullptr && selectionModel()->isSelected(descendant)) {
-                    option.state |= QStyle::State_Selected;
-                }
-                if (currentIndex() == descendant && hasFocus()) {
-                    option.state |= QStyle::State_HasFocus;
-                }
-                if (isExpanded(descendant)) {
-                    option.state |= QStyle::State_Open;
-                }
-                if (model() != nullptr && model()->hasChildren(descendant)) {
-                    option.state |= QStyle::State_Children;
-                }
-                if (auto* delegate = itemDelegateForIndex(descendant); delegate != nullptr) {
-                    delegate->paint(&surfacePainter, option, descendant);
-                }
-            }
-            descendant = indexBelow(descendant);
+    QStyleOptionViewItem baseOption;
+    initViewItemOption(&baseOption);
+    baseOption.widget = this;
+    const auto paintRow = [this, baseOption](QPainter& painter,
+                                             const QPersistentModelIndex& persistentIndex,
+                                             const QRect& rect) {
+        if (!persistentIndex.isValid()) {
+            return;
         }
-        surfacePainter.end();
-        expandedSurface = std::move(extendedSurface);
+        const QModelIndex rowIndex = persistentIndex;
+        QStyleOptionViewItem option(baseOption);
+        option.rect = rect;
+        option.state &= ~(QStyle::State_Selected | QStyle::State_HasFocus |
+                          QStyle::State_MouseOver | QStyle::State_Open | QStyle::State_Children);
+        if (selectionModel() != nullptr && selectionModel()->isSelected(rowIndex)) {
+            option.state |= QStyle::State_Selected;
+        }
+        if (currentIndex() == rowIndex && hasFocus()) {
+            option.state |= QStyle::State_HasFocus;
+        }
+        if (isExpanded(rowIndex)) {
+            option.state |= QStyle::State_Open;
+        }
+        if (model() != nullptr && model()->hasChildren(rowIndex)) {
+            option.state |= QStyle::State_Children;
+        }
+        if (auto* delegate = itemDelegateForIndex(rowIndex); delegate != nullptr) {
+            delegate->paint(&painter, option, rowIndex);
+        }
+    };
+
+    const DisclosureRow& trailingRow = expandedRows.constLast();
+    const qreal ratio = std::max(1.0, viewport()->devicePixelRatioF());
+    QPixmap trailingSurface(
+        QSize(qRound(captureRect.width() * ratio), qRound(trailingRow.rect.height() * ratio)));
+    trailingSurface.setDevicePixelRatio(ratio);
+    trailingSurface.fill(disclosureSurfaceColor());
+    {
+        QPainter trailingPainter(&trailingSurface);
+        QRect trailingRect = trailingRow.rect;
+        trailingRect.moveTop(0);
+        paintRow(trailingPainter, trailingRow.index, trailingRect);
     }
+    const int contentRevealThreshold =
+        firstContentReveal(trailingSurface, trailingRow.rect.height(), disclosureSurfaceColor());
 
     auto* overlay = new DisclosureGroupOverlay(viewport());
     overlay->setGeometry(captureRect);
-    const int contentRevealThreshold =
-        firstContentReveal(expandedSurface, visualTravel, disclosureSurfaceColor());
-    overlay->setSurface(std::move(expandedSurface), std::move(collapsedSurface), totalTravel,
-                        visualTravel, contentRevealThreshold, disclosureSurfaceColor());
+    overlay->setRows(std::move(expandedRows), paintRow, std::move(collapsedSurface), totalTravel,
+                     contentRevealThreshold, disclosureSurfaceColor());
     overlay->setProgress(currentState ? 1.0 : 0.0);
     overlay->show();
     overlay->raise();
@@ -383,6 +394,11 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
         horizontalScrollBar() == nullptr ? 0 : horizontalScrollBar()->value();
     m_disclosureVerticalScrollValue =
         verticalScrollBar() == nullptr ? 0 : verticalScrollBar()->value();
+    const qreal branchScreens = static_cast<qreal>(totalTravel) / std::max(1, captureRect.height());
+    const int adaptiveDuration =
+        FinderDisclosureDurationMs +
+        std::min(100, qRound(24.0 * std::log2(std::max(1.0, branchScreens))));
+    m_disclosureTimeline->setDuration(adaptiveDuration);
     m_disclosureTimeline->setCurrentTime(currentState ? m_disclosureTimeline->duration() : 0);
     m_disclosureTimeline->setDirection(expanded ? QTimeLine::Forward : QTimeLine::Backward);
     m_disclosureTimeline->start();
@@ -471,19 +487,6 @@ bool VkDisclosureTreeView::isDescendantOf(const QModelIndex& index,
         }
     }
     return false;
-}
-
-int VkDisclosureTreeView::expandedBranchHeight(const QModelIndex& index) const {
-    if (!index.isValid() || !isExpanded(index)) {
-        return 0;
-    }
-    int height = 0;
-    for (QModelIndex child = indexBelow(index); child.isValid() && isDescendantOf(child, index);
-         child = indexBelow(child)) {
-        const int measured = visualRect(child).height();
-        height += measured > 0 ? measured : std::max(1, sizeHintForIndex(child).height());
-    }
-    return height;
 }
 
 } // namespace vkui
