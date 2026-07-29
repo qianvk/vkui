@@ -4,7 +4,6 @@
 #include <QApplication>
 #include <QItemSelectionModel>
 #include <QPainter>
-#include <QPixmap>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QSignalBlocker>
@@ -13,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <utility>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/views/VkDisclosureTreeView.h>
@@ -29,33 +29,6 @@ QEasingCurve finderDisclosureEasing() {
     QEasingCurve easing(QEasingCurve::BezierSpline);
     easing.addCubicBezierSegment(QPointF(0.25, 0.10), QPointF(0.25, 1.00), QPointF(1.00, 1.00));
     return easing;
-}
-
-int firstContentReveal(const QPixmap& surface, const int boundary, const QColor& surfaceColor) {
-    const QImage image = surface.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
-    if (image.isNull() || boundary <= 0) {
-        return 1;
-    }
-    const qreal ratio = std::max(1.0, surface.devicePixelRatio());
-    const int physicalBoundary = std::clamp(qRound(boundary * ratio), 1, image.height());
-    const int minimumPixels = std::max(4, qRound(6.0 * ratio));
-    for (int depth = 1; depth <= physicalBoundary; ++depth) {
-        const int y = physicalBoundary - depth;
-        int contentPixels = 0;
-        for (int x = 0; x < image.width(); ++x) {
-            const QColor pixel = image.pixelColor(x, y);
-            if (qAbs(pixel.red() - surfaceColor.red()) <= 4 &&
-                qAbs(pixel.green() - surfaceColor.green()) <= 4 &&
-                qAbs(pixel.blue() - surfaceColor.blue()) <= 4 &&
-                qAbs(pixel.alpha() - surfaceColor.alpha()) <= 4) {
-                continue;
-            }
-            if (++contentPixels >= minimumPixels) {
-                return std::max(1, qCeil(depth / ratio));
-            }
-        }
-    }
-    return 1;
 }
 
 struct DisclosureRow final {
@@ -75,15 +48,12 @@ class DisclosureGroupOverlay final : public QWidget {
         setFocusPolicy(Qt::NoFocus);
     }
 
-    void setRows(QVector<DisclosureRow> rows, RowPainter rowPainter, QPixmap collapsedSurface,
-                 const int totalTravel, const int contentRevealThreshold,
-                 const QColor& surfaceColor) {
+    void setRows(QVector<DisclosureRow> rows, QVector<DisclosureRow> followingRows,
+                 RowPainter rowPainter, const int totalTravel, const QColor& surfaceColor) {
         m_rows = std::move(rows);
+        m_followingRows = std::move(followingRows);
         m_rowPainter = std::move(rowPainter);
-        m_collapsedSurface = std::move(collapsedSurface);
         m_totalTravel = std::max(0, totalTravel);
-        m_contentRevealThreshold =
-            std::clamp(contentRevealThreshold, 1, std::max(1, m_totalTravel));
         m_surfaceColor = surfaceColor;
         setProperty("travel", m_totalTravel);
         setProperty("visualTravel", m_totalTravel);
@@ -91,9 +61,13 @@ class DisclosureGroupOverlay final : public QWidget {
         setProperty("rowCount", m_rows.size());
         setProperty("trailingItemText",
                     m_rows.isEmpty() ? QString() : m_rows.constLast().index.data().toString());
-        // Following rows remain a bounded snapshot. Descendants are painted
-        // from persistent model indexes, so a long branch never needs a
-        // branch-height pixmap and its true trailing item remains at the seam.
+        setProperty("followingItemText",
+                    m_followingRows.isEmpty()
+                        ? QString()
+                        : m_followingRows.constFirst().index.data().toString());
+        // Both groups are painted from persistent model indexes, so selection
+        // pills retain delegate geometry and a long branch never needs a
+        // branch-height pixmap.
         setProperty("surfaceCount", 2);
         setProgress(0.0);
     }
@@ -114,6 +88,26 @@ class DisclosureGroupOverlay final : public QWidget {
         setProperty("lastChildBottom", siblingOffset);
         setProperty("branchRelativeSpan", siblingOffset - groupOffset);
         setProperty("seamGap", 0);
+        setProperty("followingTop", siblingOffset);
+        if (!m_rows.isEmpty() && siblingOffset > 0) {
+            const int sourceTop = m_totalTravel - siblingOffset;
+            const int sourceBottom = sourceTop + std::min(siblingOffset, height());
+            auto first = std::lower_bound(m_rows.cbegin(), m_rows.cend(), sourceTop,
+                                          [](const DisclosureRow& candidate, const int y) {
+                                              return candidate.rect.bottom() < y;
+                                          });
+            auto last = first;
+            while (last != m_rows.cend() && last->rect.top() < sourceBottom) {
+                ++last;
+            }
+            setProperty("firstVisibleChildText",
+                        first == m_rows.cend() ? QString() : first->index.data().toString());
+            setProperty("lastVisibleChildText",
+                        first == last ? QString() : std::prev(last)->index.data().toString());
+        } else {
+            setProperty("firstVisibleChildText", QString());
+            setProperty("lastVisibleChildText", QString());
+        }
         update();
     }
 
@@ -140,8 +134,12 @@ class DisclosureGroupOverlay final : public QWidget {
             }
             painter.restore();
         }
-        if (!m_collapsedSurface.isNull()) {
-            painter.drawPixmap(QPoint(0, reveal), m_collapsedSurface);
+        if (!m_followingRows.isEmpty() && m_rowPainter && reveal < height()) {
+            const int sourceBottom = height() - reveal;
+            for (auto row = m_followingRows.cbegin();
+                 row != m_followingRows.cend() && row->rect.top() < sourceBottom; ++row) {
+                m_rowPainter(painter, row->index, row->rect.translated(0, reveal));
+            }
         }
     }
 
@@ -153,17 +151,15 @@ class DisclosureGroupOverlay final : public QWidget {
         if (m_progress >= 1.0) {
             return m_totalTravel;
         }
-        const int reveal = std::clamp(qRound(m_progress * m_totalTravel), 0, m_totalTravel);
-        return reveal < m_contentRevealThreshold ? 0 : reveal;
+        return std::clamp(qRound(m_progress * m_totalTravel), 0, m_totalTravel);
     }
 
     QVector<DisclosureRow> m_rows;
+    QVector<DisclosureRow> m_followingRows;
     RowPainter m_rowPainter;
-    QPixmap m_collapsedSurface;
     QColor m_surfaceColor;
     qreal m_progress = -1.0;
     int m_totalTravel = 0;
-    int m_contentRevealThreshold = 1;
 };
 
 } // namespace
@@ -209,6 +205,7 @@ VkDisclosureTreeView::VkDisclosureTreeView(QWidget* parent) : QTreeView(parent) 
         auto* overlay = static_cast<DisclosureGroupOverlay*>(m_disclosureOverlay.data());
         if (overlay != nullptr) {
             overlay->setProgress(value);
+            updateDisclosureScrollRange(value);
         }
     });
     connect(m_disclosureTimeline, &QTimeLine::finished, this,
@@ -221,6 +218,12 @@ VkDisclosureTreeView::VkDisclosureTreeView(QWidget* parent) : QTreeView(parent) 
             });
     connect(VkThemeManager::instance(), &VkThemeManager::themeChanged, this,
             [this](quint64) { finishDisclosureAnimation(); });
+    connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int) {
+        auto* overlay = static_cast<DisclosureGroupOverlay*>(m_disclosureOverlay.data());
+        if (overlay != nullptr) {
+            updateDisclosureScrollRange(overlay->property("progress").toReal());
+        }
+    });
 }
 
 VkDisclosureTreeView::~VkDisclosureTreeView() {
@@ -248,6 +251,8 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
     if (active != nullptr && m_disclosureIndex == index) {
         QTreeView::setExpanded(index, expanded);
         doItemsLayout();
+        updateGeometries();
+        updateDisclosureScrollRange(active->property("progress").toReal());
         m_disclosureTimeline->toggleDirection();
         return;
     }
@@ -267,6 +272,9 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
     const QRect captureRect(0, affectedTop, viewport()->width(),
                             viewport()->height() - affectedTop);
     const bool currentState = isExpanded(index);
+    updateGeometries();
+    const int currentScrollMaximum =
+        verticalScrollBar() == nullptr ? 0 : verticalScrollBar()->maximum();
     QModelIndex continuation;
     if (currentState) {
         continuation = indexBelow(index);
@@ -278,7 +286,7 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
     }
 
     QVector<DisclosureRow> expandedRows;
-    QPixmap collapsedSurface;
+    QVector<DisclosureRow> followingRows;
     int totalTravel = 0;
     int collapsedContinuationY = -1;
     int expandedContinuationY = -1;
@@ -301,12 +309,24 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
             expandedContinuationY = visualRect(continuation).top();
         }
     };
-    const auto captureCollapsedState = [this, &continuation, &captureRect, &collapsedContinuationY,
-                                        &collapsedSurface]() {
+    const auto captureCollapsedState = [this, &index, &continuation, affectedTop, &captureRect,
+                                        &collapsedContinuationY, &followingRows]() {
+        followingRows.clear();
         if (continuation.isValid()) {
             collapsedContinuationY = visualRect(continuation).top();
         }
-        collapsedSurface = viewport()->grab(captureRect);
+        for (QModelIndex following = indexBelow(index); following.isValid();
+             following = indexBelow(following)) {
+            QRect rowRect = visualRect(following);
+            if (rowRect.height() <= 0) {
+                rowRect.setHeight(std::max(1, sizeHintForIndex(following).height()));
+            }
+            rowRect.translate(0, -affectedTop);
+            if (rowRect.top() >= captureRect.height()) {
+                break;
+            }
+            followingRows.append({QPersistentModelIndex(following), rowRect});
+        }
     };
     if (currentState) {
         captureExpandedState();
@@ -316,6 +336,11 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
 
     QTreeView::setExpanded(index, expanded);
     doItemsLayout();
+    updateGeometries();
+    const int targetScrollMaximum =
+        verticalScrollBar() == nullptr ? 0 : verticalScrollBar()->maximum();
+    m_disclosureCollapsedScrollMaximum = currentState ? targetScrollMaximum : currentScrollMaximum;
+    m_disclosureExpandedScrollMaximum = currentState ? currentScrollMaximum : targetScrollMaximum;
     if (expanded) {
         captureExpandedState();
     } else {
@@ -330,7 +355,7 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
         // following sibling must share one boundary for the entire motion.
         totalTravel = expandedRows.constLast().rect.bottom() + 1;
     }
-    if (totalTravel <= 0 || expandedRows.isEmpty() || collapsedSurface.isNull()) {
+    if (totalTravel <= 0 || expandedRows.isEmpty()) {
         viewport()->update(captureRect);
         return;
     }
@@ -366,25 +391,10 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
         }
     };
 
-    const DisclosureRow& trailingRow = expandedRows.constLast();
-    const qreal ratio = std::max(1.0, viewport()->devicePixelRatioF());
-    QPixmap trailingSurface(
-        QSize(qRound(captureRect.width() * ratio), qRound(trailingRow.rect.height() * ratio)));
-    trailingSurface.setDevicePixelRatio(ratio);
-    trailingSurface.fill(disclosureSurfaceColor());
-    {
-        QPainter trailingPainter(&trailingSurface);
-        QRect trailingRect = trailingRow.rect;
-        trailingRect.moveTop(0);
-        paintRow(trailingPainter, trailingRow.index, trailingRect);
-    }
-    const int contentRevealThreshold =
-        firstContentReveal(trailingSurface, trailingRow.rect.height(), disclosureSurfaceColor());
-
     auto* overlay = new DisclosureGroupOverlay(viewport());
     overlay->setGeometry(captureRect);
-    overlay->setRows(std::move(expandedRows), paintRow, std::move(collapsedSurface), totalTravel,
-                     contentRevealThreshold, disclosureSurfaceColor());
+    overlay->setRows(std::move(expandedRows), std::move(followingRows), paintRow, totalTravel,
+                     disclosureSurfaceColor());
     overlay->setProgress(currentState ? 1.0 : 0.0);
     overlay->show();
     overlay->raise();
@@ -399,9 +409,28 @@ void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const b
         FinderDisclosureDurationMs +
         std::min(100, qRound(24.0 * std::log2(std::max(1.0, branchScreens))));
     m_disclosureTimeline->setDuration(adaptiveDuration);
+    updateDisclosureScrollRange(currentState ? 1.0 : 0.0);
     m_disclosureTimeline->setCurrentTime(currentState ? m_disclosureTimeline->duration() : 0);
     m_disclosureTimeline->setDirection(expanded ? QTimeLine::Forward : QTimeLine::Backward);
     m_disclosureTimeline->start();
+}
+
+void VkDisclosureTreeView::updateDisclosureScrollRange(const qreal progress) {
+    auto* scrollBar = verticalScrollBar();
+    if (m_disclosureOverlay == nullptr || scrollBar == nullptr) {
+        return;
+    }
+    const qreal bounded = std::clamp(progress, 0.0, 1.0);
+    const int maximum =
+        m_disclosureCollapsedScrollMaximum +
+        qRound(bounded * (m_disclosureExpandedScrollMaximum - m_disclosureCollapsedScrollMaximum));
+    const QSignalBlocker blocker(scrollBar);
+    scrollBar->setRange(scrollBar->minimum(), std::max(scrollBar->minimum(), maximum));
+    scrollBar->setValue(
+        std::clamp(m_disclosureVerticalScrollValue, scrollBar->minimum(), scrollBar->maximum()));
+    m_disclosureOverlay->setProperty("collapsedScrollMaximum", m_disclosureCollapsedScrollMaximum);
+    m_disclosureOverlay->setProperty("expandedScrollMaximum", m_disclosureExpandedScrollMaximum);
+    m_disclosureOverlay->setProperty("currentScrollMaximum", scrollBar->maximum());
 }
 
 void VkDisclosureTreeView::finishDisclosureAnimation() {
@@ -416,6 +445,7 @@ void VkDisclosureTreeView::finishDisclosureAnimation() {
     delete m_disclosureOverlay.data();
     m_disclosureOverlay = nullptr;
     m_disclosureIndex = QPersistentModelIndex();
+    updateGeometries();
     viewport()->update(dirty);
 }
 
@@ -469,6 +499,14 @@ void VkDisclosureTreeView::scrollContentsBy(const int dx, const int dy) {
     }
     finishDisclosureAnimation();
     QTreeView::scrollContentsBy(dx, dy);
+}
+
+void VkDisclosureTreeView::updateGeometries() {
+    QTreeView::updateGeometries();
+    auto* overlay = static_cast<DisclosureGroupOverlay*>(m_disclosureOverlay.data());
+    if (overlay != nullptr) {
+        updateDisclosureScrollRange(overlay->property("progress").toReal());
+    }
 }
 
 void VkDisclosureTreeView::wheelEvent(QWheelEvent* event) {

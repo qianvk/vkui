@@ -66,10 +66,12 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     void changeEvent(QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
+    void updateGeometries() override;
     void wheelEvent(QWheelEvent* event) override;
 
   private:
     [[nodiscard]] bool isDescendantOf(const QModelIndex& index, const QModelIndex& ancestor) const;
+    void updateDisclosureScrollRange(qreal progress);
 
     QTimeLine* m_disclosureTimeline = nullptr;
     QPointer<QWidget> m_disclosureOverlay;
@@ -77,6 +79,8 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     QColor m_disclosureSurfaceColor;
     int m_disclosureHorizontalScrollValue = 0;
     int m_disclosureVerticalScrollValue = 0;
+    int m_disclosureCollapsedScrollMaximum = 0;
+    int m_disclosureExpandedScrollMaximum = 0;
     bool m_restoringDisclosureScroll = false;
 };
 
