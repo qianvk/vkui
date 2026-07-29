@@ -17,8 +17,9 @@
 #include <QtGui/QScreen>
 #include <QtGui/QTouchEvent>
 #include <QtGui/QWindow>
-#include <QtWidgets/QApplication>
 #include <QtWidgets/QAbstractButton>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QSizePolicy>
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -143,8 +144,12 @@ void VkPopoverPrivate::setPreferredPlacement(VkPopoverPlacement placement) {
     queueReposition();
 }
 
-void VkPopoverPrivate::setCrossAxisAlignment(
-    const VkPopoverCrossAxisAlignment alignment) {
+VkPopoverPlacement VkPopoverPrivate::resolvedPlacementValue() const noexcept {
+    return finalPlacement.isValid() ? finalPlacement.resolvedPlacement
+                                    : VkPopoverPlacement::Automatic;
+}
+
+void VkPopoverPrivate::setCrossAxisAlignment(const VkPopoverCrossAxisAlignment alignment) {
     if (crossAxisAlignment == alignment) {
         return;
     }
@@ -241,11 +246,12 @@ void VkPopoverPrivate::closeAnimated() {
     Q_EMIT q->aboutToClose();
     state = State::Closing;
     const qreal startOpacity = currentOpacity;
-    animation.start(0.0, 1.0, VkMotionRole::Exit,
-                    [this, startOpacity](qreal progress) {
-                        applyOpacityFrame(startOpacity * (1.0 - progress));
-                    },
-                    [this] { finishClosing(); });
+    animation.start(
+        0.0, 1.0, VkMotionRole::Exit,
+        [this, startOpacity](qreal progress) {
+            applyOpacityFrame(startOpacity * (1.0 - progress));
+        },
+        [this] { finishClosing(); });
 }
 
 void VkPopoverPrivate::closeImmediately() {
@@ -373,6 +379,15 @@ void VkPopoverPrivate::reconnectWindowAndScreen() {
                 reconnectWindowAndScreen();
                 queueReposition();
             });
+    }
+    if (anchorWindow && anchorWindow->windowHandle()) {
+        if (!q->windowHandle()) {
+            (void)q->winId();
+        }
+        if (QWindow* popupWindow = q->windowHandle();
+            popupWindow && popupWindow->transientParent() != anchorWindow->windowHandle()) {
+            popupWindow->setTransientParent(anchorWindow->windowHandle());
+        }
     }
     const QRectF globalAnchor = anchorGlobalRect();
     setObservedScreen(screenForAnchor(globalAnchor));
@@ -542,17 +557,12 @@ bool VkPopoverPrivate::repositionNow() {
     input.arrowWidth = metrics.popoverArrowWidth;
     input.arrowDepth = metrics.popoverArrowDepth;
     input.layoutDirection = anchor->layoutDirection();
-    const auto margin =
-        [&metrics](const int overrideValue) {
-            return overrideValue >= 0
-                ? static_cast<qreal>(overrideValue)
-                : metrics.spacing12;
-        };
-    input.contentMargins = QMarginsF(
-        margin(contentMarginOverride.left()),
-        margin(contentMarginOverride.top()),
-        margin(contentMarginOverride.right()),
-        margin(contentMarginOverride.bottom()));
+    const auto margin = [&metrics](const int overrideValue) {
+        return overrideValue >= 0 ? static_cast<qreal>(overrideValue) : metrics.spacing12;
+    };
+    input.contentMargins =
+        QMarginsF(margin(contentMarginOverride.left()), margin(contentMarginOverride.top()),
+                  margin(contentMarginOverride.right()), margin(contentMarginOverride.bottom()));
     input.outerMargin = std::ceil(metrics.popoverShadowRadius + shadowOffset);
 
     const VkPopoverPlacementResult result = VkPopoverPlacementEngine::calculate(input);
@@ -567,6 +577,12 @@ bool VkPopoverPrivate::repositionNow() {
         return false;
     }
     const QRect popupRect = finalPlacement.popupRect;
+    if (q->minimumSize() != popupRect.size() || q->maximumSize() != popupRect.size()) {
+        // Frameless is only decorative; it does not guarantee that a window
+        // manager will suppress native resize hit tests. Equal constraints
+        // make the anchor-calculated popup geometry authoritative.
+        q->setFixedSize(popupRect.size());
+    }
     if (q->geometry() != popupRect) {
         q->setGeometry(popupRect);
     }
@@ -588,9 +604,9 @@ void VkPopoverPrivate::applyOpacityFrame(qreal opacity) {
 }
 
 void VkPopoverPrivate::startOpenAnimation() {
-    animation.start(currentOpacity, 1.0, VkMotionRole::EmphasizedEnter,
-                    [this](qreal opacity) { applyOpacityFrame(opacity); },
-                    [this] { finishOpening(); });
+    animation.start(
+        currentOpacity, 1.0, VkMotionRole::EmphasizedEnter,
+        [this](qreal opacity) { applyOpacityFrame(opacity); }, [this] { finishOpening(); });
 }
 
 void VkPopoverPrivate::finishOpening() {
@@ -686,12 +702,15 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
                 const bool activatesCurrentAnchor = forwardedButton == anchor.data();
                 if (activatesCurrentAnchor) {
                     synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
-                    QTimer::singleShot(0, forwardedButton, [forwardedButton] {
-                        if (forwardedButton && forwardedButton->isEnabled() &&
-                            forwardedButton->isVisible()) {
-                            forwardedButton->click();
-                        }
-                    });
+                    QTimer::singleShot(0, forwardedButton,
+                                       [forwardedButton, forwardedWindow, globalPoint] {
+                                           if (forwardedButton && forwardedButton->isEnabled() &&
+                                               forwardedButton->isVisible()) {
+                                               forwardedButton->click();
+                                               synchronizeButtonHover(forwardedWindow,
+                                                                      forwardedButton, globalPoint);
+                                           }
+                                       });
                     return true;
                 }
                 // Finish the old native window before invoking the next anchor. Keeping a fading
@@ -700,14 +719,14 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
                 synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
                 // Bind the queued replay to the destination, not this popover. Closing a modal-like
                 // popover can unwind a nested event loop and destroy `q` before the next turn.
-                QTimer::singleShot(0, forwardedButton,
-                                   [forwardedButton, forwardedWindow, globalPoint] {
-                    if (forwardedButton && forwardedButton->isEnabled() &&
-                        forwardedButton->isVisible()) {
-                        forwardedButton->click();
-                        synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
-                    }
-                });
+                QTimer::singleShot(
+                    0, forwardedButton, [forwardedButton, forwardedWindow, globalPoint] {
+                        if (forwardedButton && forwardedButton->isEnabled() &&
+                            forwardedButton->isVisible()) {
+                            forwardedButton->click();
+                            synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                        }
+                    });
                 return true;
             }
             closeAnimated();
@@ -889,7 +908,7 @@ void VkPopoverPrivate::paint(QPaintEvent* event) {
 }
 
 VkPopover::VkPopover(QWidget* parent)
-    : QWidget(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
+    : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
       d(std::make_unique<VkPopoverPrivate>(this)) {
     Q_ASSERT_X(QThread::currentThread() == thread(), "VkPopover::VkPopover",
                "VkPopover must be created on the GUI thread");
@@ -898,6 +917,8 @@ VkPopover::VkPopover(QWidget* parent)
     setAttribute(Qt::WA_DeleteOnClose, false);
     setAutoFillBackground(false);
     setFocusPolicy(Qt::StrongFocus);
+    setCursor(Qt::ArrowCursor);
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     setWindowModality(Qt::NonModal);
     hide();
 }
@@ -932,13 +953,15 @@ VkPopoverPlacement VkPopover::preferredPlacement() const noexcept {
     return d->preferredPlacement;
 }
 
-void VkPopover::setCrossAxisAlignment(
-    const VkPopoverCrossAxisAlignment alignment) {
+VkPopoverPlacement VkPopover::resolvedPlacement() const noexcept {
+    return d->resolvedPlacementValue();
+}
+
+void VkPopover::setCrossAxisAlignment(const VkPopoverCrossAxisAlignment alignment) {
     d->setCrossAxisAlignment(alignment);
 }
 
-VkPopoverCrossAxisAlignment
-VkPopover::crossAxisAlignment() const noexcept {
+VkPopoverCrossAxisAlignment VkPopover::crossAxisAlignment() const noexcept {
     return d->crossAxisAlignment;
 }
 
