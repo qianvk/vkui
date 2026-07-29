@@ -54,7 +54,7 @@ class VkPopoverPrivate;
  *
  * VkPopover must be created and used on the GUI thread. The optional parent is
  * used for QObject lifetime and transient-window association; the popover is
- * always a frameless secondary window. Outside dismissal is handled by
+ * always a fixed-size, frameless popup window. Outside dismissal is handled by
  * VkPopover itself so the clicked widget still receives the original event.
  */
 class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
@@ -88,8 +88,17 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
      */
     void refreshGeometry();
 
+    /**
+     * Sets the first placement direction to try.
+     *
+     * The direction is a preference rather than a hard constraint. VkPopover
+     * flips to another edge before shrinking content against its boundary.
+     */
     void setPreferredPlacement(VkPopoverPlacement placement);
     [[nodiscard]] VkPopoverPlacement preferredPlacement() const noexcept;
+
+    /** Returns the direction selected by the latest successful layout. */
+    [[nodiscard]] VkPopoverPlacement resolvedPlacement() const noexcept;
 
     void setCrossAxisAlignment(VkPopoverCrossAxisAlignment alignment);
     [[nodiscard]] VkPopoverCrossAxisAlignment crossAxisAlignment() const noexcept;

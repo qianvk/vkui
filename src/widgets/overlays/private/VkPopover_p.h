@@ -6,8 +6,8 @@
 #include "VkPopoverPlacementEngine_p.h"
 #include "VkPopoverShadowCache_p.h"
 
-#include <QtCore/QMetaObject>
 #include <QtCore/QMargins>
+#include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
 #include <QtCore/QRect>
 #include <QtGui/QPainterPath>
@@ -55,8 +55,8 @@ class VkPopoverPrivate final : public QObject {
     void refreshGeometry();
 
     void setPreferredPlacement(VkPopoverPlacement placement);
-    void setCrossAxisAlignment(
-        VkPopoverCrossAxisAlignment alignment);
+    [[nodiscard]] VkPopoverPlacement resolvedPlacementValue() const noexcept;
+    void setCrossAxisAlignment(VkPopoverCrossAxisAlignment alignment);
     void setBoundaryWidget(QWidget* boundary);
     [[nodiscard]] QWidget* boundaryWidgetValue() const noexcept;
     void setClosePolicy(VkPopoverClosePolicy policy) noexcept;
@@ -72,8 +72,7 @@ class VkPopoverPrivate final : public QObject {
     void paint(QPaintEvent* event);
 
     VkPopoverPlacement preferredPlacement = VkPopoverPlacement::Automatic;
-    VkPopoverCrossAxisAlignment crossAxisAlignment =
-        VkPopoverCrossAxisAlignment::Center;
+    VkPopoverCrossAxisAlignment crossAxisAlignment = VkPopoverCrossAxisAlignment::Center;
     VkPopoverClosePolicy closePolicy =
         VkPopoverClosePolicyFlag::OutsideClick | VkPopoverClosePolicyFlag::EscapeKey |
         VkPopoverClosePolicyFlag::AnchorDestroyed | VkPopoverClosePolicyFlag::WindowDeactivated;
