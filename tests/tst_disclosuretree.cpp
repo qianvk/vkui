@@ -88,7 +88,13 @@ void DisclosureTreeTest::geometryBoundsIconTextAndPill() {
     QVERIFY(option.rect.contains(geometry.textRect));
     QVERIFY(geometry.pillRect.contains(geometry.iconRect.center()));
     QVERIFY(geometry.pillRect.contains(geometry.textRect.center()));
+    QVERIFY(option.rect.adjusted(2, 0, -2, 0).contains(geometry.pillRect));
     QVERIFY(geometry.pillRect.right() < option.rect.right());
+
+    option.rect.moveLeft(0);
+    const vkui::VkTreeItemGeometry rootGeometry = vkui::treeItemGeometry(option, metrics);
+    QCOMPARE(rootGeometry.pillRect.left(), 2);
+    QVERIFY(option.rect.adjusted(2, 0, -2, 0).contains(rootGeometry.pillRect));
 }
 
 void DisclosureTreeTest::disclosureUsesReversibleSharedBoundary() {
