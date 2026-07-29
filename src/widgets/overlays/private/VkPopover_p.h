@@ -64,6 +64,7 @@ class VkPopoverPrivate final : public QObject {
     void setClosePolicy(VkPopoverClosePolicy policy) noexcept;
 
     void openFor(QWidget* anchor, const QRect& anchorRectInAnchor);
+    [[nodiscard]] bool toggleFor(QWidget* anchor, const QRect& anchorRectInAnchor);
     void closeAnimated();
     void closeImmediately();
     void shutdown();
@@ -104,6 +105,7 @@ class VkPopoverPrivate final : public QObject {
     QPointer<QWidget> contentViewport;
     QPointer<QWidget> content;
     QPointer<QWidget> anchor;
+    QPointer<QWidget> suppressedToggleAnchor;
     QPointer<QWidget> anchorWindow;
     QPointer<QWidget> boundaryWidget;
     QRect anchorLocalRect;

@@ -142,6 +142,16 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
      */
     void openFor(QWidget* anchor, const QRect& anchorRectInAnchor);
 
+    /**
+     * Atomically toggles this popover for an anchor or anchor sub-rectangle.
+     *
+     * Repeated pointer clicks are handled correctly even when the platform
+     * hides a native popup before forwarding the anchor button's click.
+     * Returns true when the resulting logical state is open.
+     */
+    bool toggleFor(QWidget* anchor);
+    bool toggleFor(QWidget* anchor, const QRect& anchorRectInAnchor);
+
     void closeAnimated();
     void closeImmediately();
 
