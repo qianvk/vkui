@@ -414,8 +414,28 @@ void VkDisclosureTreeView::changeEvent(QEvent *event)
 void VkDisclosureTreeView::resizeEvent(
     QResizeEvent *event)
 {
-    finishDisclosureAnimation();
+    const bool preserveHorizontalResize =
+        m_disclosureOverlay != nullptr
+        && event != nullptr
+        && event->oldSize().height()
+            == event->size().height();
+    if (!preserveHorizontalResize) {
+        finishDisclosureAnimation();
+    }
     QTreeView::resizeEvent(event);
+    if (preserveHorizontalResize
+        && m_disclosureOverlay != nullptr) {
+        QRect geometry =
+            m_disclosureOverlay->geometry();
+        geometry.setLeft(0);
+        geometry.setWidth(viewport()->width());
+        geometry.setHeight(
+            std::max(
+                0,
+                viewport()->height()
+                    - geometry.top()));
+        m_disclosureOverlay->setGeometry(geometry);
+    }
 }
 
 void VkDisclosureTreeView::scrollContentsBy(

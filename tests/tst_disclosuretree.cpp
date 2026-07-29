@@ -81,6 +81,18 @@ void DisclosureTreeTest::
         1);
     QVERIFY(overlay->property("travel").toInt() > 0);
 
+    // Popovers may adapt their content width while disclosure is running.
+    // A horizontal-only resize must preserve the reversible surface.
+    tree.resize(390, tree.height());
+    QCoreApplication::processEvents();
+    QCOMPARE(
+        tree.viewport()
+            ->findChildren<QWidget *>(
+                QStringLiteral(
+                    "vkDisclosureGroupTransition"))
+            .size(),
+        1);
+
     // A second click reverses the same time line and surface instead of
     // constructing an unrelated animation with a discontinuous curve.
     tree.setExpandedAnimated(folderIndex, false);
