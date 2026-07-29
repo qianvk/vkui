@@ -207,9 +207,15 @@ void DisclosureTreeTest::everyFrameKeepsChildAndSiblingVisuallyJoined() {
         const ColorBand child = colorBand(frame, ChildColor);
         const ColorBand following = colorBand(frame, SiblingColor);
         const int siblingOffset = overlay->property("siblingOffset").toInt();
+        QCOMPARE(overlay->property("lastChildBottom").toInt(), siblingOffset);
+        QCOMPARE(overlay->property("followingTop").toInt(), siblingOffset);
+        QCOMPARE(overlay->property("seamGap").toInt(), 0);
         QVERIFY2(following.first >= 0,
                  qPrintable(QStringLiteral("Sibling missing at %1 ms").arg(time)));
-        QVERIFY2(siblingOffset <= 0 || child.first >= 0,
+        // At the first physical pixel the trailing row's bottom padding can
+        // be visible before its colored probe. Geometry must still move; do
+        // not quantize the animation to the first painted glyph.
+        QVERIFY2(siblingOffset <= 2 || child.first >= 0,
                  qPrintable(QStringLiteral("Sibling moved %1 px before a "
                                            "child became visible at %2 ms")
                                 .arg(siblingOffset)
@@ -276,6 +282,7 @@ void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
     tree.show();
     QTest::qWait(20);
     tree.setCurrentIndex(model.index(1, 0));
+    const int collapsedScrollMaximum = tree.verticalScrollBar()->maximum();
     tree.setExpandedAnimated(model.index(0, 0), true);
 
     auto* overlay =
@@ -284,20 +291,19 @@ void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
     QVERIFY(overlay != nullptr);
     QVERIFY(timeline != nullptr);
     timeline->setPaused(true);
-    const int anchoredScrollValue = tree.verticalScrollBar()->value();
-    tree.verticalScrollBar()->setValue(
-        std::min(tree.verticalScrollBar()->maximum(), anchoredScrollValue + 80));
-    QCoreApplication::processEvents();
-    QCOMPARE(tree.verticalScrollBar()->value(), anchoredScrollValue);
-    QCOMPARE(tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition")),
-             overlay);
     const int totalTravel = overlay->property("totalTravel").toInt();
     const int visualTravel = overlay->property("visualTravel").toInt();
     QCOMPARE(visualTravel, totalTravel);
     QVERIFY(totalTravel > overlay->height());
     QCOMPARE(overlay->property("trailingItemText").toString(), QStringLiteral("第120章"));
+    QCOMPARE(overlay->property("followingItemText").toString(), QStringLiteral("第二卷"));
+    QCOMPARE(overlay->property("collapsedScrollMaximum").toInt(), collapsedScrollMaximum);
+    const int expandedScrollMaximum = overlay->property("expandedScrollMaximum").toInt();
+    QVERIFY(expandedScrollMaximum > collapsedScrollMaximum);
+    QCOMPARE(tree.verticalScrollBar()->maximum(), collapsedScrollMaximum);
 
     int previousOffset = -1;
+    int previousScrollMaximum = collapsedScrollMaximum;
     const QString frameDirectory = qEnvironmentVariable("VKUI_DISCLOSURE_FRAME_DIRECTORY");
     if (!frameDirectory.isEmpty()) {
         QVERIFY(QDir().mkpath(frameDirectory));
@@ -306,10 +312,18 @@ void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
         timeline->setCurrentTime(time);
         QCoreApplication::processEvents();
         const int offset = overlay->property("siblingOffset").toInt();
+        QCOMPARE(overlay->property("followingTop").toInt(), offset);
         QVERIFY(offset >= previousOffset);
         QVERIFY(offset >= 0);
         QVERIFY(offset <= visualTravel);
         previousOffset = offset;
+        const qreal progress = overlay->property("progress").toReal();
+        const int expectedScrollMaximum =
+            collapsedScrollMaximum +
+            qRound(progress * (expandedScrollMaximum - collapsedScrollMaximum));
+        QCOMPARE(tree.verticalScrollBar()->maximum(), expectedScrollMaximum);
+        QVERIFY(tree.verticalScrollBar()->maximum() >= previousScrollMaximum);
+        previousScrollMaximum = tree.verticalScrollBar()->maximum();
 
         const QImage frame = overlay->grab().toImage();
         if (!frameDirectory.isEmpty()) {
@@ -317,6 +331,10 @@ void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
                 QDir(frameDirectory)
                     .filePath(
                         QStringLiteral("long-frame-%1.png").arg(time, 3, 10, QLatin1Char('0')))));
+            QVERIFY(tree.viewport()->grab().save(
+                QDir(frameDirectory)
+                    .filePath(QStringLiteral("long-viewport-frame-%1.png")
+                                  .arg(time, 3, 10, QLatin1Char('0')))));
         }
         const ColorBand child = colorBand(frame, ChildColor);
         const ColorBand trailingChild = colorBand(frame, TrailingChildColor);
@@ -344,7 +362,18 @@ void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
         }
         if (time == 8) {
             QVERIFY(offset > 0);
+            QCOMPARE(overlay->property("lastVisibleChildText").toString(),
+                     QStringLiteral("第120章"));
             QVERIFY(offset <= 56);
+            QVERIFY(tree.verticalScrollBar()->maximum() < expandedScrollMaximum);
+        }
+        if (time == 64) {
+            tree.verticalScrollBar()->setValue(std::min(tree.verticalScrollBar()->maximum(), 80));
+            QCoreApplication::processEvents();
+            QCOMPARE(tree.verticalScrollBar()->value(), 0);
+            QCOMPARE(
+                tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition")),
+                overlay);
         }
     }
 
