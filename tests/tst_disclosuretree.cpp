@@ -61,6 +61,10 @@ void DisclosureTreeTest::
     vkui::VkDisclosureTreeView tree;
     tree.setModel(&model);
     tree.setUniformRowHeights(true);
+    tree.setDisclosureSurfaceColor(Qt::white);
+    QCOMPARE(
+        tree.disclosureSurfaceColor(),
+        QColor(Qt::white));
     tree.resize(320, 220);
     tree.show();
     QTest::qWait(20);

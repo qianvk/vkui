@@ -226,6 +226,24 @@ VkDisclosureTreeView::~VkDisclosureTreeView()
     finishDisclosureAnimation();
 }
 
+void VkDisclosureTreeView::setDisclosureSurfaceColor(
+    const QColor &color)
+{
+    if (m_disclosureSurfaceColor == color) {
+        return;
+    }
+    finishDisclosureAnimation();
+    m_disclosureSurfaceColor = color;
+}
+
+QColor VkDisclosureTreeView::disclosureSurfaceColor()
+    const
+{
+    return m_disclosureSurfaceColor.isValid()
+        ? m_disclosureSurfaceColor
+        : palette().color(QPalette::Base);
+}
+
 void VkDisclosureTreeView::setExpandedAnimated(
     const QModelIndex &index,
     const bool expanded)
@@ -360,7 +378,7 @@ void VkDisclosureTreeView::setExpandedAnimated(
     overlay->setSurface(
         std::move(strip),
         travel,
-        palette().color(QPalette::Base));
+        disclosureSurfaceColor());
     overlay->setProgress(
         currentState ? 1.0 : 0.0);
     overlay->show();

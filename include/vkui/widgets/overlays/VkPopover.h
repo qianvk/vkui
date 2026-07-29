@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QtCore/QFlags>
+#include <QtCore/QMargins>
 #include <QtCore/QMetaType>
 #include <QtCore/QRect>
 #include <QtWidgets/QWidget>
@@ -59,6 +60,20 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
      */
     void setContentWidget(QWidget* content);
     [[nodiscard]] QWidget* contentWidget() const noexcept;
+
+    /**
+     * Overrides the padding between the body and content.
+     *
+     * Negative values restore the theme default on the corresponding edge.
+     */
+    void setContentMargins(const QMargins& margins);
+    [[nodiscard]] QMargins contentMargins() const noexcept;
+
+    /**
+     * Recalculates an open popover immediately after an animated content-size
+     * step. Closed popovers retain the new content size for their next open.
+     */
+    void refreshGeometry();
 
     void setPreferredPlacement(VkPopoverPlacement placement);
     [[nodiscard]] VkPopoverPlacement preferredPlacement() const noexcept;

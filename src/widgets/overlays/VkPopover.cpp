@@ -117,6 +117,24 @@ QWidget* VkPopoverPrivate::contentWidget() const noexcept {
     return content.data();
 }
 
+void VkPopoverPrivate::setContentMargins(const QMargins& margins) {
+    if (contentMarginOverride == margins) {
+        return;
+    }
+    contentMarginOverride = margins;
+    queueReposition();
+}
+
+QMargins VkPopoverPrivate::contentMargins() const noexcept {
+    return contentMarginOverride;
+}
+
+void VkPopoverPrivate::refreshGeometry() {
+    if (state != State::Closed && anchor && content) {
+        (void)repositionNow();
+    }
+}
+
 void VkPopoverPrivate::setPreferredPlacement(VkPopoverPlacement placement) {
     if (!validPlacement(placement) || preferredPlacement == placement) {
         return;
@@ -479,8 +497,17 @@ bool VkPopoverPrivate::repositionNow() {
     input.arrowWidth = metrics.popoverArrowWidth;
     input.arrowDepth = metrics.popoverArrowDepth;
     input.layoutDirection = anchor->layoutDirection();
-    input.contentMargins =
-        QMarginsF(metrics.spacing12, metrics.spacing12, metrics.spacing12, metrics.spacing12);
+    const auto margin =
+        [&metrics](const int overrideValue) {
+            return overrideValue >= 0
+                ? static_cast<qreal>(overrideValue)
+                : metrics.spacing12;
+        };
+    input.contentMargins = QMarginsF(
+        margin(contentMarginOverride.left()),
+        margin(contentMarginOverride.top()),
+        margin(contentMarginOverride.right()),
+        margin(contentMarginOverride.bottom()));
     input.outerMargin = std::ceil(metrics.popoverShadowRadius + shadowOffset);
 
     const VkPopoverPlacementResult result = VkPopoverPlacementEngine::calculate(input);
@@ -822,6 +849,18 @@ void VkPopover::setContentWidget(QWidget* content) {
 
 QWidget* VkPopover::contentWidget() const noexcept {
     return d->contentWidget();
+}
+
+void VkPopover::setContentMargins(const QMargins& margins) {
+    d->setContentMargins(margins);
+}
+
+QMargins VkPopover::contentMargins() const noexcept {
+    return d->contentMargins();
+}
+
+void VkPopover::refreshGeometry() {
+    d->refreshGeometry();
 }
 
 void VkPopover::setPreferredPlacement(VkPopoverPlacement placement) {

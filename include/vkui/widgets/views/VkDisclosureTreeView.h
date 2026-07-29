@@ -4,6 +4,7 @@
 
 #include <QPersistentModelIndex>
 #include <QPointer>
+#include <QColor>
 #include <QStyleOptionViewItem>
 #include <QTreeView>
 #include <vkui/VkUiGlobal.h>
@@ -54,6 +55,15 @@ public:
         bool expanded);
     void finishDisclosureAnimation();
 
+    /**
+     * Sets the solid surface behind captured rows.
+     *
+     * Transparent views embedded in a painted parent, such as a popover,
+     * should pass that parent's semantic background color explicitly.
+     */
+    void setDisclosureSurfaceColor(const QColor &color);
+    [[nodiscard]] QColor disclosureSurfaceColor() const;
+
 protected:
     void changeEvent(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -69,6 +79,7 @@ private:
     QTimeLine *m_disclosureTimeline = nullptr;
     QPointer<QWidget> m_disclosureOverlay;
     QPersistentModelIndex m_disclosureIndex;
+    QColor m_disclosureSurfaceColor;
 };
 
 } // namespace vkui

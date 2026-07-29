@@ -60,6 +60,7 @@ class PopoverPlacementTest final : public QObject {
     void anchorMovementRepositionsWithoutRecreation();
     void outsideButtonClickClosesAndForwardsOnce();
     void interruptedAnimationRetargetsCleanly();
+    void customMarginsAndRefreshResizeOpenPopover();
 };
 
 void PopoverPlacementTest::forcedPlacements_data() {
@@ -226,6 +227,34 @@ void PopoverPlacementTest::anchorMovementRepositionsWithoutRecreation() {
     anchor.move(260, 180);
     QTRY_VERIFY(popover.pos() != original);
     QVERIFY(popover.isOpen());
+    popover.closeImmediately();
+    manager->setAnimationsEnabled(animations);
+}
+
+void PopoverPlacementTest::customMarginsAndRefreshResizeOpenPopover() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool animations = manager->animationsEnabled();
+    manager->setAnimationsEnabled(false);
+    QWidget anchor;
+    anchor.setGeometry(200, 120, 80, 30);
+    anchor.show();
+    vkui::VkPopover popover;
+    auto* content = new QWidget;
+    content->setFixedSize(120, 80);
+    popover.setContentWidget(content);
+    popover.setContentMargins(QMargins(5, 4, 5, 4));
+    QCOMPARE(
+        popover.contentMargins(),
+        QMargins(5, 4, 5, 4));
+    popover.openFor(&anchor);
+    QTRY_VERIFY(popover.isOpen());
+    const int originalWidth = popover.width();
+    content->setFixedWidth(220);
+    popover.refreshGeometry();
+    QVERIFY(popover.width() > originalWidth);
+    QVERIFY(
+        content->geometry().right()
+        < popover.rect().right());
     popover.closeImmediately();
     manager->setAnimationsEnabled(animations);
 }
