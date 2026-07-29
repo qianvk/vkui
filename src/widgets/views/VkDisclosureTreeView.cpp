@@ -17,6 +17,76 @@ namespace {
 
 constexpr int FinderDisclosureDurationMs = 200;
 
+QEasingCurve finderDisclosureEasing()
+{
+    // Frame captures of NSOutlineView's animator show immediate motion rather
+    // than the near-zero initial velocity of InSine. This is the equivalent
+    // cubic timing function used by AppKit for the disclosure transaction.
+    QEasingCurve easing(QEasingCurve::BezierSpline);
+    easing.addCubicBezierSegment(
+        QPointF(0.25, 0.10),
+        QPointF(0.25, 1.00),
+        QPointF(1.00, 1.00));
+    return easing;
+}
+
+int minimumVisibleReveal(
+    const QPixmap &rowSurface,
+    const QColor &surfaceColor)
+{
+    if (rowSurface.isNull()) {
+        return 1;
+    }
+    const QImage image =
+        rowSurface.toImage()
+            .convertToFormat(
+                QImage::Format_ARGB32_Premultiplied);
+    const qreal ratio =
+        std::max(1.0, rowSurface.devicePixelRatio());
+    const int minimumVisiblePixels =
+        std::max(4, qRound(6.0 * ratio));
+    const auto differsFromSurface =
+        [&surfaceColor](const QColor &pixel) {
+            return qAbs(
+                       pixel.red()
+                       - surfaceColor.red())
+                    > 4
+                || qAbs(
+                       pixel.green()
+                       - surfaceColor.green())
+                    > 4
+                || qAbs(
+                       pixel.blue()
+                       - surfaceColor.blue())
+                    > 4
+                || qAbs(
+                       pixel.alpha()
+                       - surfaceColor.alpha())
+                    > 4;
+        };
+    for (int depth = 1;
+         depth <= image.height();
+         ++depth) {
+        const int y = image.height() - depth;
+        int visiblePixels = 0;
+        for (int x = 0;
+             x < image.width();
+             ++x) {
+            if (differsFromSurface(
+                    image.pixelColor(x, y))) {
+                ++visiblePixels;
+                if (visiblePixels
+                    >= minimumVisiblePixels) {
+                    return std::max(
+                        1,
+                        qCeil(depth / ratio));
+                }
+            }
+        }
+    }
+    return 1;
+}
+
 class DisclosureGroupOverlay final : public QWidget
 {
 public:
@@ -34,13 +104,21 @@ public:
     void setSurface(
         QPixmap expandedSurface,
         const int travel,
+        const int minimumReveal,
         const QColor &surfaceColor)
     {
         m_expandedSurface =
             std::move(expandedSurface);
         m_travel = std::max(0, travel);
+        m_minimumReveal =
+            std::clamp(
+                minimumReveal,
+                1,
+                std::max(1, m_travel));
         m_surfaceColor = surfaceColor;
         setProperty("travel", m_travel);
+        setProperty(
+            "minimumReveal", m_minimumReveal);
         // The single immutable surface contains both descendants and every
         // following row, so their relative geometry cannot drift.
         setProperty("surfaceCount", 1);
@@ -57,11 +135,10 @@ public:
             return;
         }
         m_progress = bounded;
-        const int groupOffset =
-            qRound(m_progress * m_travel)
-            - m_travel;
         const int siblingOffset =
-            groupOffset + m_travel;
+            visibleReveal();
+        const int groupOffset =
+            siblingOffset - m_travel;
         setProperty("progress", m_progress);
         setProperty("groupOffset", groupOffset);
         setProperty("siblingOffset", siblingOffset);
@@ -84,8 +161,7 @@ protected:
             event->rect(), m_surfaceColor);
         if (!m_expandedSurface.isNull()) {
             const int groupOffset =
-                qRound(m_progress * m_travel)
-                - m_travel;
+                visibleReveal() - m_travel;
             painter.drawPixmap(
                 QPoint(0, groupOffset),
                 m_expandedSurface);
@@ -93,10 +169,30 @@ protected:
     }
 
 private:
+    [[nodiscard]] int visibleReveal() const
+    {
+        if (m_progress <= 0.0
+            || m_travel <= 0) {
+            return 0;
+        }
+        if (m_progress >= 1.0) {
+            return m_travel;
+        }
+        return std::clamp(
+            m_minimumReveal
+                + qRound(
+                    m_progress
+                    * (m_travel
+                       - m_minimumReveal)),
+            m_minimumReveal,
+            m_travel);
+    }
+
     QPixmap m_expandedSurface;
     QColor m_surfaceColor;
     qreal m_progress = -1.0;
     int m_travel = 0;
+    int m_minimumReveal = 1;
 };
 
 } // namespace
@@ -191,10 +287,8 @@ VkDisclosureTreeView::VkDisclosureTreeView(QWidget *parent)
             FinderDisclosureDurationMs, this);
     m_disclosureTimeline->setObjectName(
         QStringLiteral("vkDisclosureTimeline"));
-    // Matches the Finder/NSOutlineView community reference used by VkUI's
-    // filesystem: a 0.2 second NSAnimationEaseIn disclosure.
     m_disclosureTimeline->setEasingCurve(
-        QEasingCurve::InSine);
+        finderDisclosureEasing());
     m_disclosureTimeline->setUpdateInterval(8);
     connect(
         m_disclosureTimeline,
@@ -310,17 +404,54 @@ void VkDisclosureTreeView::setExpandedAnimated(
     }
 
     QPixmap expandedSurface;
+    QPixmap trailingChildSurface;
     int travel = 0;
     int collapsedContinuationY = -1;
     int expandedContinuationY = -1;
+    const auto captureExpandedState =
+        [this,
+         &index,
+         &continuation,
+         &captureRect,
+         &travel,
+         &expandedContinuationY,
+         &expandedSurface,
+         &trailingChildSurface]() {
+            travel = expandedBranchHeight(index);
+            if (continuation.isValid()) {
+                expandedContinuationY =
+                    visualRect(continuation).top();
+            }
+            expandedSurface =
+                viewport()->grab(captureRect);
+            QModelIndex lastDescendant;
+            for (QModelIndex child =
+                     indexBelow(index);
+                 child.isValid()
+                 && isDescendantOf(
+                     child, index);
+                 child = indexBelow(child)) {
+                lastDescendant = child;
+            }
+            if (!lastDescendant.isValid()) {
+                return;
+            }
+            const QRect lastRect =
+                visualRect(lastDescendant);
+            if (!lastRect.isValid()
+                || lastRect.height() <= 0) {
+                return;
+            }
+            trailingChildSurface =
+                viewport()->grab(
+                    QRect(
+                        0,
+                        lastRect.top(),
+                        viewport()->width(),
+                        lastRect.height()));
+        };
     if (currentState) {
-        travel = expandedBranchHeight(index);
-        if (continuation.isValid()) {
-            expandedContinuationY =
-                visualRect(continuation).top();
-        }
-        expandedSurface =
-            viewport()->grab(captureRect);
+        captureExpandedState();
     } else {
         if (continuation.isValid()) {
             collapsedContinuationY =
@@ -331,13 +462,7 @@ void VkDisclosureTreeView::setExpandedAnimated(
     QTreeView::setExpanded(index, expanded);
     doItemsLayout();
     if (expanded) {
-        travel = expandedBranchHeight(index);
-        if (continuation.isValid()) {
-            expandedContinuationY =
-                visualRect(continuation).top();
-        }
-        expandedSurface =
-            viewport()->grab(captureRect);
+        captureExpandedState();
     } else {
         if (continuation.isValid()) {
             collapsedContinuationY =
@@ -362,6 +487,9 @@ void VkDisclosureTreeView::setExpandedAnimated(
     overlay->setSurface(
         std::move(expandedSurface),
         travel,
+        minimumVisibleReveal(
+            trailingChildSurface,
+            disclosureSurfaceColor()),
         disclosureSurfaceColor());
     overlay->setProgress(
         currentState ? 1.0 : 0.0);

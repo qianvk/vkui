@@ -40,8 +40,10 @@ treeItemGeometry(
  * Children and all following siblings are captured in one expanded surface.
  * The complete surface translates from minus the branch height to zero, so
  * descendants emerge from the folder edge while every relative item position
- * stays invariant and no blank seam can form. An opposite click reverses the
- * same geometry path without rebuilding the motion segment.
+ * stays invariant and no blank seam can form. The first visible step is
+ * derived from the trailing child row's rendered pixels, preventing following
+ * siblings from moving before descendant content appears. An opposite click
+ * reverses the same geometry path without rebuilding the motion segment.
  */
 class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView
 {
