@@ -316,22 +316,32 @@ void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
 
     vkui::VkPopover popover(&window);
     auto* content = new QWidget;
-    content->setFixedSize(360, 520);
+    content->setMinimumSize(1, 1);
     popover.setContentWidget(content);
+    popover.setPreferredContentSize(QSize(360, 520));
     popover.setBoundaryWidget(&boundary);
+    QCOMPARE(popover.preferredContentSize(), QSize(360, 520));
     QCOMPARE(popover.boundaryWidget(), &boundary);
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
 
+    auto* viewport = popover.findChild<QWidget*>(QStringLiteral("vkuiPopoverContentViewport"),
+                                                 Qt::FindDirectChildrenOnly);
+    QVERIFY(viewport != nullptr);
     const auto boundaryGlobalRect = [&boundary] {
         return QRect(boundary.mapToGlobal(QPoint()), boundary.size());
     };
     QVERIFY(boundaryGlobalRect().contains(popover.geometry()));
+    QVERIFY(popover.rect().contains(viewport->geometry()));
+    QCOMPARE(content->geometry(), viewport->rect());
+    QVERIFY(content->height() < popover.preferredContentSize().height());
     const QRect initial = popover.geometry();
 
     boundary.resize(360, 300);
     QTRY_VERIFY(popover.geometry() != initial);
     QVERIFY(boundaryGlobalRect().contains(popover.geometry()));
+    QVERIFY(popover.rect().contains(viewport->geometry()));
+    QCOMPARE(content->geometry(), viewport->rect());
 
     popover.closeImmediately();
     popover.setBoundaryWidget(nullptr);

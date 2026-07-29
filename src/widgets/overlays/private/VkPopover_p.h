@@ -50,6 +50,8 @@ class VkPopoverPrivate final : public QObject {
 
     void setContentWidget(QWidget* content);
     [[nodiscard]] QWidget* contentWidget() const noexcept;
+    void setPreferredContentSize(const QSize& size);
+    [[nodiscard]] QSize preferredContentSizeValue() const noexcept;
     void setContentMargins(const QMargins& margins);
     [[nodiscard]] QMargins contentMargins() const noexcept;
     void refreshGeometry();
@@ -99,6 +101,7 @@ class VkPopoverPrivate final : public QObject {
     void handleAnchorDestroyed();
 
     VkPopover* q = nullptr;
+    QPointer<QWidget> contentViewport;
     QPointer<QWidget> content;
     QPointer<QWidget> anchor;
     QPointer<QWidget> anchorWindow;
@@ -118,6 +121,7 @@ class VkPopoverPrivate final : public QObject {
     bool repositionQueued = false;
     bool internalHide = false;
     qreal currentOpacity = 1.0;
+    QSize preferredContentSize;
     QMargins contentMarginOverride{-1, -1, -1, -1};
     VkPopoverGeometryMetrics geometryMetrics;
 

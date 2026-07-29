@@ -54,6 +54,12 @@ VkPopoverGeometryMetrics popoverGeometryMetrics(const VkMetricTokens& metrics) {
 } // namespace
 
 VkPopoverPrivate::VkPopoverPrivate(VkPopover* popover) : q(popover), animation(popover) {
+    contentViewport = new QWidget(q);
+    contentViewport->setObjectName(QStringLiteral("vkuiPopoverContentViewport"));
+    contentViewport->setAutoFillBackground(false);
+    contentViewport->setAttribute(Qt::WA_StyledBackground, false);
+    contentViewport->hide();
+
     auto* manager = VkThemeManager::instance();
     geometryMetrics = popoverGeometryMetrics(manager->theme().metrics());
     themeChangedConnection = connect(manager, &VkThemeManager::themeChanged, q, [this](quint64) {
@@ -90,17 +96,26 @@ void VkPopoverPrivate::setContentWidget(QWidget* newContent) {
     delete oldContent;
 
     if (!newContent) {
+        if (contentViewport) {
+            contentViewport->hide();
+        }
+        preferredContentSize = {};
         if (state != State::Closed) {
             closeAnimated();
         }
         return;
     }
 
-    newContent->setParent(q);
+    preferredContentSize = {};
+    newContent->setParent(contentViewport);
     content = newContent;
     contentDestroyedConnection = connect(newContent, &QObject::destroyed, q, [this] {
         content = nullptr;
         contentDestroyedConnection = {};
+        preferredContentSize = {};
+        if (contentViewport) {
+            contentViewport->hide();
+        }
         if (state != State::Closed) {
             closeAnimated();
         }
@@ -109,6 +124,7 @@ void VkPopoverPrivate::setContentWidget(QWidget* newContent) {
         newContent->installEventFilter(this);
     }
     if (q->isVisible()) {
+        contentViewport->show();
         newContent->show();
     }
     queueReposition();
@@ -116,6 +132,20 @@ void VkPopoverPrivate::setContentWidget(QWidget* newContent) {
 
 QWidget* VkPopoverPrivate::contentWidget() const noexcept {
     return content.data();
+}
+
+void VkPopoverPrivate::setPreferredContentSize(const QSize& size) {
+    const QSize normalized =
+        size.isValid() && !size.isEmpty() ? size.expandedTo(QSize(1, 1)) : QSize();
+    if (preferredContentSize == normalized) {
+        return;
+    }
+    preferredContentSize = normalized;
+    queueReposition();
+}
+
+QSize VkPopoverPrivate::preferredContentSizeValue() const noexcept {
+    return preferredContentSize;
 }
 
 void VkPopoverPrivate::setContentMargins(const QMargins& margins) {
@@ -443,7 +473,10 @@ QSizeF VkPopoverPrivate::desiredContentSize() const {
     if (!content) {
         return {};
     }
-    QSize desired = content->sizeHint();
+    QSize desired = preferredContentSize;
+    if (!desired.isValid() || desired.isEmpty()) {
+        desired = content->sizeHint();
+    }
     if (!desired.isValid() || desired.isEmpty()) {
         desired = content->size();
     }
@@ -587,8 +620,15 @@ bool VkPopoverPrivate::repositionNow() {
         q->setGeometry(popupRect);
     }
     const QRect contentRect = finalPlacement.contentRect.toAlignedRect().intersected(q->rect());
-    if (content && content->geometry() != contentRect) {
-        content->setGeometry(contentRect);
+    if (contentViewport && contentViewport->geometry() != contentRect) {
+        contentViewport->setGeometry(contentRect);
+    }
+    if (contentViewport && !contentViewport->isVisible()) {
+        contentViewport->show();
+    }
+    const QRect localContentRect(QPoint(), contentRect.size());
+    if (content && content->geometry() != localContentRect) {
+        content->setGeometry(localContentRect);
     }
     return true;
 }
@@ -931,6 +971,14 @@ void VkPopover::setContentWidget(QWidget* content) {
 
 QWidget* VkPopover::contentWidget() const noexcept {
     return d->contentWidget();
+}
+
+void VkPopover::setPreferredContentSize(const QSize& size) {
+    d->setPreferredContentSize(size);
+}
+
+QSize VkPopover::preferredContentSize() const noexcept {
+    return d->preferredContentSizeValue();
 }
 
 void VkPopover::setContentMargins(const QMargins& margins) {
