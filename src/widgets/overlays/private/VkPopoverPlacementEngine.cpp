@@ -304,13 +304,11 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
             return candidate;
         }
         const qreal baseGlobal = clamped(anchor.center().x(), minimumBase, maximumBase);
-        const qreal anchorTarget = clamped(baseGlobal, anchor.left(), anchor.right());
         // Rounded corners constrain the base, not the tip. Letting the tip
-        // reach the closest point on the anchor preserves identification near
-        // a screen corner even when this produces an intentionally skewed
-        // curved arrow.
+        // target the anchor center preserves exact identification even when
+        // this produces an intentionally skewed curved arrow.
         const qreal tipGlobal =
-            clamped(anchorTarget, popupRect.left(), popupRect.left() + popupRect.width());
+            clamped(targetX, popupRect.left(), popupRect.left() + popupRect.width());
         const qreal baseY =
             placement == VkPopoverPlacement::Below ? bodyRect.top() : bodyRect.bottom();
         const qreal tipY =
@@ -324,9 +322,8 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
             return candidate;
         }
         const qreal baseGlobal = clamped(anchor.center().y(), minimumBase, maximumBase);
-        const qreal anchorTarget = clamped(baseGlobal, anchor.top(), anchor.bottom());
         const qreal tipGlobal =
-            clamped(anchorTarget, popupRect.top(), popupRect.top() + popupRect.height());
+            clamped(targetY, popupRect.top(), popupRect.top() + popupRect.height());
         const qreal baseX =
             placement == VkPopoverPlacement::Right ? bodyRect.left() : bodyRect.right();
         const qreal tipX =

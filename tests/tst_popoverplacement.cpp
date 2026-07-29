@@ -211,6 +211,8 @@ void PopoverPlacementTest::suppliedAnchorSubRectangleChangesAim() {
     QVERIFY(right.isValid());
     const qreal leftTip = left.popupRect.left() + left.arrowTip.x();
     const qreal rightTip = right.popupRect.left() + right.arrowTip.x();
+    QVERIFY(qAbs(leftTip - leftInput.anchorRect.center().x()) <= 1.0);
+    QVERIFY(qAbs(rightTip - rightInput.anchorRect.center().x()) <= 1.0);
     QVERIFY(rightTip > leftTip + 80.0);
 }
 

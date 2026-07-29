@@ -268,6 +268,20 @@ void VkPopoverPrivate::openFor(QWidget* newAnchor, const QRect& rectInAnchor) {
     startOpenAnimation();
 }
 
+bool VkPopoverPrivate::toggleFor(QWidget* newAnchor, const QRect& rectInAnchor) {
+    if (newAnchor != nullptr && suppressedToggleAnchor == newAnchor) {
+        suppressedToggleAnchor = nullptr;
+        return false;
+    }
+    if (newAnchor != nullptr && anchor == newAnchor &&
+        (state == State::Open || state == State::Opening)) {
+        closeAnimated();
+        return false;
+    }
+    openFor(newAnchor, rectInAnchor);
+    return isOpen();
+}
+
 void VkPopoverPrivate::closeAnimated() {
     if (state == State::Closed || state == State::Closing) {
         return;
@@ -741,14 +755,23 @@ bool VkPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
                 QPointer<QWidget> forwardedWindow = anchorWindow;
                 const bool activatesCurrentAnchor = forwardedButton == anchor.data();
                 if (activatesCurrentAnchor) {
+                    const bool reversingClose = state == State::Closing;
+                    suppressedToggleAnchor = reversingClose ? nullptr : forwardedButton;
+                    if (!reversingClose) {
+                        closeAnimated();
+                    }
                     synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                    QPointer<VkPopoverPrivate> self(this);
                     QTimer::singleShot(0, forwardedButton,
-                                       [forwardedButton, forwardedWindow, globalPoint] {
+                                       [self, forwardedButton, forwardedWindow, globalPoint] {
                                            if (forwardedButton && forwardedButton->isEnabled() &&
                                                forwardedButton->isVisible()) {
                                                forwardedButton->click();
                                                synchronizeButtonHover(forwardedWindow,
                                                                       forwardedButton, globalPoint);
+                                           }
+                                           if (self) {
+                                               self->suppressedToggleAnchor = nullptr;
                                            }
                                        });
                     return true;
@@ -1039,6 +1062,14 @@ void VkPopover::openFor(QWidget* anchor) {
 
 void VkPopover::openFor(QWidget* anchor, const QRect& anchorRectInAnchor) {
     d->openFor(anchor, anchorRectInAnchor);
+}
+
+bool VkPopover::toggleFor(QWidget* anchor) {
+    return toggleFor(anchor, {});
+}
+
+bool VkPopover::toggleFor(QWidget* anchor, const QRect& anchorRectInAnchor) {
+    return d->toggleFor(anchor, anchorRectInAnchor);
 }
 
 void VkPopover::closeAnimated() {

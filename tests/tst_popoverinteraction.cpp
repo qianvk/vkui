@@ -4,13 +4,12 @@
 #include <QtTest/QTest>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QWidget>
-
 #include <vkui/widgets/overlays/VkPopover.h>
 
 class PopoverInteractionTest : public QObject {
     Q_OBJECT
 
-private slots:
+  private slots:
     void currentAnchorClickTogglesClosed();
     void anotherAnchorClickSurvivesOldPopoverClose();
 };
@@ -19,8 +18,7 @@ namespace {
 
 void clickThroughPopover(vkui::VkPopover& popover, const QWidget& target) {
     const QPoint globalPoint = target.mapToGlobal(target.rect().center());
-    QTest::mouseClick(&popover, Qt::LeftButton, Qt::NoModifier,
-                      popover.mapFromGlobal(globalPoint));
+    QTest::mouseClick(&popover, Qt::LeftButton, Qt::NoModifier, popover.mapFromGlobal(globalPoint));
 }
 
 } // namespace
@@ -36,20 +34,27 @@ void PopoverInteractionTest::currentAnchorClickTogglesClosed() {
     auto* content = new QWidget;
     content->setFixedSize(240, 160);
     popover.setContentWidget(content);
-    connect(&anchor, &QPushButton::clicked, &popover, [&popover] {
-        if (popover.isOpen()) {
-            popover.closeImmediately();
-        }
-    });
+    connect(&anchor, &QPushButton::clicked, &popover,
+            [&popover, &anchor] { popover.toggleFor(&anchor); });
 
     QSignalSpy clickSpy(&anchor, &QPushButton::clicked);
-    popover.openFor(&anchor);
-    QVERIFY(popover.isOpen());
+    QTest::mouseClick(&anchor, Qt::LeftButton);
+    QTRY_VERIFY(popover.isOpen());
 
     clickThroughPopover(popover, anchor);
-    QTRY_COMPARE(clickSpy.count(), 1);
+    QTRY_COMPARE(clickSpy.count(), 2);
     QTRY_VERIFY(!popover.isOpen());
-    QTRY_VERIFY(anchor.underMouse());
+
+    QTest::mouseClick(&anchor, Qt::LeftButton);
+    QTRY_COMPARE(clickSpy.count(), 3);
+    QTRY_VERIFY(popover.isOpen());
+
+    // A second logical click during the exit animation reverses the same
+    // state machine instead of waiting for a stale close to complete.
+    anchor.click();
+    QVERIFY(!popover.isOpen());
+    anchor.click();
+    QVERIFY(popover.isOpen());
 }
 
 void PopoverInteractionTest::anotherAnchorClickSurvivesOldPopoverClose() {
