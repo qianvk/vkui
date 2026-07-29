@@ -6,6 +6,7 @@
 #include <QtCore/QMargins>
 #include <QtCore/QMetaType>
 #include <QtCore/QRect>
+#include <QtCore/QSize>
 #include <QtWidgets/QWidget>
 #include <memory>
 #include <vkui/VkUiGlobal.h>
@@ -75,6 +76,15 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     [[nodiscard]] QWidget* contentWidget() const noexcept;
 
     /**
+     * Sets the content size requested before screen and boundary constraints.
+     *
+     * The final content geometry may be smaller. An empty size restores the
+     * content widget's size hints.
+     */
+    void setPreferredContentSize(const QSize& size);
+    [[nodiscard]] QSize preferredContentSize() const noexcept;
+
+    /**
      * Overrides the padding between the body and content.
      *
      * Negative values restore the theme default on the corresponding edge.
@@ -83,8 +93,8 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     [[nodiscard]] QMargins contentMargins() const noexcept;
 
     /**
-     * Recalculates an open popover immediately after an animated content-size
-     * step. Closed popovers retain the new content size for their next open.
+     * Recalculates an open popover after direct changes to content size hints
+     * or constraints. setPreferredContentSize() schedules this automatically.
      */
     void refreshGeometry();
 
