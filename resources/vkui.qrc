@@ -24,6 +24,7 @@
         <file alias="grid.svg">icons/grid.svg</file>
         <file alias="list.svg">icons/list.svg</file>
         <file alias="edit.svg">icons/edit.svg</file>
+        <file alias="bookmark.svg">icons/bookmark.svg</file>
         <file alias="trash.svg">icons/trash.svg</file>
         <file alias="download.svg">icons/download.svg</file>
         <file alias="upload.svg">icons/upload.svg</file>
