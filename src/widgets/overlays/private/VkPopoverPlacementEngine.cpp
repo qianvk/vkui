@@ -66,8 +66,8 @@ QRectF usableGeometry(const QRectF& available, const qreal margin) noexcept {
 
 struct Candidate final {
     VkPopoverPlacementResult result;
-    bool desiredGeometryFits = false;
-    bool preservesContentSize = false;
+    bool selectionGeometryFits = false;
+    bool selectionPreservesContentSize = false;
     qreal visibleArea = 0.0;
     qreal displacement = std::numeric_limits<qreal>::max();
     int priority = 0;
@@ -212,7 +212,7 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
         return candidate;
     }
 
-    candidate.desiredGeometryFits = containsRect(usable, desired);
+    candidate.selectionGeometryFits = containsRect(usable, desired);
     candidate.visibleArea = area(desired.intersected(usable));
 
     qreal bodyWidth = requestedBodyWidth;
@@ -381,8 +381,9 @@ Candidate makeCandidate(const VkPopoverPlacementInput& input, const QRectF& anch
     candidate.displacement =
         std::abs(popupLeft - desired.left()) + std::abs(popupTop - desired.top()) +
         std::abs(requestedBodyWidth - bodyWidth) + std::abs(requestedBodyHeight - bodyHeight);
-    candidate.preservesContentSize = std::abs(requestedBodyWidth - bodyWidth) <= kGeometryEpsilon &&
-                                     std::abs(requestedBodyHeight - bodyHeight) <= kGeometryEpsilon;
+    candidate.selectionPreservesContentSize =
+        std::abs(requestedBodyWidth - bodyWidth) <= kGeometryEpsilon &&
+        std::abs(requestedBodyHeight - bodyHeight) <= kGeometryEpsilon;
     candidate.result.resolvedPlacement = placement;
     candidate.result.popupRect = popupRect;
     candidate.result.bodyRect = bodyRect;
@@ -431,25 +432,41 @@ VkPopoverPlacementResult VkPopoverPlacementEngine::calculate(const VkPopoverPlac
     std::vector<Candidate> candidates;
     candidates.reserve(order.size());
     for (std::size_t index = 0; index < order.size(); ++index) {
-        QRectF candidateAvailable = available;
+        Candidate screenCandidate =
+            makeCandidate(input, anchor, usable, order[index], static_cast<int>(index));
+        if (!screenCandidate.result.valid) {
+            continue;
+        }
+
+        Candidate candidate = screenCandidate;
         const VkPopoverBoundaryPlacementFlag flag = boundaryFlagFor(order[index]);
         if (input.boundaryPlacements.testFlag(flag)) {
             if (!isFinite(input.boundaryGeometry) || !input.boundaryGeometry.isValid() ||
                 input.boundaryGeometry.isEmpty()) {
                 continue;
             }
-            candidateAvailable =
-                candidateAvailable.intersected(input.boundaryGeometry.normalized());
+            const QRectF boundedAvailable =
+                available.intersected(input.boundaryGeometry.normalized());
+            const QRectF boundedUsable = usableGeometry(boundedAvailable, margin);
+            if (boundedUsable.width() < 1.0 || boundedUsable.height() < 1.0) {
+                continue;
+            }
+            Candidate boundedCandidate =
+                makeCandidate(input, anchor, boundedUsable, order[index], static_cast<int>(index));
+            if (!boundedCandidate.result.valid) {
+                continue;
+            }
+
+            // A directional boundary constrains the geometry after direction
+            // selection. It must not make a preferred direction flip while
+            // the requested popup still fits the physical screen.
+            boundedCandidate.selectionGeometryFits =
+                screenCandidate.selectionGeometryFits;
+            boundedCandidate.selectionPreservesContentSize =
+                screenCandidate.selectionPreservesContentSize;
+            candidate = std::move(boundedCandidate);
         }
-        const QRectF candidateUsable = usableGeometry(candidateAvailable, margin);
-        if (candidateUsable.width() < 1.0 || candidateUsable.height() < 1.0) {
-            continue;
-        }
-        Candidate candidate =
-            makeCandidate(input, anchor, candidateUsable, order[index], static_cast<int>(index));
-        if (candidate.result.valid) {
-            candidates.push_back(std::move(candidate));
-        }
+        candidates.push_back(std::move(candidate));
     }
     if (candidates.empty()) {
         return invalid;
@@ -460,8 +477,8 @@ VkPopoverPlacementResult VkPopoverPlacementEngine::calculate(const VkPopoverPlac
     // compare clipped candidates when no direction can fit completely.
     for (const Candidate& candidate : candidates) {
         const bool acceptable = input.preferredPlacement == VkPopoverPlacement::Automatic
-                                    ? candidate.desiredGeometryFits
-                                    : candidate.preservesContentSize;
+                                    ? candidate.selectionGeometryFits
+                                    : candidate.selectionPreservesContentSize;
         if (acceptable) {
             return candidate.result;
         }

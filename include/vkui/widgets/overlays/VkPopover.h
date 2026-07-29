@@ -136,8 +136,11 @@ class VKUI_WIDGETS_EXPORT VkPopover final : public QWidget {
     /**
      * Selects which resolved directions use boundaryWidget().
      *
-     * All directions are constrained by default. This allows controls near a
-     * panel edge to constrain Below while still flipping Above on screen.
+     * All directions are constrained by default. Direction selection still
+     * uses the screen's available geometry; the boundary only constrains the
+     * final popup geometry after a direction has been selected. This allows a
+     * panel to keep Below as the preferred direction and scroll its content,
+     * while still flipping Above when the popup would cross the screen.
      */
     void setBoundaryPlacements(VkPopoverBoundaryPlacements placements);
     [[nodiscard]] VkPopoverBoundaryPlacements boundaryPlacements() const noexcept;
