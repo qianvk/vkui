@@ -65,7 +65,7 @@ class PopoverPlacementTest final : public QObject {
     void interruptedAnimationRetargetsCleanly();
     void customMarginsAndRefreshResizeOpenPopover();
     void boundaryWidgetConstrainsAndTracksPopover();
-    void directionalBoundaryFlipsBeforeClamping();
+    void directionalBoundaryConstrainsAfterScreenSelection();
     void popupWindowUsesFixedTransientSemantics();
     void widgetFlipsPreferredPlacementAtScreenEdge();
     void startAlignedResizeKeepsLeadingEdgeAndArrowAim();
@@ -358,7 +358,7 @@ void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
     manager->setAnimationsEnabled(animations);
 }
 
-void PopoverPlacementTest::directionalBoundaryFlipsBeforeClamping() {
+void PopoverPlacementTest::directionalBoundaryConstrainsAfterScreenSelection() {
     auto input = baseInput();
     input.availableGeometry = QRectF(0.0, 0.0, 800.0, 600.0);
     input.boundaryGeometry = QRectF(250.0, 280.0, 300.0, 120.0);
@@ -367,17 +367,22 @@ void PopoverPlacementTest::directionalBoundaryFlipsBeforeClamping() {
     input.contentSize = QSizeF(260.0, 180.0);
     input.preferredPlacement = vkui::VkPopoverPlacement::Below;
 
-    const auto flipped = vkui::VkPopoverPlacementEngine::calculate(input);
-    QVERIFY(flipped.isValid());
-    QCOMPARE(flipped.resolvedPlacement, vkui::VkPopoverPlacement::Above);
-    QVERIFY(flipped.contentRect.height() >= input.contentSize.height() - 1.0);
-    verifyInsideAvailableGeometry(input, flipped);
-
-    input.contentSize = QSizeF(180.0, 12.0);
     const auto below = vkui::VkPopoverPlacementEngine::calculate(input);
     QVERIFY(below.isValid());
     QCOMPARE(below.resolvedPlacement, vkui::VkPopoverPlacement::Below);
     QVERIFY(input.boundaryGeometry.contains(QRectF(below.popupRect)));
+    QVERIFY(below.contentRect.height() < input.contentSize.height());
+    verifyInsideAvailableGeometry(input, below);
+
+    // Moving the anchor close to the physical screen edge makes the same
+    // requested popup cross the screen, so the preferred direction flips.
+    input.anchorRect = QRectF(380.0, 548.0, 40.0, 24.0);
+    input.boundaryGeometry = QRectF(250.0, 520.0, 300.0, 80.0);
+    const auto above = vkui::VkPopoverPlacementEngine::calculate(input);
+    QVERIFY(above.isValid());
+    QCOMPARE(above.resolvedPlacement, vkui::VkPopoverPlacement::Above);
+    QVERIFY(above.contentRect.height() >= input.contentSize.height() - 1.0);
+    verifyInsideAvailableGeometry(input, above);
 }
 
 void PopoverPlacementTest::popupWindowUsesFixedTransientSemantics() {
