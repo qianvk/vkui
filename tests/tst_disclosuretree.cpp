@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 #include <QDir>
+#include <QAbstractListModel>
 #include <QPainter>
 #include <QScrollBar>
 #include <QStandardItemModel>
 #include <QStyledItemDelegate>
 #include <QTimeLine>
+#include <QVariantMap>
 #include <QtTest>
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkThemeManager.h>
@@ -42,6 +44,119 @@ class SeamProbeDelegate final : public QStyledItemDelegate {
     }
 };
 
+class MoveListModel final : public QAbstractListModel {
+  public:
+    explicit MoveListModel(const int count, QObject* parent = nullptr) : QAbstractListModel(parent) {
+        for (int row = 0; row < count; ++row) {
+            m_rows.append(QStringLiteral("Row %1").arg(row));
+        }
+    }
+
+    [[nodiscard]] int rowCount(const QModelIndex& parent = {}) const override {
+        return parent.isValid() ? 0 : static_cast<int>(m_rows.size());
+    }
+
+    [[nodiscard]] QVariant data(const QModelIndex& index,
+                                const int role = Qt::DisplayRole) const override {
+        if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size()) {
+            return {};
+        }
+        if (role == Qt::DisplayRole) {
+            return m_rows.at(index.row());
+        }
+        if (role == VisualKindRole) {
+            return index.row() == 2 || index.row() == 3 ? ChildKind : SiblingKind;
+        }
+        return {};
+    }
+
+    bool moveRows(const QModelIndex& sourceParent, const int sourceRow, const int count,
+                  const QModelIndex& destinationParent, const int destinationChild) override {
+        if (sourceParent.isValid() || destinationParent.isValid() || count <= 0 || sourceRow < 0 ||
+            sourceRow + count > m_rows.size() || destinationChild < 0 ||
+            destinationChild > m_rows.size() ||
+            (destinationChild >= sourceRow && destinationChild <= sourceRow + count)) {
+            return false;
+        }
+        if (!beginMoveRows(sourceParent, sourceRow, sourceRow + count - 1, destinationParent,
+                           destinationChild)) {
+            return false;
+        }
+        QStringList moved;
+        for (int index = 0; index < count; ++index) {
+            moved.append(m_rows.takeAt(sourceRow));
+        }
+        const int insertion = destinationChild > sourceRow ? destinationChild - count
+                                                            : destinationChild;
+        for (int index = 0; index < moved.size(); ++index) {
+            m_rows.insert(insertion + index, moved.at(index));
+        }
+        endMoveRows();
+        return true;
+    }
+
+  private:
+    QStringList m_rows;
+};
+
+class MutationListModel final : public QAbstractListModel {
+  public:
+    explicit MutationListModel(const int count, QObject* parent = nullptr)
+        : QAbstractListModel(parent) {
+        for (int row = 0; row < count; ++row) {
+            m_rows.append({QStringLiteral("Existing %1").arg(row), SiblingKind});
+        }
+    }
+
+    [[nodiscard]] int rowCount(const QModelIndex& parent = {}) const override {
+        return parent.isValid() ? 0 : static_cast<int>(m_rows.size());
+    }
+
+    [[nodiscard]] QVariant data(const QModelIndex& index,
+                                const int role = Qt::DisplayRole) const override {
+        if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size()) {
+            return {};
+        }
+        if (role == Qt::DisplayRole) {
+            return m_rows.at(index.row()).text;
+        }
+        if (role == VisualKindRole) {
+            return m_rows.at(index.row()).kind;
+        }
+        return {};
+    }
+
+    bool insertRows(const int row, const int count, const QModelIndex& parent = {}) override {
+        if (parent.isValid() || row < 0 || count <= 0 || row > m_rows.size()) {
+            return false;
+        }
+        beginInsertRows(parent, row, row + count - 1);
+        for (int offset = 0; offset < count; ++offset) {
+            m_rows.insert(row + offset,
+                          {QStringLiteral("Inserted %1").arg(offset), ChildKind});
+        }
+        endInsertRows();
+        return true;
+    }
+
+    bool removeRows(const int row, const int count, const QModelIndex& parent = {}) override {
+        if (parent.isValid() || row < 0 || count <= 0 || row + count > m_rows.size()) {
+            return false;
+        }
+        beginRemoveRows(parent, row, row + count - 1);
+        m_rows.remove(row, count);
+        endRemoveRows();
+        return true;
+    }
+
+  private:
+    struct Row final {
+        QString text;
+        int kind = SiblingKind;
+    };
+    QVector<Row> m_rows;
+};
+
 struct ColorBand final {
     int first = -1;
     int last = -1;
@@ -74,6 +189,10 @@ class DisclosureTreeTest final : public QObject {
     void disclosureUsesReversibleSharedBoundary();
     void everyFrameKeepsChildAndSiblingVisuallyJoined();
     void longBranchKeepsTrueTrailingChildAtSeam();
+    void rowInsertionAndRemovalUseOneLocalTimeline();
+    void rowMutationInterruptionStartsAtThePaintedFrame();
+    void contiguousRowMoveUsesOneFrameClockAndBoundedCache();
+    void ownedModelCanOutliveAnimationChildrenDuringViewTeardown();
 };
 
 void DisclosureTreeTest::geometryBoundsIconTextAndPill() {
@@ -434,6 +553,254 @@ void DisclosureTreeTest::longBranchKeepsTrueTrailingChildAtSeam() {
     }
 
     tree.finishDisclosureAnimation();
+    theme->setAnimationsEnabled(originalAnimations);
+}
+
+void DisclosureTreeTest::rowInsertionAndRemovalUseOneLocalTimeline() {
+    auto* theme = vkui::VkThemeManager::instance();
+    const bool originalAnimations = theme->animationsEnabled();
+    theme->setAnimationsEnabled(true);
+
+    MutationListModel model(36);
+    vkui::VkDisclosureTreeView tree;
+    tree.setModel(&model);
+    tree.setItemDelegate(new SeamProbeDelegate(&tree));
+    tree.setUniformRowHeights(true);
+    tree.setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    tree.setDisclosureSurfaceColor(Qt::white);
+    tree.resize(320, 224);
+    tree.show();
+    QTest::qWait(20);
+
+    const int oldMaximum = tree.verticalScrollBar()->maximum();
+    QVERIFY(model.insertRows(2, 3));
+
+    auto* overlay =
+        tree.viewport()->findChild<QWidget*>(QStringLiteral("vkTreeMutationTransition"));
+    auto* timeline = tree.findChild<QTimeLine*>(QStringLiteral("vkTreeMutationTimeline"));
+    QVERIFY(overlay != nullptr);
+    QVERIFY(timeline != nullptr);
+    timeline->setPaused(true);
+    QCOMPARE(overlay->property("mutationKind").toString(), QStringLiteral("insert"));
+    QVERIFY(overlay->geometry().top() > 0);
+    QVERIFY(overlay->geometry().height() < tree.viewport()->height());
+    QVERIFY(overlay->property("surfaceArea").toInt() <
+            overlay->property("viewportArea").toInt());
+    QCOMPARE(overlay->property("startScrollMaximum").toInt(), oldMaximum);
+    const int insertedMaximum = overlay->property("targetScrollMaximum").toInt();
+    QVERIFY(insertedMaximum > oldMaximum);
+    const QString mutationFrameDirectory =
+        qEnvironmentVariable("VKUI_MUTATION_FRAME_DIRECTORY");
+    if (!mutationFrameDirectory.isEmpty()) {
+        QVERIFY(QDir().mkpath(mutationFrameDirectory));
+    }
+
+    int previousMaximum = oldMaximum;
+    for (int time = 0; time <= timeline->duration(); time += 8) {
+        timeline->setCurrentTime(time);
+        QCoreApplication::processEvents();
+        QCOMPARE(overlay->property("seamGap").toInt(), 0);
+        const qreal progress = overlay->property("progress").toReal();
+        const int expected =
+            oldMaximum + qRound(progress * (insertedMaximum - oldMaximum));
+        QCOMPARE(tree.verticalScrollBar()->maximum(), expected);
+        QVERIFY(tree.verticalScrollBar()->maximum() >= previousMaximum);
+        previousMaximum = tree.verticalScrollBar()->maximum();
+        if (!mutationFrameDirectory.isEmpty() &&
+            (time == 0 || time == 96 || time == timeline->duration())) {
+            QVERIFY(tree.viewport()->grab().save(
+                QDir(mutationFrameDirectory)
+                    .filePath(QStringLiteral("insert-%1.png")
+                                  .arg(time, 3, 10, QLatin1Char('0')))));
+        }
+    }
+    tree.finishRowMutationAnimation();
+
+    const int beforeRemovalMaximum = tree.verticalScrollBar()->maximum();
+    QVERIFY(model.removeRows(2, 3));
+    overlay = tree.viewport()->findChild<QWidget*>(QStringLiteral("vkTreeMutationTransition"));
+    QVERIFY(overlay != nullptr);
+    timeline->setPaused(true);
+    QCOMPARE(overlay->property("mutationKind").toString(), QStringLiteral("remove"));
+    const int removedMaximum = overlay->property("targetScrollMaximum").toInt();
+    QVERIFY(removedMaximum < beforeRemovalMaximum);
+    previousMaximum = beforeRemovalMaximum;
+    for (int time = 0; time <= timeline->duration(); time += 8) {
+        timeline->setCurrentTime(time);
+        QCoreApplication::processEvents();
+        QCOMPARE(overlay->property("seamGap").toInt(), 0);
+        QVERIFY(tree.verticalScrollBar()->maximum() <= previousMaximum);
+        previousMaximum = tree.verticalScrollBar()->maximum();
+    }
+    tree.finishRowMutationAnimation();
+    theme->setAnimationsEnabled(originalAnimations);
+}
+
+void DisclosureTreeTest::rowMutationInterruptionStartsAtThePaintedFrame() {
+    auto* theme = vkui::VkThemeManager::instance();
+    const bool originalAnimations = theme->animationsEnabled();
+    theme->setAnimationsEnabled(true);
+
+    QStandardItemModel model;
+    for (int row = 0; row < 18; ++row) {
+        model.appendRow(new QStandardItem(QStringLiteral("Row %1").arg(row)));
+    }
+    vkui::VkDisclosureTreeView tree;
+    tree.setModel(&model);
+    tree.setUniformRowHeights(true);
+    tree.setDisclosureSurfaceColor(Qt::white);
+    tree.resize(320, 224);
+    tree.show();
+    QTest::qWait(20);
+
+    model.insertRow(2, new QStandardItem(QStringLiteral("First mutation")));
+    auto* timeline = tree.findChild<QTimeLine*>(QStringLiteral("vkTreeMutationTimeline"));
+    QVERIFY(timeline != nullptr);
+    timeline->setPaused(true);
+    timeline->setCurrentTime(72);
+    QCoreApplication::processEvents();
+    auto* interrupted =
+        tree.viewport()->findChild<QWidget*>(QStringLiteral("vkTreeMutationTransition"));
+    QVERIFY(interrupted != nullptr);
+    const QVariantMap geometryBeforeInterruption =
+        interrupted->property("currentGeometry").toMap();
+    const QString mutationFrameDirectory =
+        qEnvironmentVariable("VKUI_MUTATION_FRAME_DIRECTORY");
+    if (!mutationFrameDirectory.isEmpty()) {
+        QVERIFY(QDir().mkpath(mutationFrameDirectory));
+        QVERIFY(tree.viewport()->grab().save(
+            QDir(mutationFrameDirectory)
+                .filePath(QStringLiteral("interrupted-before.png"))));
+    }
+
+    model.insertRow(2, new QStandardItem(QStringLiteral("Second mutation")));
+    auto* replacement =
+        tree.viewport()->findChild<QWidget*>(QStringLiteral("vkTreeMutationTransition"));
+    QVERIFY(replacement != nullptr);
+    timeline->setPaused(true);
+    timeline->setCurrentTime(0);
+    QCoreApplication::processEvents();
+    const QVariantMap geometryAfterInterruption =
+        replacement->property("currentGeometry").toMap();
+    if (!mutationFrameDirectory.isEmpty()) {
+        QVERIFY(tree.viewport()->grab().save(
+            QDir(mutationFrameDirectory)
+                .filePath(QStringLiteral("interrupted-after.png"))));
+    }
+    for (auto row = geometryBeforeInterruption.cbegin();
+         row != geometryBeforeInterruption.cend(); ++row) {
+        if (!row.value().toRect().intersects(tree.viewport()->rect())) {
+            continue;
+        }
+        QVERIFY2(geometryAfterInterruption.contains(row.key()), qPrintable(row.key()));
+        QCOMPARE(geometryAfterInterruption.value(row.key()).toRect(), row.value().toRect());
+    }
+
+    tree.finishRowMutationAnimation();
+    theme->setAnimationsEnabled(originalAnimations);
+}
+
+void DisclosureTreeTest::contiguousRowMoveUsesOneFrameClockAndBoundedCache() {
+    auto* theme = vkui::VkThemeManager::instance();
+    const bool originalAnimations = theme->animationsEnabled();
+    theme->setAnimationsEnabled(true);
+
+    MoveListModel model(30);
+    vkui::VkDisclosureTreeView tree;
+    tree.setModel(&model);
+    tree.setItemDelegate(new SeamProbeDelegate(&tree));
+    tree.setUniformRowHeights(true);
+    tree.setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    tree.setDisclosureSurfaceColor(Qt::white);
+    tree.resize(320, 336);
+    tree.show();
+    QTest::qWait(20);
+
+    QVERIFY(model.moveRows({}, 2, 2, {}, 9));
+    auto* overlay =
+        tree.viewport()->findChild<QWidget*>(QStringLiteral("vkTreeMutationTransition"));
+    auto* timeline = tree.findChild<QTimeLine*>(QStringLiteral("vkTreeMutationTimeline"));
+    QVERIFY(overlay != nullptr);
+    QVERIFY(timeline != nullptr);
+    timeline->setPaused(true);
+    QCOMPARE(overlay->property("mutationKind").toString(), QStringLiteral("move"));
+
+    const QVariantMap from = overlay->property("fromGeometry").toMap();
+    const QVariantMap to = overlay->property("toGeometry").toMap();
+    for (const QString& key : {QStringLiteral("Row 2"), QStringLiteral("Row 3"),
+                               QStringLiteral("Row 4")}) {
+        QVERIFY2(from.contains(key), qPrintable(key));
+        QVERIFY2(to.contains(key), qPrintable(key));
+    }
+    const int rowHeight = from.value(QStringLiteral("Row 3")).toRect().top() -
+                          from.value(QStringLiteral("Row 2")).toRect().top();
+    QVERIFY(rowHeight > 0);
+    QCOMPARE(to.value(QStringLiteral("Row 3")).toRect().top() -
+                 to.value(QStringLiteral("Row 2")).toRect().top(),
+             rowHeight);
+    const int visibleBound = qCeil(static_cast<qreal>(tree.viewport()->height()) / rowHeight) + 4;
+    QVERIFY(overlay->property("rowCount").toInt() <= visibleBound);
+    QVERIFY(overlay->property("cachedPixelHeight").toInt() <=
+            qCeil(visibleBound * rowHeight * tree.devicePixelRatioF()));
+
+    const int startMaximum = overlay->property("startScrollMaximum").toInt();
+    const int targetMaximum = overlay->property("targetScrollMaximum").toInt();
+    int previousMaximum = startMaximum;
+    for (int time = 0; time <= timeline->duration(); time += 8) {
+        timeline->setCurrentTime(time);
+        QCoreApplication::processEvents();
+        const qreal progress = overlay->property("progress").toReal();
+        const QVariantMap current = overlay->property("currentGeometry").toMap();
+        for (const QString& key : {QStringLiteral("Row 2"), QStringLiteral("Row 3"),
+                                   QStringLiteral("Row 4")}) {
+            const QRect start = from.value(key).toRect();
+            const QRect finish = to.value(key).toRect();
+            const int expectedY = qRound(start.top() + (finish.top() - start.top()) * progress);
+            QCOMPARE(current.value(key).toRect().top(), expectedY);
+        }
+        QCOMPARE(current.value(QStringLiteral("Row 3")).toRect().top() -
+                     current.value(QStringLiteral("Row 2")).toRect().top(),
+                 rowHeight);
+        QCOMPARE(overlay->property("seamGap").toInt(), 0);
+        const int expectedMaximum =
+            startMaximum + qRound(progress * (targetMaximum - startMaximum));
+        QCOMPARE(tree.verticalScrollBar()->maximum(), expectedMaximum);
+        if (targetMaximum >= startMaximum) {
+            QVERIFY(tree.verticalScrollBar()->maximum() >= previousMaximum);
+        } else {
+            QVERIFY(tree.verticalScrollBar()->maximum() <= previousMaximum);
+        }
+        previousMaximum = tree.verticalScrollBar()->maximum();
+    }
+    QCOMPARE(tree.verticalScrollBar()->maximum(), targetMaximum);
+    tree.finishRowMutationAnimation();
+    theme->setAnimationsEnabled(originalAnimations);
+}
+
+void DisclosureTreeTest::ownedModelCanOutliveAnimationChildrenDuringViewTeardown() {
+    auto* theme = vkui::VkThemeManager::instance();
+    const bool originalAnimations = theme->animationsEnabled();
+    theme->setAnimationsEnabled(true);
+
+    auto* tree = new vkui::VkDisclosureTreeView;
+    auto* model = new QStandardItemModel(tree);
+    auto* folder = new QStandardItem(QStringLiteral("Folder"));
+    folder->appendRow(new QStandardItem(QStringLiteral("Child")));
+    model->appendRow(folder);
+    model->appendRow(new QStandardItem(QStringLiteral("Sibling")));
+    tree->setModel(model);
+    tree->resize(320, 180);
+    tree->show();
+    QTest::qWait(20);
+    tree->setExpandedAnimated(model->index(0, 0), true);
+    model->insertRow(1, new QStandardItem(QStringLiteral("Inserted")));
+    QVERIFY(tree->findChild<QTimeLine*>(QStringLiteral("vkDisclosureTimeline")) != nullptr);
+    QVERIFY(tree->findChild<QTimeLine*>(QStringLiteral("vkTreeMutationTimeline")) != nullptr);
+
+    // Regression: child destruction used to let model::destroyed call back
+    // after the timeline child was already gone, dereferencing a stale raw
+    // pointer from finishDisclosureAnimation().
+    delete tree;
     theme->setAnimationsEnabled(originalAnimations);
 }
 
