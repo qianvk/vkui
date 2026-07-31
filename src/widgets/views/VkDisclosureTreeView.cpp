@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: MIT
 
 #include <QAbstractItemDelegate>
+#include <QAbstractItemModel>
 #include <QApplication>
 #include <QItemSelectionModel>
+#include <QPaintEvent>
 #include <QPainter>
+#include <QPixmap>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QTimeLine>
+#include <QVariantMap>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iterator>
+#include <limits>
+#include <numeric>
 #include <utility>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/views/VkDisclosureTreeView.h>
@@ -34,6 +41,191 @@ QEasingCurve finderDisclosureEasing() {
 struct DisclosureRow final {
     QPersistentModelIndex index;
     QRect rect;
+};
+
+enum class MutationRowRole { Survivor, Entering, Leaving };
+
+[[nodiscard]] QString mutationRowIdentity(QModelIndex index) {
+    QStringList components;
+    while (index.isValid()) {
+        components.prepend(index.data(Qt::DisplayRole).toString());
+        index = index.parent();
+    }
+    return components.join(QChar(0x001f));
+}
+
+struct MutationRow final {
+    QPersistentModelIndex index;
+    QString identity;
+    QRect fromRect;
+    QRect toRect;
+    QPixmap pixmap;
+    MutationRowRole role = MutationRowRole::Survivor;
+    int clipTop = std::numeric_limits<int>::min();
+};
+
+struct CapturedMutationRow final {
+    QPersistentModelIndex index;
+    QString identity;
+    QRect rect;
+    QRect eventualRect;
+    QPixmap pixmap;
+    MutationRowRole role = MutationRowRole::Survivor;
+    int clipTop = std::numeric_limits<int>::min();
+};
+
+class RowMutationOverlay final : public QWidget {
+  public:
+    explicit RowMutationOverlay(QWidget* parent) : QWidget(parent) {
+        setObjectName(QStringLiteral("vkTreeMutationTransition"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        setAttribute(Qt::WA_OpaquePaintEvent);
+        setFocusPolicy(Qt::NoFocus);
+    }
+
+    void setRows(QVector<MutationRow> rows, const QRect& viewportDirtyRect, const int seam,
+                 const QColor& surfaceColor, const QString& kind) {
+        m_rows = std::move(rows);
+        m_viewportOrigin = viewportDirtyRect.topLeft();
+        m_viewportDirtyRect = viewportDirtyRect;
+        m_seam = seam;
+        m_surfaceColor = surfaceColor;
+        setProperty("mutationKind", kind);
+        setProperty("rowCount", m_rows.size());
+        setProperty("dirtyRect", viewportDirtyRect);
+        setProperty("surfaceArea", viewportDirtyRect.width() * viewportDirtyRect.height());
+        setProperty("viewportArea", parentWidget() == nullptr
+                                        ? 0
+                                        : parentWidget()->width() * parentWidget()->height());
+        setProperty("cachedPixelHeight",
+                    std::accumulate(m_rows.cbegin(), m_rows.cend(), 0,
+                                    [](const int total, const MutationRow& row) {
+                                        return total + row.pixmap.height();
+                                    }));
+        setProperty("fromGeometry", geometryMap(0.0));
+        setProperty("toGeometry", geometryMap(1.0));
+        setProgress(0.0);
+    }
+
+    [[nodiscard]] QVector<CapturedMutationRow> currentRows() const {
+        QVector<CapturedMutationRow> result;
+        result.reserve(m_rows.size());
+        for (const MutationRow& row : m_rows) {
+            const QRect current = interpolatedRect(row, m_progress);
+            if (!current.intersects(parentWidget()->rect())) {
+                continue;
+            }
+            result.append(
+                {row.index, row.identity, current, row.toRect, row.pixmap, row.role, row.clipTop});
+        }
+        return result;
+    }
+
+    void setProgress(const qreal progress) {
+        const qreal bounded = std::clamp(progress, 0.0, 1.0);
+        if (qFuzzyCompare(m_progress + 1.0, bounded + 1.0)) {
+            return;
+        }
+        const QRect previous = frameBounds(m_progress);
+        m_progress = bounded;
+        setProperty("progress", m_progress);
+        setProperty("currentGeometry", geometryMap(m_progress));
+        updateSeamProperty();
+        const QRect current = frameBounds(m_progress);
+        const QRect dirty = previous.united(current).intersected(m_viewportDirtyRect)
+                                .translated(-m_viewportOrigin);
+        if (dirty.isValid()) {
+            update(dirty);
+        }
+    }
+
+  protected:
+    void paintEvent(QPaintEvent* event) override {
+        QPainter painter(this);
+        painter.setClipRegion(event->region());
+        painter.fillRect(event->rect(), m_surfaceColor);
+
+        for (const MutationRow& row : m_rows) {
+            const QRect viewportRect = interpolatedRect(row, m_progress);
+            if (!viewportRect.intersects(m_viewportDirtyRect)) {
+                continue;
+            }
+            painter.save();
+            if (row.clipTop != std::numeric_limits<int>::min()) {
+                const int seamY =
+                    std::clamp(row.clipTop - m_viewportOrigin.y(), 0, height());
+                painter.setClipRect(QRect(0, seamY, width(), height() - seamY),
+                                    Qt::IntersectClip);
+            }
+            const QRect localRect = viewportRect.translated(-m_viewportOrigin);
+            painter.drawPixmap(localRect.topLeft(), row.pixmap);
+            painter.restore();
+        }
+    }
+
+  private:
+    [[nodiscard]] static QRect interpolatedRect(const MutationRow& row, const qreal progress) {
+        const auto coordinate = [progress](const int from, const int to) {
+            return qRound(from + (to - from) * progress);
+        };
+        return {coordinate(row.fromRect.x(), row.toRect.x()),
+                coordinate(row.fromRect.y(), row.toRect.y()),
+                coordinate(row.fromRect.width(), row.toRect.width()),
+                coordinate(row.fromRect.height(), row.toRect.height())};
+    }
+
+    [[nodiscard]] QRect frameBounds(const qreal progress) const {
+        QRect result;
+        for (const MutationRow& row : m_rows) {
+            const QRect current = interpolatedRect(row, progress);
+            if (current.intersects(m_viewportDirtyRect)) {
+                result = result.isNull() ? current : result.united(current);
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] QVariantMap geometryMap(const qreal progress) const {
+        QVariantMap result;
+        for (const MutationRow& row : m_rows) {
+            if (!row.index.isValid()) {
+                continue;
+            }
+            const QString key = row.index.data(Qt::DisplayRole).toString();
+            if (!key.isEmpty()) {
+                result.insert(key, interpolatedRect(row, progress));
+            }
+        }
+        return result;
+    }
+
+    void updateSeamProperty() {
+        int groupBottom = std::numeric_limits<int>::min();
+        int trailingTop = std::numeric_limits<int>::max();
+        for (const MutationRow& row : m_rows) {
+            const QRect current = interpolatedRect(row, m_progress);
+            if (row.role == MutationRowRole::Entering || row.role == MutationRowRole::Leaving) {
+                groupBottom = std::max(groupBottom, current.bottom() + 1);
+            } else if (row.fromRect.top() >= m_seam || row.toRect.top() >= m_seam) {
+                trailingTop = std::min(trailingTop, current.top());
+            }
+        }
+        const int seamGap = groupBottom == std::numeric_limits<int>::min() ||
+                                    trailingTop == std::numeric_limits<int>::max()
+                                ? 0
+                                : trailingTop - groupBottom;
+        setProperty("seamGap", seamGap);
+        setProperty("groupBottom", groupBottom);
+        setProperty("trailingTop", trailingTop);
+    }
+
+    QVector<MutationRow> m_rows;
+    QPoint m_viewportOrigin;
+    QRect m_viewportDirtyRect;
+    QColor m_surfaceColor;
+    qreal m_progress = -1.0;
+    int m_seam = 0;
 };
 
 class DisclosureGroupOverlay final : public QWidget {
@@ -164,6 +356,22 @@ class DisclosureGroupOverlay final : public QWidget {
 
 } // namespace
 
+struct VkDisclosureTreeView::RowMutationTransaction final {
+    RowMutationKind kind = RowMutationKind::Insert;
+    QPersistentModelIndex sourceParent;
+    QPersistentModelIndex destinationParent;
+    QPersistentModelIndex continuation;
+    QString continuationIdentity;
+    QVector<CapturedMutationRow> before;
+    QRect continuationRect;
+    int first = 0;
+    int last = -1;
+    int destinationRow = -1;
+    int seam = 0;
+    int startScrollMaximum = 0;
+    int startScrollValue = 0;
+};
+
 VkTreeItemGeometry treeItemGeometry(const QStyleOptionViewItem& option,
                                     const VkFileIconMetrics& metrics, const int horizontalInset,
                                     const int pillHorizontalPadding) {
@@ -218,20 +426,60 @@ VkDisclosureTreeView::VkDisclosureTreeView(QWidget* parent) : QTreeView(parent) 
             [this](const bool enabled) {
                 if (!enabled) {
                     finishDisclosureAnimation();
+                    finishRowMutationAnimation();
                 }
             });
     connect(VkThemeManager::instance(), &VkThemeManager::themeChanged, this,
-            [this](quint64) { finishDisclosureAnimation(); });
+            [this](quint64) {
+                finishDisclosureAnimation();
+                finishRowMutationAnimation();
+            });
     connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int) {
         auto* overlay = static_cast<DisclosureGroupOverlay*>(m_disclosureOverlay.data());
         if (overlay != nullptr) {
             updateDisclosureScrollRange(overlay->property("progress").toReal());
         }
     });
+
+    m_mutationTimeline = new QTimeLine(FinderDisclosureDurationMs, this);
+    m_mutationTimeline->setObjectName(QStringLiteral("vkTreeMutationTimeline"));
+    m_mutationTimeline->setEasingCurve(finderDisclosureEasing());
+    m_mutationTimeline->setUpdateInterval(8);
+    connect(m_mutationTimeline, &QTimeLine::valueChanged, this, [this](const qreal value) {
+        auto* overlay = static_cast<RowMutationOverlay*>(m_mutationOverlay.data());
+        if (overlay != nullptr) {
+            overlay->setProgress(value);
+            updateMutationScrollRange(value);
+        }
+    });
+    connect(m_mutationTimeline, &QTimeLine::finished, this,
+            &VkDisclosureTreeView::finishRowMutationAnimation);
 }
 
 VkDisclosureTreeView::~VkDisclosureTreeView() {
+    // A model may itself be a QObject child of the view. Disconnect before
+    // QObject tears down child objects: timelines can be destroyed before a
+    // child model emits destroyed(), and its lifecycle callback must never
+    // dereference those raw timer pointers during base-class teardown.
+    for (const QMetaObject::Connection& connection : std::as_const(m_modelConnections)) {
+        disconnect(connection);
+    }
+    m_modelConnections.clear();
     finishDisclosureAnimation();
+    finishRowMutationAnimation();
+    m_disclosureTimeline = nullptr;
+    m_mutationTimeline = nullptr;
+}
+
+void VkDisclosureTreeView::setModel(QAbstractItemModel* model) {
+    finishDisclosureAnimation();
+    finishRowMutationAnimation();
+    for (const QMetaObject::Connection& connection : std::as_const(m_modelConnections)) {
+        disconnect(connection);
+    }
+    m_modelConnections.clear();
+    QTreeView::setModel(model);
+    reconnectMutationModel(model);
 }
 
 void VkDisclosureTreeView::setNativeBranchesVisible(const bool visible) {
@@ -259,7 +507,481 @@ QColor VkDisclosureTreeView::disclosureSurfaceColor() const {
                                               : palette().color(QPalette::Base);
 }
 
+void VkDisclosureTreeView::reconnectMutationModel(QAbstractItemModel* model) {
+    if (model == nullptr) {
+        return;
+    }
+    m_modelConnections.append(connect(
+        model, &QAbstractItemModel::rowsAboutToBeInserted, this,
+        [this](const QModelIndex& parent, const int first, const int last) {
+            beginRowMutation(RowMutationKind::Insert, parent, first, last);
+        }));
+    m_modelConnections.append(connect(
+        model, &QAbstractItemModel::rowsInserted, this,
+        [this](const QModelIndex&, const int, const int) {
+            completeRowMutation(RowMutationKind::Insert);
+        }));
+    m_modelConnections.append(connect(
+        model, &QAbstractItemModel::rowsAboutToBeRemoved, this,
+        [this](const QModelIndex& parent, const int first, const int last) {
+            beginRowMutation(RowMutationKind::Remove, parent, first, last);
+        }));
+    m_modelConnections.append(connect(
+        model, &QAbstractItemModel::rowsRemoved, this,
+        [this](const QModelIndex&, const int, const int) {
+            completeRowMutation(RowMutationKind::Remove);
+        }));
+    m_modelConnections.append(connect(
+        model, &QAbstractItemModel::rowsAboutToBeMoved, this,
+        [this](const QModelIndex& sourceParent, const int first, const int last,
+               const QModelIndex& destinationParent, const int destinationRow) {
+            beginRowMutation(RowMutationKind::Move, sourceParent, first, last,
+                             destinationParent, destinationRow);
+        }));
+    m_modelConnections.append(connect(
+        model, &QAbstractItemModel::rowsMoved, this,
+        [this](const QModelIndex&, const int, const int, const QModelIndex&, const int) {
+            completeRowMutation(RowMutationKind::Move);
+        }));
+    m_modelConnections.append(connect(model, &QAbstractItemModel::modelAboutToBeReset, this,
+                                      [this] {
+                                          finishDisclosureAnimation();
+                                          finishRowMutationAnimation();
+                                          m_pendingMutation.reset();
+                                      }));
+    m_modelConnections.append(connect(model, &QObject::destroyed, this, [this] {
+        finishDisclosureAnimation();
+        finishRowMutationAnimation();
+        m_pendingMutation.reset();
+        m_modelConnections.clear();
+    }));
+}
+
+QPixmap VkDisclosureTreeView::captureMutationRow(const QModelIndex& index,
+                                                 const QRect& rect) const {
+    if (!index.isValid() || !rect.isValid() || viewport() == nullptr) {
+        return {};
+    }
+    const qreal ratio = viewport()->devicePixelRatioF();
+    QPixmap pixmap(qMax(1, qCeil(rect.width() * ratio)),
+                   qMax(1, qCeil(rect.height() * ratio)));
+    pixmap.setDevicePixelRatio(ratio);
+    pixmap.fill(disclosureSurfaceColor());
+
+    QPainter painter(&pixmap);
+    painter.translate(-rect.left(), -rect.top());
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
+    option.widget = const_cast<VkDisclosureTreeView*>(this);
+    option.rect = rect;
+    option.state &= ~(QStyle::State_Selected | QStyle::State_HasFocus |
+                      QStyle::State_MouseOver | QStyle::State_Open | QStyle::State_Children);
+    if (selectionModel() != nullptr && selectionModel()->isSelected(index)) {
+        option.state |= QStyle::State_Selected;
+    }
+    if (currentIndex() == index && hasFocus()) {
+        option.state |= QStyle::State_HasFocus;
+    }
+    if (isExpanded(index)) {
+        option.state |= QStyle::State_Open;
+    }
+    if (model() != nullptr && model()->hasChildren(index)) {
+        option.state |= QStyle::State_Children;
+    }
+    drawRow(&painter, option, index);
+    return pixmap;
+}
+
+void VkDisclosureTreeView::beginRowMutation(const RowMutationKind kind,
+                                            const QModelIndex& sourceParent, const int first,
+                                            const int last, const QModelIndex& destinationParent,
+                                            const int destinationRow) {
+    finishDisclosureAnimation();
+    if (model() == nullptr) {
+        return;
+    }
+
+    auto transaction = std::make_unique<RowMutationTransaction>();
+    transaction->kind = kind;
+    transaction->sourceParent = sourceParent;
+    transaction->destinationParent = destinationParent;
+    transaction->first = first;
+    transaction->last = last;
+    transaction->destinationRow = destinationRow;
+    transaction->startScrollMaximum =
+        verticalScrollBar() == nullptr ? 0 : verticalScrollBar()->maximum();
+    transaction->startScrollValue =
+        verticalScrollBar() == nullptr ? 0 : verticalScrollBar()->value();
+
+    QRect coveredByPriorTransition;
+    if (auto* active = static_cast<RowMutationOverlay*>(m_mutationOverlay.data());
+        active != nullptr) {
+        transaction->before = active->currentRows();
+        coveredByPriorTransition = active->geometry();
+        m_mutationTimeline->stop();
+        delete active;
+        m_mutationOverlay = nullptr;
+    }
+
+    doItemsLayout();
+    updateGeometries();
+    QModelIndex firstVisible;
+    for (int y = 0; y < viewport()->height() && !firstVisible.isValid(); ++y) {
+        firstVisible = indexAt(QPoint(viewport()->width() / 2, y));
+    }
+    if (firstVisible.isValid() && firstVisible.column() != 0) {
+        firstVisible = firstVisible.sibling(firstVisible.row(), 0);
+    }
+    for (QModelIndex index = firstVisible; index.isValid(); index = indexBelow(index)) {
+        const QRect rect = visualRect(index);
+        if (rect.top() >= viewport()->height()) {
+            break;
+        }
+        if (!rect.isValid() || rect.bottom() < 0 || rect.intersects(coveredByPriorTransition)) {
+            continue;
+        }
+        transaction->before.append(
+            {QPersistentModelIndex(index), mutationRowIdentity(index), rect, rect,
+             captureMutationRow(index, rect),
+             MutationRowRole::Survivor});
+    }
+
+    const auto currentRect = [&transaction, this](const QModelIndex& index) {
+        const QPersistentModelIndex persistent(index);
+        for (const CapturedMutationRow& row : std::as_const(transaction->before)) {
+            if (row.index.isValid() && row.index == persistent) {
+                return row.rect;
+            }
+        }
+        return visualRect(index);
+    };
+    const auto afterRemovedRoots = [this, sourceParent, first, last](QModelIndex index) {
+        while (index.isValid()) {
+            QModelIndex root = index;
+            while (root.parent().isValid() && root.parent() != sourceParent) {
+                root = root.parent();
+            }
+            if (root.parent() != sourceParent || root.row() < first || root.row() > last) {
+                return index;
+            }
+            index = indexBelow(index);
+        }
+        return QModelIndex{};
+    };
+
+    if (kind == RowMutationKind::Insert) {
+        if (sourceParent.isValid() && !isExpanded(sourceParent)) {
+            transaction->seam = -1;
+        } else {
+            QModelIndex continuation = model()->index(first, 0, sourceParent);
+            if (!continuation.isValid()) {
+                if (first > 0) {
+                    QModelIndex previous = model()->index(first - 1, 0, sourceParent);
+                    QModelIndex following = indexBelow(previous);
+                    while (following.isValid() && isDescendantOf(following, previous)) {
+                        previous = following;
+                        following = indexBelow(following);
+                    }
+                    continuation = following;
+                    transaction->seam = continuation.isValid()
+                                            ? currentRect(continuation).top()
+                                            : currentRect(previous).bottom() + 1;
+                } else if (sourceParent.isValid()) {
+                    continuation = indexBelow(sourceParent);
+                    transaction->seam = continuation.isValid()
+                                            ? currentRect(continuation).top()
+                                            : currentRect(sourceParent).bottom() + 1;
+                } else {
+                    transaction->seam = 0;
+                }
+            } else if (continuation.isValid()) {
+                transaction->seam = currentRect(continuation).top();
+            }
+            transaction->continuation = continuation;
+            transaction->continuationIdentity = mutationRowIdentity(continuation);
+            transaction->continuationRect = currentRect(continuation);
+        }
+    } else {
+        const QModelIndex firstRemoved = model()->index(first, 0, sourceParent);
+        const QRect firstRect = currentRect(firstRemoved);
+        transaction->seam = firstRect.isValid() ? firstRect.top() : -1;
+        QModelIndex continuation = afterRemovedRoots(firstRemoved);
+        transaction->continuation = continuation;
+        transaction->continuationIdentity = mutationRowIdentity(continuation);
+        transaction->continuationRect = currentRect(continuation);
+        if (kind == RowMutationKind::Move && destinationRow >= 0 &&
+            (!destinationParent.isValid() || isExpanded(destinationParent))) {
+            const QModelIndex destination = model()->index(destinationRow, 0, destinationParent);
+            const QRect destinationRect = currentRect(destination);
+            if (destinationRect.isValid()) {
+                transaction->seam = transaction->seam < 0
+                                        ? destinationRect.top()
+                                        : std::min(transaction->seam, destinationRect.top());
+            }
+        }
+    }
+    m_pendingMutation = std::move(transaction);
+}
+
+void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
+    if (m_pendingMutation == nullptr || m_pendingMutation->kind != kind || model() == nullptr) {
+        m_pendingMutation.reset();
+        return;
+    }
+    std::unique_ptr<RowMutationTransaction> transaction = std::move(m_pendingMutation);
+    doItemsLayout();
+    QTreeView::updateGeometries();
+
+    m_mutationStartScrollMaximum = transaction->startScrollMaximum;
+    m_mutationTargetScrollMaximum =
+        verticalScrollBar() == nullptr ? 0 : verticalScrollBar()->maximum();
+    m_mutationVerticalScrollValue = transaction->startScrollValue;
+    m_mutationHorizontalScrollValue =
+        horizontalScrollBar() == nullptr ? 0 : horizontalScrollBar()->value();
+    if (!VkThemeManager::instance()->animationsEnabled() || !isVisible() ||
+        transaction->seam < 0 || viewport()->width() <= 0 || viewport()->height() <= 0) {
+        return;
+    }
+
+    QVector<CapturedMutationRow> after;
+    QModelIndex firstVisible;
+    for (int y = 0; y < viewport()->height() && !firstVisible.isValid(); ++y) {
+        firstVisible = indexAt(QPoint(viewport()->width() / 2, y));
+    }
+    if (firstVisible.isValid() && firstVisible.column() != 0) {
+        firstVisible = firstVisible.sibling(firstVisible.row(), 0);
+    }
+    for (QModelIndex index = firstVisible; index.isValid(); index = indexBelow(index)) {
+        const QRect rect = visualRect(index);
+        if (rect.top() >= viewport()->height()) {
+            break;
+        }
+        if (!rect.isValid() || rect.bottom() < 0) {
+            continue;
+        }
+        after.append({QPersistentModelIndex(index), mutationRowIdentity(index), rect, rect,
+                      captureMutationRow(index, rect), MutationRowRole::Survivor});
+    }
+
+    const auto beforeRectFor = [&transaction](const QPersistentModelIndex& index,
+                                              const QString& identity) {
+        for (const CapturedMutationRow& row : std::as_const(transaction->before)) {
+            if ((row.index.isValid() && index.isValid() && row.index == index) ||
+                (!identity.isEmpty() && row.identity == identity)) {
+                return row.rect;
+            }
+        }
+        return QRect{};
+    };
+    int translation = 0;
+    if (transaction->continuation.isValid() || !transaction->continuationIdentity.isEmpty()) {
+        const QRect from = beforeRectFor(transaction->continuation,
+                                        transaction->continuationIdentity);
+        QRect to = transaction->continuation.isValid()
+                       ? visualRect(transaction->continuation)
+                       : QRect{};
+        if (!to.isValid()) {
+            for (const CapturedMutationRow& row : std::as_const(after)) {
+                if (row.identity == transaction->continuationIdentity) {
+                    to = row.rect;
+                    break;
+                }
+            }
+        }
+        const QRect effectiveFrom = from.isValid() ? from : transaction->continuationRect;
+        if (effectiveFrom.isValid() && to.isValid()) {
+            translation = to.top() - effectiveFrom.top();
+        }
+    }
+    if (translation == 0 && kind == RowMutationKind::Insert) {
+        int top = std::numeric_limits<int>::max();
+        int bottom = std::numeric_limits<int>::min();
+        for (int row = transaction->first; row <= transaction->last; ++row) {
+            const QModelIndex inserted = model()->index(row, 0, transaction->sourceParent);
+            if (!inserted.isValid()) {
+                continue;
+            }
+            QModelIndex cursor = inserted;
+            do {
+                const QRect rect = visualRect(cursor);
+                if (rect.isValid()) {
+                    top = std::min(top, rect.top());
+                    bottom = std::max(bottom, rect.bottom() + 1);
+                }
+                cursor = indexBelow(cursor);
+            } while (cursor.isValid() && isDescendantOf(cursor, inserted));
+        }
+        if (top != std::numeric_limits<int>::max() && bottom > top) {
+            translation = bottom - top;
+        }
+    }
+    if (translation == 0 && kind == RowMutationKind::Remove) {
+        int bottom = transaction->seam;
+        for (const CapturedMutationRow& row : std::as_const(transaction->before)) {
+            if (!row.index.isValid()) {
+                bottom = std::max(bottom, row.rect.bottom() + 1);
+            }
+        }
+        translation = transaction->seam - bottom;
+    }
+
+    const auto insertedRoot = [&transaction](QModelIndex index) {
+        while (index.isValid() && index.parent() != transaction->sourceParent) {
+            index = index.parent();
+        }
+        return index.isValid() && index.parent() == transaction->sourceParent &&
+               index.row() >= transaction->first && index.row() <= transaction->last;
+    };
+
+    QVector<MutationRow> rows;
+    rows.reserve(transaction->before.size() + after.size());
+    QVector<bool> afterUsed(after.size(), false);
+    for (const CapturedMutationRow& before : std::as_const(transaction->before)) {
+        int match = -1;
+        for (int index = 0; index < after.size(); ++index) {
+            if (afterUsed[index]) {
+                continue;
+            }
+            const bool persistentMatch = before.index.isValid() && after[index].index.isValid() &&
+                                         after[index].index == before.index;
+            const bool identityMatch = !before.identity.isEmpty() &&
+                                       after[index].identity == before.identity;
+            if (persistentMatch || identityMatch) {
+                match = index;
+                break;
+            }
+        }
+        if (match >= 0) {
+            afterUsed[match] = true;
+            rows.append({after[match].index, after[match].identity, before.rect,
+                         after[match].rect,
+                         before.pixmap.isNull() ? after[match].pixmap : before.pixmap,
+                         MutationRowRole::Survivor, before.clipTop});
+            continue;
+        }
+        if (before.index.isValid()) {
+            const QRect target = visualRect(before.index);
+            if (target.isValid()) {
+                rows.append({before.index, before.identity, before.rect, target, before.pixmap,
+                             MutationRowRole::Survivor, before.clipTop});
+                continue;
+            }
+        }
+        QRect target = before.eventualRect;
+        if (before.role != MutationRowRole::Leaving || !target.isValid() ||
+            target == before.rect) {
+            target = before.rect.translated(0, translation);
+        }
+        rows.append({before.index, before.identity, before.rect, target, before.pixmap,
+                     MutationRowRole::Leaving,
+                     std::max(before.clipTop, transaction->seam)});
+    }
+    for (int index = 0; index < after.size(); ++index) {
+        if (afterUsed[index]) {
+            continue;
+        }
+        const CapturedMutationRow& target = after[index];
+        const bool entering = kind == RowMutationKind::Insert && insertedRoot(target.index);
+        QRect from = target.rect;
+        if (kind == RowMutationKind::Move) {
+            from.moveTop(transaction->seam);
+        } else {
+            from.translate(0, -translation);
+        }
+        rows.append({target.index, target.identity, from, target.rect, target.pixmap,
+                     entering ? MutationRowRole::Entering : MutationRowRole::Survivor,
+                     entering ? transaction->seam : std::numeric_limits<int>::min()});
+    }
+
+    QRect dirty;
+    for (const MutationRow& row : std::as_const(rows)) {
+        if (row.fromRect == row.toRect && row.role == MutationRowRole::Survivor) {
+            continue;
+        }
+        QRect bounds = row.fromRect.united(row.toRect);
+        if (row.clipTop != std::numeric_limits<int>::min()) {
+            bounds.setTop(std::max(bounds.top(), row.clipTop));
+        }
+        dirty = dirty.isNull() ? bounds : dirty.united(bounds);
+    }
+    if (dirty.isNull()) {
+        updateMutationScrollRange(1.0);
+        return;
+    }
+    dirty.setLeft(0);
+    dirty.setRight(viewport()->width() - 1);
+    dirty = dirty.intersected(viewport()->rect());
+    if (!dirty.isValid()) {
+        updateMutationScrollRange(1.0);
+        return;
+    }
+
+    QVector<MutationRow> visibleRows;
+    visibleRows.reserve(rows.size());
+    for (MutationRow& row : rows) {
+        if (row.fromRect.intersects(dirty) || row.toRect.intersects(dirty)) {
+            visibleRows.append(std::move(row));
+        }
+    }
+    if (visibleRows.isEmpty()) {
+        updateMutationScrollRange(1.0);
+        return;
+    }
+
+    const QString kindName = kind == RowMutationKind::Insert
+                                 ? QStringLiteral("insert")
+                                 : kind == RowMutationKind::Remove ? QStringLiteral("remove")
+                                                                   : QStringLiteral("move");
+    auto* overlay = new RowMutationOverlay(viewport());
+    overlay->setGeometry(dirty);
+    overlay->setRows(std::move(visibleRows), dirty, transaction->seam,
+                     disclosureSurfaceColor(), kindName);
+    overlay->show();
+    overlay->raise();
+    m_mutationOverlay = overlay;
+    updateMutationScrollRange(0.0);
+    m_mutationTimeline->setDuration(FinderDisclosureDurationMs);
+    m_mutationTimeline->setDirection(QTimeLine::Forward);
+    m_mutationTimeline->setCurrentTime(0);
+    m_mutationTimeline->start();
+}
+
+void VkDisclosureTreeView::updateMutationScrollRange(const qreal progress) {
+    auto* scrollBar = verticalScrollBar();
+    if (m_mutationOverlay == nullptr || scrollBar == nullptr) {
+        return;
+    }
+    const qreal bounded = std::clamp(progress, 0.0, 1.0);
+    const int maximum = m_mutationStartScrollMaximum +
+                        qRound(bounded *
+                               (m_mutationTargetScrollMaximum - m_mutationStartScrollMaximum));
+    const QSignalBlocker blocker(scrollBar);
+    scrollBar->setRange(scrollBar->minimum(), std::max(scrollBar->minimum(), maximum));
+    scrollBar->setValue(
+        std::clamp(m_mutationVerticalScrollValue, scrollBar->minimum(), scrollBar->maximum()));
+    m_mutationOverlay->setProperty("startScrollMaximum", m_mutationStartScrollMaximum);
+    m_mutationOverlay->setProperty("targetScrollMaximum", m_mutationTargetScrollMaximum);
+    m_mutationOverlay->setProperty("currentScrollMaximum", scrollBar->maximum());
+}
+
+void VkDisclosureTreeView::finishRowMutationAnimation() {
+    if (m_mutationTimeline != nullptr && m_mutationTimeline->state() != QTimeLine::NotRunning) {
+        m_mutationTimeline->stop();
+    }
+    if (m_mutationOverlay == nullptr) {
+        m_pendingMutation.reset();
+        return;
+    }
+    const QRect dirty = m_mutationOverlay->geometry();
+    delete m_mutationOverlay.data();
+    m_mutationOverlay = nullptr;
+    m_pendingMutation.reset();
+    QTreeView::updateGeometries();
+    viewport()->update(dirty);
+}
+
 void VkDisclosureTreeView::setExpandedAnimated(const QModelIndex& index, const bool expanded) {
+    finishRowMutationAnimation();
     if (!index.isValid() || isExpanded(index) == expanded) {
         return;
     }
@@ -474,6 +1196,7 @@ void VkDisclosureTreeView::changeEvent(QEvent* event) {
          event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::FontChange ||
          event->type() == QEvent::ApplicationFontChange)) {
         finishDisclosureAnimation();
+        finishRowMutationAnimation();
     }
     QTreeView::changeEvent(event);
 }
@@ -506,6 +1229,7 @@ void VkDisclosureTreeView::drawRow(QPainter* painter, const QStyleOptionViewItem
 }
 
 void VkDisclosureTreeView::resizeEvent(QResizeEvent* event) {
+    finishRowMutationAnimation();
     const bool preserveDisclosure = m_disclosureOverlay != nullptr && event != nullptr;
     if (!preserveDisclosure) {
         finishDisclosureAnimation();
@@ -525,6 +1249,25 @@ void VkDisclosureTreeView::resizeEvent(QResizeEvent* event) {
 }
 
 void VkDisclosureTreeView::scrollContentsBy(const int dx, const int dy) {
+    if (m_mutationOverlay != nullptr && !m_restoringMutationScroll &&
+        QApplication::mouseButtons() == Qt::NoButton) {
+        m_restoringMutationScroll = true;
+        if (auto* horizontal = horizontalScrollBar();
+            horizontal != nullptr && horizontal->value() != m_mutationHorizontalScrollValue) {
+            const QSignalBlocker blocker(horizontal);
+            horizontal->setValue(m_mutationHorizontalScrollValue);
+        }
+        if (auto* vertical = verticalScrollBar();
+            vertical != nullptr && vertical->value() != m_mutationVerticalScrollValue) {
+            const QSignalBlocker blocker(vertical);
+            vertical->setValue(m_mutationVerticalScrollValue);
+        }
+        m_restoringMutationScroll = false;
+        return;
+    }
+    if (m_mutationOverlay != nullptr) {
+        finishRowMutationAnimation();
+    }
     if (m_disclosureOverlay != nullptr && !m_restoringDisclosureScroll &&
         QApplication::mouseButtons() == Qt::NoButton) {
         // QTreeView may asynchronously keep the previous current index
@@ -556,6 +1299,10 @@ void VkDisclosureTreeView::updateGeometries() {
     if (overlay != nullptr) {
         updateDisclosureScrollRange(overlay->property("progress").toReal());
     }
+    auto* mutationOverlay = static_cast<RowMutationOverlay*>(m_mutationOverlay.data());
+    if (mutationOverlay != nullptr) {
+        updateMutationScrollRange(mutationOverlay->property("progress").toReal());
+    }
 }
 
 void VkDisclosureTreeView::wheelEvent(QWheelEvent* event) {
@@ -563,6 +1310,7 @@ void VkDisclosureTreeView::wheelEvent(QWheelEvent* event) {
     // direct scrollbar drags are distinguished by QApplication::mouseButtons
     // in scrollContentsBy().
     finishDisclosureAnimation();
+    finishRowMutationAnimation();
     QTreeView::wheelEvent(event);
 }
 

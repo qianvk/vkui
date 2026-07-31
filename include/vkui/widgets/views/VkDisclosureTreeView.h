@@ -3,15 +3,19 @@
 #pragma once
 
 #include <QColor>
+#include <QMetaObject>
 #include <QPersistentModelIndex>
 #include <QPointer>
 #include <QStyleOptionViewItem>
 #include <QTreeView>
+#include <QVector>
+#include <memory>
 #include <vkui/VkUiGlobal.h>
 #include <vkui/core/VkFileIcon.h>
 
 class QTimeLine;
 class QWheelEvent;
+class QPixmap;
 
 namespace vkui {
 
@@ -50,11 +54,14 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     explicit VkDisclosureTreeView(QWidget* parent = nullptr);
     ~VkDisclosureTreeView() override;
 
+    void setModel(QAbstractItemModel* model) override;
+
     void setNativeBranchesVisible(bool visible);
     [[nodiscard]] bool nativeBranchesVisible() const noexcept;
 
     void setExpandedAnimated(const QModelIndex& index, bool expanded);
     void finishDisclosureAnimation();
+    void finishRowMutationAnimation();
 
     /**
      * Sets the solid surface behind captured rows.
@@ -77,18 +84,37 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     void wheelEvent(QWheelEvent* event) override;
 
   private:
+    enum class RowMutationKind { Insert, Remove, Move };
+    struct RowMutationTransaction;
+
     [[nodiscard]] bool isDescendantOf(const QModelIndex& index, const QModelIndex& ancestor) const;
+    void beginRowMutation(RowMutationKind kind, const QModelIndex& sourceParent, int first,
+                          int last, const QModelIndex& destinationParent = {},
+                          int destinationRow = -1);
+    [[nodiscard]] QPixmap captureMutationRow(const QModelIndex& index, const QRect& rect) const;
+    void completeRowMutation(RowMutationKind kind);
+    void reconnectMutationModel(QAbstractItemModel* model);
     void updateDisclosureScrollRange(qreal progress);
+    void updateMutationScrollRange(qreal progress);
 
     QTimeLine* m_disclosureTimeline = nullptr;
+    QTimeLine* m_mutationTimeline = nullptr;
     QPointer<QWidget> m_disclosureOverlay;
+    QPointer<QWidget> m_mutationOverlay;
+    std::unique_ptr<RowMutationTransaction> m_pendingMutation;
+    QVector<QMetaObject::Connection> m_modelConnections;
     QPersistentModelIndex m_disclosureIndex;
     QColor m_disclosureSurfaceColor;
     int m_disclosureHorizontalScrollValue = 0;
     int m_disclosureVerticalScrollValue = 0;
     int m_disclosureCollapsedScrollMaximum = 0;
     int m_disclosureExpandedScrollMaximum = 0;
+    int m_mutationStartScrollMaximum = 0;
+    int m_mutationTargetScrollMaximum = 0;
+    int m_mutationHorizontalScrollValue = 0;
+    int m_mutationVerticalScrollValue = 0;
     bool m_restoringDisclosureScroll = false;
+    bool m_restoringMutationScroll = false;
     bool m_nativeBranchesVisible = true;
 };
 
