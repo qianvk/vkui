@@ -54,6 +54,18 @@ void VkFramelessDialog::setResizable(bool resizable) {
     windowAgent_->setResizable(resizable);
 }
 
+VkFramelessDialog::CloseButtonPlacement VkFramelessDialog::closeButtonPlacement() const noexcept {
+    return closeButtonPlacement_;
+}
+
+void VkFramelessDialog::setCloseButtonPlacement(const CloseButtonPlacement placement) {
+    if (closeButtonPlacement_ == placement) {
+        return;
+    }
+    closeButtonPlacement_ = placement;
+    refreshCloseButtonPlacement();
+}
+
 QWidget* VkFramelessDialog::titleBar() const {
     return titleBar_;
 }
@@ -170,14 +182,11 @@ void VkFramelessDialog::buildUi() {
 
 void VkFramelessDialog::installWindowChrome() {
     const bool setup = windowAgent_->setup(this);
-    bool platformCloseAvailable = false;
     if (setup) {
         windowAgent_->setResizable(resizable_);
-        platformCloseAvailable = windowAgent_->installSystemButtons();
+        platformCloseAvailable_ = windowAgent_->installSystemButtons();
         const bool titleBarAdded = windowAgent_->addTitleBar(titleBar_);
         Q_ASSERT(titleBarAdded);
-        windowAgent_->setSystemButtonVisibility(
-            VkWindowAgent::SystemButtonVisibility::AlwaysVisible);
 #if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
         // A close-only utility window must position the single traffic light
         // explicitly. Centering it in the three-button reservation can move
@@ -188,9 +197,25 @@ void VkFramelessDialog::installWindowChrome() {
         windowAgent_->setHitTestVisible(fallbackCloseButton_, true);
     }
 
-    fallbackCloseButton_->setVisible(!platformCloseAvailable);
+    refreshCloseButtonPlacement();
+}
+
+void VkFramelessDialog::refreshCloseButtonPlacement() {
+    const bool usePlatformClose =
+        closeButtonPlacement_ == CloseButtonPlacement::Platform && platformCloseAvailable_;
+    const bool useFallbackClose =
+        closeButtonPlacement_ == CloseButtonPlacement::Trailing ||
+        (closeButtonPlacement_ == CloseButtonPlacement::Platform && !platformCloseAvailable_);
+    if (windowAgent_ != nullptr) {
+        windowAgent_->setSystemButtonVisibility(
+            usePlatformClose ? VkWindowAgent::SystemButtonVisibility::AlwaysVisible
+                             : VkWindowAgent::SystemButtonVisibility::AlwaysHidden);
+    }
+    if (fallbackCloseButton_ != nullptr) {
+        fallbackCloseButton_->setVisible(useFallbackClose);
+    }
     if (nativeButtonReserve_ != nullptr) {
-        nativeButtonReserve_->setVisible(platformCloseAvailable);
+        nativeButtonReserve_->setVisible(usePlatformClose);
     }
 }
 

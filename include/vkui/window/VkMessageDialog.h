@@ -7,6 +7,7 @@
 #include <vkui/window/VkFramelessDialog.h>
 
 class QAbstractButton;
+class QKeyEvent;
 class QPushButton;
 
 namespace vkui {
@@ -31,6 +32,12 @@ class VKUI_WINDOW_EXPORT VkMessageDialog final : public VkFramelessDialog {
     [[nodiscard]] QPushButton* button(QDialogButtonBox::StandardButton button) const;
     void setDefaultButton(QAbstractButton* button);
     void setDefaultButton(QDialogButtonBox::StandardButton button);
+    [[nodiscard]] bool defaultButtonIndicatorVisible() const noexcept;
+    /**
+     * Controls only the native default-button paint state. Enter keeps
+     * activating the logical default even when this indicator is hidden.
+     */
+    void setDefaultButtonIndicatorVisible(bool visible);
     void setEscapeButton(QAbstractButton* button);
     void setEscapeButton(QDialogButtonBox::StandardButton button);
     [[nodiscard]] QAbstractButton* clickedButton() const;
@@ -60,6 +67,9 @@ class VKUI_WINDOW_EXPORT VkMessageDialog final : public VkFramelessDialog {
   public slots:
     void reject() override;
 
+  protected:
+    void keyPressEvent(QKeyEvent* event) override;
+
   private:
     static QDialogButtonBox::StandardButton run(Icon icon, QWidget* parent, const QString& title,
                                                 const QString& text,
@@ -68,7 +78,9 @@ class VKUI_WINDOW_EXPORT VkMessageDialog final : public VkFramelessDialog {
 
     QDialogButtonBox* buttons_ = nullptr;
     QPointer<QAbstractButton> clickedButton_;
+    QPointer<QPushButton> defaultButton_;
     QPointer<QAbstractButton> escapeButton_;
+    bool defaultButtonIndicatorVisible_ = true;
 };
 
 } // namespace vkui

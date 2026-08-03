@@ -91,7 +91,10 @@ class VKUI_WIDGETS_EXPORT VkDisclosureTreeView : public QTreeView {
     void beginRowMutation(RowMutationKind kind, const QModelIndex& sourceParent, int first,
                           int last, const QModelIndex& destinationParent = {},
                           int destinationRow = -1);
-    [[nodiscard]] QPixmap captureMutationRow(const QModelIndex& index, const QRect& rect) const;
+    [[nodiscard]] QRect mutationRowRect(const QModelIndex& index) const;
+    [[nodiscard]] QPixmap captureMutationSurface() const;
+    [[nodiscard]] QPixmap captureMutationRow(const QRect& rect,
+                                              const QPixmap& surface) const;
     void completeRowMutation(RowMutationKind kind);
     void reconnectMutationModel(QAbstractItemModel* model);
     void updateDisclosureScrollRange(qreal progress);

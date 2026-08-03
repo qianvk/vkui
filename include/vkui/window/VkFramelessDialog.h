@@ -25,11 +25,24 @@ class VKUI_WINDOW_EXPORT VkFramelessDialog : public QDialog {
     Q_OBJECT
 
   public:
+    enum class CloseButtonPlacement {
+        /** Use the platform window button whenever the backend provides one. */
+        Platform,
+        /** Keep the leading title edge clear and show VkUI's trailing button. */
+        Trailing,
+        /** Hide both platform and fallback close controls. */
+        Hidden,
+    };
+    Q_ENUM(CloseButtonPlacement)
+
     explicit VkFramelessDialog(const QString& title, QWidget* parent = nullptr);
     ~VkFramelessDialog() override;
 
     [[nodiscard]] bool isResizable() const;
     void setResizable(bool resizable);
+
+    [[nodiscard]] CloseButtonPlacement closeButtonPlacement() const noexcept;
+    void setCloseButtonPlacement(CloseButtonPlacement placement);
 
     [[nodiscard]] QWidget* titleBar() const;
     [[nodiscard]] QWidget* contentWidget() const;
@@ -44,6 +57,7 @@ class VKUI_WINDOW_EXPORT VkFramelessDialog : public QDialog {
   private:
     void buildUi();
     void installWindowChrome();
+    void refreshCloseButtonPlacement();
     void refreshTitle();
 
     QFrame* surface_ = nullptr;
@@ -55,6 +69,8 @@ class VKUI_WINDOW_EXPORT VkFramelessDialog : public QDialog {
     QVBoxLayout* contentLayout_ = nullptr;
     VkWindowAgent* windowAgent_ = nullptr;
     bool resizable_ = false;
+    bool platformCloseAvailable_ = false;
+    CloseButtonPlacement closeButtonPlacement_ = CloseButtonPlacement::Platform;
 };
 
 } // namespace vkui
