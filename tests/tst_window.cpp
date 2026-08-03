@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 #include <QAbstractButton>
+#include <QLabel>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QVBoxLayout>
+#include <QToolButton>
 #include <QWidget>
 #include <QtTest>
 #include <limits>
@@ -107,6 +109,31 @@ void WindowTest::framelessDialogUsesCloseOnlyChromeAndHostGeometry() {
     // their synthetic WId as an AppKit/Win32 native handle.
     dialog.show();
     QTRY_VERIFY(dialog.isVisible());
+
+    dialog.setCloseButtonPlacement(
+        vkui::VkFramelessDialog::CloseButtonPlacement::Trailing);
+    QCOMPARE(dialog.closeButtonPlacement(),
+             vkui::VkFramelessDialog::CloseButtonPlacement::Trailing);
+    QLabel* title = dialog.findChild<QLabel*>(
+        QStringLiteral("VkFramelessDialogTitleLabel"));
+    QToolButton* close = dialog.findChild<QToolButton*>(
+        QStringLiteral("VkFramelessDialogCloseButton"));
+    QVERIFY(title != nullptr);
+    QVERIFY(close != nullptr);
+    QVERIFY(close->isVisible());
+    QCOMPARE(title->geometry().left(),
+             dialog.titleBar()->layout()->contentsMargins().left());
+    QVERIFY(close->geometry().left() > title->geometry().right());
+
+    dialog.setCloseButtonPlacement(
+        vkui::VkFramelessDialog::CloseButtonPlacement::Hidden);
+    QCOMPARE(dialog.closeButtonPlacement(),
+             vkui::VkFramelessDialog::CloseButtonPlacement::Hidden);
+    QVERIFY(!close->isVisible());
+    QCOMPARE(dialog.windowAgent()->systemButtonVisibility(),
+             vkui::VkWindowAgent::SystemButtonVisibility::AlwaysHidden);
+    QCOMPARE(title->geometry().left(),
+             dialog.titleBar()->layout()->contentsMargins().left());
     dialog.close();
 }
 
@@ -129,11 +156,22 @@ void WindowTest::destructivePromptDefaultsToCancel() {
     QSignalSpy destructiveClicks(destructive, &QAbstractButton::clicked);
     QTest::keyClick(destructive, Qt::Key_Return);
     QCOMPARE(destructiveClicks.count(), 0);
-    QVERIFY(prompt.clickedButton() == nullptr);
+    QCOMPARE(prompt.clickedButton(), static_cast<QAbstractButton*>(cancel));
 
     prompt.reject();
     QCOMPARE(prompt.clickedButton(), static_cast<QAbstractButton*>(cancel));
 
+    vkui::VkMessageDialog outlinePrompt(
+        vkui::VkMessageDialog::Icon::Warning, QStringLiteral("Outline selection"),
+        QStringLiteral("The logical default need not be painted as selection."),
+        QDialogButtonBox::Cancel);
+    QPushButton* outlineCancel = outlinePrompt.button(QDialogButtonBox::Cancel);
+    QVERIFY(outlineCancel != nullptr);
+    outlinePrompt.setDefaultButton(outlineCancel);
+    outlinePrompt.setDefaultButtonIndicatorVisible(false);
+    QVERIFY(!outlinePrompt.defaultButtonIndicatorVisible());
+    QVERIFY(!outlineCancel->isDefault());
+    QVERIFY(!outlineCancel->autoDefault());
     vkui::VkMessageDialog guardedPrompt(
         vkui::VkMessageDialog::Icon::Warning, QStringLiteral("Guarded"),
         QStringLiteral("Foreign and deleted buttons are never retained."),

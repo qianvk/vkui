@@ -557,38 +557,43 @@ void VkDisclosureTreeView::reconnectMutationModel(QAbstractItemModel* model) {
     }));
 }
 
-QPixmap VkDisclosureTreeView::captureMutationRow(const QModelIndex& index,
-                                                 const QRect& rect) const {
-    if (!index.isValid() || !rect.isValid() || viewport() == nullptr) {
+QRect VkDisclosureTreeView::mutationRowRect(const QModelIndex& index) const {
+    if (!index.isValid() || viewport() == nullptr) {
         return {};
     }
-    const qreal ratio = viewport()->devicePixelRatioF();
+    const QRect itemRect = visualRect(index);
+    if (!itemRect.isValid()) {
+        return {};
+    }
+    // QTreeView paints drawRow() with a FullRow rectangle. Retain that same
+    // coordinate system in the transition so hierarchy indentation never
+    // becomes a second horizontal translation.
+    return QRect(viewport()->rect().left(), itemRect.top(),
+                 viewport()->width(), itemRect.height());
+}
+
+QPixmap VkDisclosureTreeView::captureMutationSurface() const {
+    return viewport() == nullptr ? QPixmap{} : viewport()->grab();
+}
+
+QPixmap VkDisclosureTreeView::captureMutationRow(const QRect& rect,
+                                                 const QPixmap& surface) const {
+    if (!rect.isValid() || surface.isNull() || viewport() == nullptr) {
+        return {};
+    }
+    const qreal ratio = surface.devicePixelRatio();
     QPixmap pixmap(qMax(1, qCeil(rect.width() * ratio)),
                    qMax(1, qCeil(rect.height() * ratio)));
     pixmap.setDevicePixelRatio(ratio);
     pixmap.fill(disclosureSurfaceColor());
 
+    // Never call QTreeView::drawRow() out of drawTree(). Qt's implementation
+    // obtains indentation from the private current view-item cursor, which is
+    // only advanced by drawTree(); a manual call therefore paints rows at an
+    // unrelated hierarchy depth. One real viewport render followed by cheap
+    // row slices is both exact and O(visible pixels) per mutation.
     QPainter painter(&pixmap);
-    painter.translate(-rect.left(), -rect.top());
-    QStyleOptionViewItem option;
-    initViewItemOption(&option);
-    option.widget = const_cast<VkDisclosureTreeView*>(this);
-    option.rect = rect;
-    option.state &= ~(QStyle::State_Selected | QStyle::State_HasFocus |
-                      QStyle::State_MouseOver | QStyle::State_Open | QStyle::State_Children);
-    if (selectionModel() != nullptr && selectionModel()->isSelected(index)) {
-        option.state |= QStyle::State_Selected;
-    }
-    if (currentIndex() == index && hasFocus()) {
-        option.state |= QStyle::State_HasFocus;
-    }
-    if (isExpanded(index)) {
-        option.state |= QStyle::State_Open;
-    }
-    if (model() != nullptr && model()->hasChildren(index)) {
-        option.state |= QStyle::State_Children;
-    }
-    drawRow(&painter, option, index);
+    painter.drawPixmap(QPoint(-rect.left(), -rect.top()), surface);
     return pixmap;
 }
 
@@ -625,6 +630,7 @@ void VkDisclosureTreeView::beginRowMutation(const RowMutationKind kind,
 
     doItemsLayout();
     updateGeometries();
+    const QPixmap beforeSurface = captureMutationSurface();
     QModelIndex firstVisible;
     for (int y = 0; y < viewport()->height() && !firstVisible.isValid(); ++y) {
         firstVisible = indexAt(QPoint(viewport()->width() / 2, y));
@@ -633,7 +639,7 @@ void VkDisclosureTreeView::beginRowMutation(const RowMutationKind kind,
         firstVisible = firstVisible.sibling(firstVisible.row(), 0);
     }
     for (QModelIndex index = firstVisible; index.isValid(); index = indexBelow(index)) {
-        const QRect rect = visualRect(index);
+        const QRect rect = mutationRowRect(index);
         if (rect.top() >= viewport()->height()) {
             break;
         }
@@ -642,7 +648,7 @@ void VkDisclosureTreeView::beginRowMutation(const RowMutationKind kind,
         }
         transaction->before.append(
             {QPersistentModelIndex(index), mutationRowIdentity(index), rect, rect,
-             captureMutationRow(index, rect),
+             captureMutationRow(rect, beforeSurface),
              MutationRowRole::Survivor});
     }
 
@@ -653,7 +659,7 @@ void VkDisclosureTreeView::beginRowMutation(const RowMutationKind kind,
                 return row.rect;
             }
         }
-        return visualRect(index);
+        return mutationRowRect(index);
     };
     const auto afterRemovedRoots = [this, sourceParent, first, last](QModelIndex index) {
         while (index.isValid()) {
@@ -731,6 +737,7 @@ void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
     std::unique_ptr<RowMutationTransaction> transaction = std::move(m_pendingMutation);
     doItemsLayout();
     QTreeView::updateGeometries();
+    const QPixmap afterSurface = captureMutationSurface();
 
     m_mutationStartScrollMaximum = transaction->startScrollMaximum;
     m_mutationTargetScrollMaximum =
@@ -752,7 +759,7 @@ void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
         firstVisible = firstVisible.sibling(firstVisible.row(), 0);
     }
     for (QModelIndex index = firstVisible; index.isValid(); index = indexBelow(index)) {
-        const QRect rect = visualRect(index);
+        const QRect rect = mutationRowRect(index);
         if (rect.top() >= viewport()->height()) {
             break;
         }
@@ -760,7 +767,7 @@ void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
             continue;
         }
         after.append({QPersistentModelIndex(index), mutationRowIdentity(index), rect, rect,
-                      captureMutationRow(index, rect), MutationRowRole::Survivor});
+                      captureMutationRow(rect, afterSurface), MutationRowRole::Survivor});
     }
 
     const auto beforeRectFor = [&transaction](const QPersistentModelIndex& index,
@@ -778,7 +785,7 @@ void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
         const QRect from = beforeRectFor(transaction->continuation,
                                         transaction->continuationIdentity);
         QRect to = transaction->continuation.isValid()
-                       ? visualRect(transaction->continuation)
+                       ? mutationRowRect(transaction->continuation)
                        : QRect{};
         if (!to.isValid()) {
             for (const CapturedMutationRow& row : std::as_const(after)) {
@@ -803,7 +810,7 @@ void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
             }
             QModelIndex cursor = inserted;
             do {
-                const QRect rect = visualRect(cursor);
+                const QRect rect = mutationRowRect(cursor);
                 if (rect.isValid()) {
                     top = std::min(top, rect.top());
                     bottom = std::max(bottom, rect.bottom() + 1);
@@ -860,7 +867,7 @@ void VkDisclosureTreeView::completeRowMutation(const RowMutationKind kind) {
             continue;
         }
         if (before.index.isValid()) {
-            const QRect target = visualRect(before.index);
+            const QRect target = mutationRowRect(before.index);
             if (target.isValid()) {
                 rows.append({before.index, before.identity, before.rect, target, before.pixmap,
                              MutationRowRole::Survivor, before.clipTop});

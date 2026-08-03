@@ -3,6 +3,7 @@
 #include <QAbstractButton>
 #include <QCoreApplication>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -85,12 +86,13 @@ void VkMessageDialog::setDefaultButton(QAbstractButton* button) {
     if (defaultButton == nullptr || !buttons_->buttons().contains(defaultButton)) {
         return;
     }
+    defaultButton_ = defaultButton;
 
     // Keep Enter deterministic even after focus moves to a destructive action.
     // Space still activates a focused button, preserving keyboard accessibility.
     for (QAbstractButton* candidate : buttons_->buttons()) {
         if (auto* pushButton = qobject_cast<QPushButton*>(candidate)) {
-            const bool isDefault = pushButton == defaultButton;
+            const bool isDefault = defaultButtonIndicatorVisible_ && pushButton == defaultButton;
             pushButton->setAutoDefault(isDefault);
             pushButton->setDefault(isDefault);
         }
@@ -100,6 +102,24 @@ void VkMessageDialog::setDefaultButton(QAbstractButton* button) {
 
 void VkMessageDialog::setDefaultButton(QDialogButtonBox::StandardButton button) {
     setDefaultButton(buttons_->button(button));
+}
+
+bool VkMessageDialog::defaultButtonIndicatorVisible() const noexcept {
+    return defaultButtonIndicatorVisible_;
+}
+
+void VkMessageDialog::setDefaultButtonIndicatorVisible(const bool visible) {
+    if (defaultButtonIndicatorVisible_ == visible) {
+        return;
+    }
+    defaultButtonIndicatorVisible_ = visible;
+    for (QAbstractButton* candidate : buttons_->buttons()) {
+        if (auto* pushButton = qobject_cast<QPushButton*>(candidate)) {
+            const bool isDefault = visible && pushButton == defaultButton_;
+            pushButton->setAutoDefault(isDefault);
+            pushButton->setDefault(isDefault);
+        }
+    }
 }
 
 void VkMessageDialog::setEscapeButton(QAbstractButton* button) {
@@ -161,6 +181,17 @@ void VkMessageDialog::reject() {
         clickedButton_ = escapeButton_;
     }
     VkFramelessDialog::reject();
+}
+
+void VkMessageDialog::keyPressEvent(QKeyEvent* event) {
+    if (event != nullptr && defaultButton_ != nullptr && defaultButton_->isEnabled() &&
+        (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+        (event->modifiers() == Qt::NoModifier || event->modifiers() == Qt::KeypadModifier)) {
+        defaultButton_->click();
+        event->accept();
+        return;
+    }
+    VkFramelessDialog::keyPressEvent(event);
 }
 
 QDialogButtonBox::StandardButton
