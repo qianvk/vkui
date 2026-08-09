@@ -5,6 +5,12 @@ releases are tagged.
 
 ## Unreleased
 
+- Added the optional `Buffer`, `Interaction`, `Panel`, and `InteractionWidgets`
+  package components for renderer-independent text storage, Neovim-like modal
+  input, split-layout geometry, and standard QWidget block/panel projection.
+- Added generation-scoped interaction/plugin leases, structured diagnostic
+  sinks, immutable panel snapshots, constrained resize/navigation math, and
+  dedicated unit and installed-package coverage for the interaction stack.
 - Added coalesced runtime repolish so existing widgets and QSS overlays switch appearance fully.
 - Added optional palette-aware QSS file overlays without making QSS the default theme engine.
 - Added semantic application-command SVG symbols for save, reset, duplicate, media, focus, project,

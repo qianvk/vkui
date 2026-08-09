@@ -18,6 +18,8 @@ option(VKUI_BUILD_EXAMPLES "Build the component gallery" ON)
 option(VKUI_BUILD_TESTS "Build unit tests" ON)
 option(VKUI_INSTALL "Generate installation rules" ON)
 option(VKUI_BUILD_WINDOW "Build the integrated native window module" ON)
+option(VKUI_BUILD_INTERACTION
+       "Build the modal interaction, buffer, panel, and widget adapters" ON)
 option(VKUI_BUILD_WINDOW_QUICK
        "Build the internal Qt Quick migration validation target" OFF)
 option(VKUI_WINDOW_FORCE_QT_CONTEXT
@@ -66,6 +68,18 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets Svg)
+if(VKUI_BUILD_INTERACTION)
+    if(APPLE AND NOT ICU_ROOT)
+        foreach(_vkui_icu_root
+                IN ITEMS /opt/homebrew/opt/icu4c /usr/local/opt/icu4c)
+            if(EXISTS "${_vkui_icu_root}/include/unicode/utf16.h")
+                set(ICU_ROOT "${_vkui_icu_root}")
+                break()
+            endif()
+        endforeach()
+    endif()
+    find_package(ICU 70 REQUIRED COMPONENTS uc)
+endif()
 if(VKUI_BUILD_EXAMPLES)
     find_package(Qt6 6.6 REQUIRED COMPONENTS LinguistTools)
 endif()
@@ -91,12 +105,14 @@ target_sources(vkui_core
         include/vkui/core/VkTheme.h
         include/vkui/core/VkThemeManager.h
         include/vkui/core/VkColorTokens.h
+        include/vkui/core/VkDiagnostics.h
         include/vkui/core/VkMetricTokens.h
         include/vkui/core/VkTypographyTokens.h
         include/vkui/core/VkMotion.h
         include/vkui/core/VkIcon.h
         include/vkui/core/VkFileIcon.h
         src/core/theme/VkTheme.cpp
+        src/core/diagnostics/VkDiagnostics.cpp
         src/core/theme/VkThemeManager.cpp
         src/core/theme/private/VkThemeManager_p.h
         src/core/icons/VkIcon.cpp
@@ -182,6 +198,126 @@ set_target_properties(vkui_widgets PROPERTIES
     SOVERSION 0
 )
 
+if(VKUI_BUILD_INTERACTION)
+    add_library(vkui_buffer STATIC
+        include/vkui/Buffer.h
+        include/vkui/buffer/BufferStorage.h
+        src/buffer/BufferStorage.cpp
+    )
+    add_library(VkUI::Buffer ALIAS vkui_buffer)
+    target_compile_features(vkui_buffer PUBLIC cxx_std_20)
+    target_include_directories(vkui_buffer PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    set_target_properties(vkui_buffer PROPERTIES
+        EXPORT_NAME Buffer
+        OUTPUT_NAME vkui-buffer
+        CXX_EXTENSIONS OFF)
+
+    set(_vkui_interaction_sources
+        src/vk/private/VkCanonicalKeyEvent.cpp
+        src/vk/private/VkCommandRegistry.cpp
+        src/vk/private/VkCore.cpp
+        src/vk/private/VkCoreBuffer.cpp
+        src/vk/private/VkCoreBufferQueries.cpp
+        src/vk/private/VkCoreCommand.cpp
+        src/vk/private/VkCoreCommandState.cpp
+        src/vk/private/VkCoreEditHistory.cpp
+        src/vk/private/VkCoreEditing.cpp
+        src/vk/private/VkCoreExecution.cpp
+        src/vk/private/VkCoreInput.cpp
+        src/vk/private/VkCoreInputGrammar.cpp
+        src/vk/private/VkCoreInternal.cpp
+        src/vk/private/VkCoreInternal.h
+        src/vk/private/VkCoreMotion.cpp
+        src/vk/private/VkCoreNativeGrammar.h
+        src/vk/private/VkCoreNavigation.cpp
+        src/vk/private/VkCoreOperators.cpp
+        src/vk/private/VkCorePluginManager.cpp
+        src/vk/private/VkCoreRegistersMarks.cpp
+        src/vk/private/VkCoreRepeat.cpp
+        src/vk/private/VkCoreSearchCommands.cpp
+        src/vk/private/VkCoreTextObjects.cpp
+        src/vk/private/VkCoreVisual.cpp
+        src/vk/private/VkCoreWindow.cpp
+        src/vk/private/VkCoreWorkspaceState.cpp
+        src/vk/private/VkInputEngine.cpp
+        src/vk/private/VkUserCommandRegistry.cpp)
+    add_library(vkui_interaction STATIC
+        include/vkui/Interaction.h
+        include/vkui/vk/VkCanonicalKeyEvent.h
+        include/vkui/vk/VkCommandRegistry.h
+        include/vkui/vk/VkCore.h
+        include/vkui/vk/VkCorePluginManager.h
+        include/vkui/vk/VkInputEngine.h
+        include/vkui/vk/VkTypes.h
+        include/vkui/vk/VkUserCommandRegistry.h
+        include/vkui/vk/VkWindowCommands.h
+        ${_vkui_interaction_sources})
+    add_library(VkUI::Interaction ALIAS vkui_interaction)
+    target_compile_features(vkui_interaction PUBLIC cxx_std_20)
+    target_include_directories(vkui_interaction
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/vkui/vk
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/vk/private)
+    target_link_libraries(vkui_interaction
+        PUBLIC Qt6::Gui ICU::uc VkUI::Buffer VkUI::Core)
+    target_compile_definitions(vkui_interaction PRIVATE
+        QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
+    set_target_properties(vkui_interaction PROPERTIES
+        EXPORT_NAME Interaction
+        OUTPUT_NAME vkui-interaction
+        AUTOMOC ON
+        CXX_EXTENSIONS OFF)
+
+    add_library(vkui_panel STATIC
+        include/vkui/Panel.h
+        include/vkui/panel/VkPanelLayoutModel.h
+        include/vkui/panel/VkSpatialNavigation.h
+        src/panel/VkPanelLayoutModel.cpp
+        src/panel/VkSpatialNavigation.cpp)
+    add_library(VkUI::Panel ALIAS vkui_panel)
+    target_compile_features(vkui_panel PUBLIC cxx_std_20)
+    target_include_directories(vkui_panel PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    target_link_libraries(vkui_panel PUBLIC Qt6::Core VkUI::Interaction)
+    target_compile_definitions(vkui_panel PRIVATE
+        QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
+    set_target_properties(vkui_panel PROPERTIES
+        EXPORT_NAME Panel
+        OUTPUT_NAME vkui-panel
+        CXX_EXTENSIONS OFF)
+
+    add_library(vkui_interaction_widgets STATIC
+        include/vkui/InteractionWidgets.h
+        include/vkui/widgets/vk/VkBlockRegistry.h
+        include/vkui/widgets/vk/VkPanelRegistry.h
+        include/vkui/widgets/vk/VkVisualBlockPainter.h
+        include/vkui/widgets/vk/VkWidgetBlockNavigator.h
+        src/widgets/vk/VkBlockRegistry.cpp
+        src/widgets/vk/VkPanelRegistry.cpp
+        src/widgets/vk/VkVisualBlockPainter.cpp
+        src/widgets/vk/VkWidgetBlockNavigator.cpp)
+    add_library(VkUI::InteractionWidgets ALIAS vkui_interaction_widgets)
+    target_compile_features(vkui_interaction_widgets PUBLIC cxx_std_20)
+    target_include_directories(vkui_interaction_widgets PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    target_link_libraries(vkui_interaction_widgets
+        PUBLIC Qt6::Widgets VkUI::Widgets VkUI::Interaction VkUI::Panel)
+    target_compile_definitions(vkui_interaction_widgets PRIVATE
+        QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
+    set_target_properties(vkui_interaction_widgets PROPERTIES
+        EXPORT_NAME InteractionWidgets
+        OUTPUT_NAME vkui-interaction-widgets
+        AUTOMOC ON
+        CXX_EXTENSIONS OFF)
+endif()
+
 if(VKUI_BUILD_WINDOW)
     if(APPLE)
         enable_language(OBJCXX)
@@ -203,6 +339,12 @@ endif()
 if(VKUI_ENABLE_WARNINGS)
     vkui_enable_compiler_warnings(vkui_core)
     vkui_enable_compiler_warnings(vkui_widgets)
+    if(TARGET vkui_buffer)
+        vkui_enable_compiler_warnings(vkui_buffer)
+        vkui_enable_compiler_warnings(vkui_interaction)
+        vkui_enable_compiler_warnings(vkui_panel)
+        vkui_enable_compiler_warnings(vkui_interaction_widgets)
+    endif()
     if(TARGET vkui_window)
         vkui_enable_compiler_warnings(vkui_window)
     endif()
@@ -214,6 +356,12 @@ endif()
 if(VKUI_ENABLE_SANITIZERS)
     vkui_enable_sanitizers(vkui_core)
     vkui_enable_sanitizers(vkui_widgets)
+    if(TARGET vkui_buffer)
+        vkui_enable_sanitizers(vkui_buffer)
+        vkui_enable_sanitizers(vkui_interaction)
+        vkui_enable_sanitizers(vkui_panel)
+        vkui_enable_sanitizers(vkui_interaction_widgets)
+    endif()
     if(TARGET vkui_window)
         vkui_enable_sanitizers(vkui_window)
     endif()
@@ -260,6 +408,20 @@ if(VKUI_INSTALL)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
+    if(TARGET vkui_buffer)
+        install(TARGETS
+                vkui_buffer vkui_interaction vkui_panel
+                vkui_interaction_widgets
+            EXPORT VkUIInteractionTargets
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        install(EXPORT VkUIInteractionTargets
+            FILE VkUIInteractionTargets.cmake
+            NAMESPACE VkUI::
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VkUI)
+    endif()
     if(TARGET vkui_window)
         install(TARGETS vkui_window
             EXPORT VkUIWindowTargets

@@ -16,6 +16,13 @@ operating system. See [third-party notices](THIRD_PARTY_NOTICES.md).
 - `VkUI::Core` contains appearance resolution, immutable semantic tokens, theme-aware SVG and
   named file icons, and motion specifications. It has no QWidget subclasses.
 - `VkUI::Widgets` contains `VkStyle`, `VkSwitch`, `VkSegmentedControl`, and `VkPopover`.
+- `VkUI::Buffer` is the renderer-independent owned/provider-backed text data plane.
+- `VkUI::Interaction` owns canonical key input, modal grammar, commands, registers, buffers,
+  semantic windows, and trusted interaction-plugin lifecycle. It never depends on QWidget.
+- `VkUI::Panel` owns the immutable split-tree snapshots, resize math, visibility, and spatial
+  navigation used by any renderer.
+- `VkUI::InteractionWidgets` projects interaction intents onto standard Qt item views, controls,
+  blocks, and mounted panels without synthesizing `QKeyEvent` objects.
 - `VkUI::Window` is an optional, host-owned frameless-window module with native move/resize,
   multiple transparent title bars, system-button policy, and unified dialog chrome.
 - Standard controls remain standard Qt Widgets. `VkStyle` preserves their interaction,
@@ -43,7 +50,7 @@ ctest --preset dev
 ```
 
 The main options are `VKUI_BUILD_SHARED`, `VKUI_BUILD_EXAMPLES`, `VKUI_BUILD_TESTS`,
-`VKUI_BUILD_WINDOW`, `VKUI_INSTALL`, `VKUI_ENABLE_WARNINGS`, and
+`VKUI_BUILD_WINDOW`, `VKUI_BUILD_INTERACTION`, `VKUI_INSTALL`, `VKUI_ENABLE_WARNINGS`, and
 `VKUI_ENABLE_SANITIZERS`. `VKUI_BUILD_WINDOW_QUICK` is reserved for internal compile
 validation and requires `VKUI_INSTALL=OFF`.
 
@@ -53,9 +60,11 @@ Top-level builds also export and refresh `compile_commands.json` for clangd by d
 ## Use from an installed package
 
 ```cmake
-find_package(VkUI CONFIG REQUIRED COMPONENTS Core Widgets Window)
+find_package(VkUI CONFIG REQUIRED COMPONENTS
+    Core Widgets Window Buffer Interaction Panel InteractionWidgets)
 
-target_link_libraries(my_app PRIVATE VkUI::Widgets VkUI::Window)
+target_link_libraries(my_app PRIVATE
+    VkUI::Widgets VkUI::Window VkUI::InteractionWidgets)
 ```
 
 ## Embed with `add_subdirectory`

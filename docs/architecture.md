@@ -12,6 +12,40 @@ Only three public widgets fill clear gaps: `VkSwitch`, `VkSegmentedControl`, and
 Search fields, navigation sidebars, cards, and settings rows remain compositions made from standard
 widgets in application code.
 
+## Module graph
+
+The interaction stack is intentionally layered rather than folded into the visual Core:
+
+```text
+Buffer (pure C++ data plane)
+   ^
+   |
+Interaction (modal grammar, commands, semantic windows)
+   ^                         ^
+   |                         |
+Panel (split geometry)       |
+   ^                         |
+   +---- InteractionWidgets -+
+              |
+           Widgets
+```
+
+- `VkUI::Buffer` owns text or a bounded range-provider reference. It has no Qt dependency and no
+  renderer state.
+- `VkUI::Interaction` is the authoritative modal state machine. It consumes canonical semantic
+  key values, owns buffers and logical windows, and emits host actions. It does not synthesize or
+  forward Qt key events.
+- `VkUI::Panel` is a renderer-independent split tree. Stable IDs and immutable snapshots keep
+  persistence, chooser overlays, resizing, and QWidget projection consistent.
+- `VkUI::InteractionWidgets` is the only layer that knows QWidget. Its block/panel leases make
+  plugin teardown deterministic, and its navigator adapts standard controls and model/view
+  surfaces to semantic movement and activation.
+
+Lua, JSON, or another configuration language is host policy. A host materializes validated
+`MappingDefinition` and plugin specs through the public Interaction API; VkUI never embeds a
+scripting runtime. Structured diagnostics follow the same inversion: VkUI emits records through
+one optional sink while the host chooses storage and retention.
+
 ## Core, Widgets, and Window
 
 `VkUI::Core` has no QWidget subclasses and depends only on Qt Core, Gui, and Svg. It owns resolved
@@ -59,7 +93,8 @@ style.
 
 ## Header boundary
 
-Installed headers live under `include/vkui`. `Core.h`, `Widgets.h`, and `Window.h` are convenience umbrellas;
+Installed headers live under `include/vkui`. `Core.h`, `Widgets.h`, `Window.h`, `Buffer.h`,
+`Interaction.h`, `Panel.h`, and `InteractionWidgets.h` are convenience umbrellas;
 the headers beneath `core`, `widgets/style`, `widgets/controls`, and `widgets/overlays` are the
 public API. Headers beneath any `src/**/private` directory are implementation details, may change
 without notice, and are never installed. No ABI stability is promised before 1.0.0.
