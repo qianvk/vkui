@@ -1158,9 +1158,14 @@ void VkStyle::drawComplexControl(ComplexControl control, const QStyleOptionCompl
         if (!slider) {
             break;
         }
-        const QRectF groove = subControlRect(CC_Slider, slider, SC_SliderGroove, widget);
-        QRectF active = groove;
         const QRectF handle = subControlRect(CC_Slider, slider, SC_SliderHandle, widget);
+        QRectF groove = subControlRect(CC_Slider, slider, SC_SliderGroove, widget);
+        if (slider->orientation == Qt::Horizontal) {
+            groove.adjust(handle.width() * 0.5, 0.0, -handle.width() * 0.5, 0.0);
+        } else {
+            groove.adjust(0.0, handle.height() * 0.5, 0.0, -handle.height() * 0.5);
+        }
+        QRectF active = groove;
         if (slider->orientation == Qt::Horizontal) {
             if (slider->upsideDown) {
                 active.setLeft(handle.center().x());
@@ -1453,13 +1458,11 @@ QRect VkStyle::subControlRect(ComplexControl control, const QStyleOptionComplex*
         const int grooveExtent = std::max(4, qRound(metrics.spacing4));
         if (subControl == SC_SliderGroove) {
             if (slider->orientation == Qt::Horizontal) {
-                return QRect(option->rect.left() + handleExtent / 2,
-                             option->rect.center().y() - grooveExtent / 2,
-                             std::max(0, option->rect.width() - handleExtent), grooveExtent);
+                return QRect(option->rect.left(), option->rect.center().y() - grooveExtent / 2,
+                             option->rect.width(), grooveExtent);
             }
-            return QRect(option->rect.center().x() - grooveExtent / 2,
-                         option->rect.top() + handleExtent / 2, grooveExtent,
-                         std::max(0, option->rect.height() - handleExtent));
+            return QRect(option->rect.center().x() - grooveExtent / 2, option->rect.top(),
+                         grooveExtent, option->rect.height());
         }
         if (subControl == SC_SliderHandle) {
             const int span = (slider->orientation == Qt::Horizontal ? option->rect.width()
@@ -1490,6 +1493,21 @@ QStyle::SubControl VkStyle::hitTestComplexControl(ComplexControl control,
                                                   const QWidget* widget) const {
     if (!option) {
         return SC_None;
+    }
+    if (control == CC_Slider) {
+        // QSlider leaves subControls at SC_None for mouse-press hit testing. Resolve the
+        // interactive geometry directly so it always matches VkStyle's painted geometry.
+        const QRect handle = subControlRect(control, option, SC_SliderHandle, widget);
+        const int hitExtent = pixelMetric(PM_SliderThickness, option, widget);
+        QRect hitTarget(0, 0, std::max(handle.width(), hitExtent),
+                        std::max(handle.height(), hitExtent));
+        hitTarget.moveCenter(handle.center());
+        if (hitTarget.contains(position)) {
+            return SC_SliderHandle;
+        }
+        if (subControlRect(control, option, SC_SliderGroove, widget).contains(position)) {
+            return SC_SliderGroove;
+        }
     }
     const auto controlsFor = [control]() {
         switch (control) {

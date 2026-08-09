@@ -19,6 +19,7 @@
 #include <QSpinBox>
 #include <QStyleOptionComboBox>
 #include <QStyleOptionFrame>
+#include <QStyleOptionSlider>
 #include <QStyleOptionToolButton>
 #include <QTemporaryFile>
 #include <QToolButton>
@@ -28,6 +29,7 @@
 #include <vkui/widgets/VkComboBox.h>
 #include <vkui/widgets/VkControlSize.h>
 #include <vkui/widgets/controls/VkSegmentedControl.h>
+#include <vkui/widgets/controls/VkSlider.h>
 #include <vkui/widgets/controls/VkSwitch.h>
 #include <vkui/widgets/style/VkStyle.h>
 #include <vkui/widgets/style/VkStyleSheet.h>
@@ -37,6 +39,12 @@ namespace {
 class InspectableComboBox final : public QComboBox {
   public:
     using QComboBox::initStyleOption;
+};
+
+class InspectableSlider final : public vkui::VkSlider {
+  public:
+    explicit InspectableSlider(Qt::Orientation orientation) : VkSlider(orientation) {}
+    using VkSlider::initStyleOption;
 };
 
 class PolishProbeStyle final : public QProxyStyle {
@@ -154,6 +162,7 @@ class StyleTest final : public QObject {
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
+    void sliderHandleDragPreservesCurrentValue();
     void styleInteractionsAreEventDriven();
     void dialogButtonsUsePlatformOrder();
     void hiddenAnimationsSettleAtTheirTarget();
@@ -462,6 +471,54 @@ void StyleTest::switchShowsFocusOnlyForKeyboardNavigation() {
     QVERIFY(control.hasFocus());
     const QImage keyboardFocus = renderWidget(control);
     QVERIFY(keyboardFocus != noFocus);
+}
+
+void StyleTest::sliderHandleDragPreservesCurrentValue() {
+    InspectableSlider slider(Qt::Horizontal);
+    slider.setRange(0, 3200);
+    slider.setValue(2371);
+    slider.resize(260, 30);
+    slider.show();
+    QCoreApplication::processEvents();
+
+    QStyleOptionSlider option;
+    slider.initStyleOption(&option);
+    const QRect handle = slider.style()->subControlRect(
+        QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, &slider);
+    const QPoint pressPoint(handle.right() + 1, handle.center().y());
+    QVERIFY(slider.rect().contains(pressPoint));
+    QVERIFY(!handle.contains(pressPoint));
+    QCOMPARE(slider.style()->hitTestComplexControl(QStyle::CC_Slider, &option, pressPoint,
+                                                   &slider),
+             QStyle::SC_SliderHandle);
+
+    const int initialValue = slider.value();
+    QSignalSpy valueChanged(&slider, &QSlider::valueChanged);
+    QTest::mousePress(&slider, Qt::LeftButton, Qt::NoModifier, pressPoint);
+    QCOMPARE(slider.value(), initialValue);
+    QCOMPARE(valueChanged.count(), 0);
+    QVERIFY(slider.isSliderDown());
+
+    // Qt sends an initial move at the press position on some platforms. A consistent
+    // press-time anchor must preserve the exact value on an initial zero-distance move.
+    QTest::mouseMove(&slider, pressPoint);
+    QCOMPARE(slider.value(), initialValue);
+    QCOMPARE(valueChanged.count(), 0);
+
+    QTest::mouseMove(&slider, pressPoint + QPoint(8, 0));
+    QVERIFY(slider.value() > initialValue);
+    QVERIFY(slider.value() < initialValue + 150);
+
+    QStyleOptionSlider movedOption;
+    slider.initStyleOption(&movedOption);
+    const QRect movedHandle = slider.style()->subControlRect(
+        QStyle::CC_Slider, &movedOption, QStyle::SC_SliderHandle, &slider);
+    QVERIFY(std::abs((movedHandle.center().x() - handle.center().x()) - 8) <= 1);
+
+    QTest::mouseMove(&slider, pressPoint);
+    QCOMPARE(slider.value(), initialValue);
+    QTest::mouseRelease(&slider, Qt::LeftButton, Qt::NoModifier, pressPoint);
+    QVERIFY(!slider.isSliderDown());
 }
 
 void StyleTest::styleInteractionsAreEventDriven() {
