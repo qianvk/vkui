@@ -5,6 +5,7 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QEvent>
+#include <QtCore/QHash>
 #include <QtCore/QPointer>
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
@@ -29,6 +30,11 @@
 
 namespace vkui {
 namespace {
+
+QHash<const VkPopover*, VkPopoverPrivate*>& livePopoverPrivates() {
+    static QHash<const VkPopover*, VkPopoverPrivate*> registry;
+    return registry;
+}
 
 bool validPlacement(VkPopoverPlacement placement) noexcept {
     switch (placement) {
@@ -986,6 +992,7 @@ void VkPopoverPrivate::paint(QPaintEvent* event) {
 VkPopover::VkPopover(QWidget* parent)
     : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
       d(std::make_unique<VkPopoverPrivate>(this)) {
+    livePopoverPrivates().insert(this, d.get());
     Q_ASSERT_X(QThread::currentThread() == thread(), "VkPopover::VkPopover",
                "VkPopover must be created on the GUI thread");
     setAttribute(Qt::WA_TranslucentBackground, true);
@@ -999,7 +1006,12 @@ VkPopover::VkPopover(QWidget* parent)
     hide();
 }
 
-VkPopover::~VkPopover() = default;
+VkPopover::~VkPopover() {
+    // QWidget can deliver native events before/after ordinary derived members
+    // exist. event() therefore resolves the implementation through this
+    // construction-lifetime registry rather than reading d outside its life.
+    livePopoverPrivates().remove(this);
+}
 
 void VkPopover::setContentWidget(QWidget* content) {
     d->setContentWidget(content);
@@ -1112,7 +1124,9 @@ void VkPopover::keyPressEvent(QKeyEvent* event) {
 }
 
 bool VkPopover::event(QEvent* event) {
-    if (d && d->handleEvent(event)) {
+    if (VkPopoverPrivate* const eventPrivate =
+            livePopoverPrivates().value(this, nullptr);
+        eventPrivate && eventPrivate->handleEvent(event)) {
         return true;
     }
     return QWidget::event(event);
