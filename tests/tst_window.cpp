@@ -121,8 +121,8 @@ void WindowTest::framelessDialogUsesCloseOnlyChromeAndHostGeometry() {
     QVERIFY(title != nullptr);
     QVERIFY(close != nullptr);
     QVERIFY(close->isVisible());
-    QCOMPARE(title->geometry().left(),
-             dialog.titleBar()->layout()->contentsMargins().left());
+    QTRY_COMPARE(title->geometry().left(),
+                 dialog.titleBar()->layout()->contentsMargins().left());
     QVERIFY(close->geometry().left() > title->geometry().right());
 
     dialog.setCloseButtonPlacement(
@@ -132,8 +132,8 @@ void WindowTest::framelessDialogUsesCloseOnlyChromeAndHostGeometry() {
     QVERIFY(!close->isVisible());
     QCOMPARE(dialog.windowAgent()->systemButtonVisibility(),
              vkui::VkWindowAgent::SystemButtonVisibility::AlwaysHidden);
-    QCOMPARE(title->geometry().left(),
-             dialog.titleBar()->layout()->contentsMargins().left());
+    QTRY_COMPARE(title->geometry().left(),
+                 dialog.titleBar()->layout()->contentsMargins().left());
     dialog.close();
 }
 
@@ -141,6 +141,15 @@ void WindowTest::destructivePromptDefaultsToCancel() {
     vkui::VkMessageDialog prompt(
         vkui::VkMessageDialog::Icon::Warning, QStringLiteral("Delete file"),
         QStringLiteral("This action cannot be undone."), QDialogButtonBox::Cancel);
+    QCOMPARE(prompt.closeButtonPlacement(),
+             vkui::VkFramelessDialog::CloseButtonPlacement::Hidden);
+    auto* promptTitle =
+        prompt.findChild<QLabel*>(QStringLiteral("VkFramelessDialogTitleLabel"));
+    QVERIFY(promptTitle != nullptr);
+    QCOMPARE(promptTitle->parentWidget(), prompt.titleBar());
+    prompt.titleBar()->layout()->activate();
+    QCOMPARE(promptTitle->geometry().left(),
+             prompt.titleBar()->layout()->contentsMargins().left());
     QAbstractButton* destructive =
         prompt.addButton(QStringLiteral("Delete"), QDialogButtonBox::DestructiveRole);
     QPushButton* cancel = prompt.button(QDialogButtonBox::Cancel);

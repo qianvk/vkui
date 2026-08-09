@@ -31,6 +31,9 @@ VkMessageDialog::VkMessageDialog(Icon type, const QString& title, const QString&
                                  QDialogButtonBox::StandardButtons buttons, QWidget* parent)
     : VkFramelessDialog(title, parent), buttons_(new QDialogButtonBox(buttons, this)) {
     setObjectName(QStringLiteral("VkMessageDialog"));
+    // Prompts are dismissed by their explicit actions. Hiding close chrome also removes the
+    // platform button reservation, so the title remains aligned to the title bar's leading edge.
+    setCloseButtonPlacement(CloseButtonPlacement::Hidden);
     setMinimumWidth(380);
     setMaximumWidth(600);
 
