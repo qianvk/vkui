@@ -136,6 +136,7 @@ target_sources(vkui_widgets
         include/vkui/widgets/VkControlSize.h
         include/vkui/widgets/style/VkStyle.h
         include/vkui/widgets/style/VkStyleSheet.h
+        include/vkui/widgets/controls/VkSlider.h
         include/vkui/widgets/controls/VkSwitch.h
         include/vkui/widgets/controls/VkSegmentedControl.h
         include/vkui/widgets/overlays/VkPopover.h
@@ -149,6 +150,7 @@ target_sources(vkui_widgets
         src/widgets/style/private/VkStyle_p.h
         src/widgets/style/private/VkStylePainter_p.h
         src/widgets/style/private/VkStylePainter.cpp
+        src/widgets/controls/VkSlider.cpp
         src/widgets/controls/VkSwitch.cpp
         src/widgets/controls/VkSegmentedControl.cpp
         src/widgets/controls/private/VkSwitch_p.h
