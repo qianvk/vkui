@@ -6,6 +6,7 @@
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkColorTokens.h>
+#include <vkui/core/VkDiagnostics.h>
 #include <vkui/core/VkIcon.h>
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkMetricTokens.h>
