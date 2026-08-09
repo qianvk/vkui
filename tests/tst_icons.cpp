@@ -99,6 +99,7 @@ class IconTest final : public QObject {
   private slots:
     void everySymbolHasARenderableResource();
     void rendersModesStatesAndDevicePixelRatios();
+    void explicitSvgIconUsesCallerColors();
     void cacheKeyIncludesEveryRenderDimension();
     void cacheInvalidatesAcrossThemeGenerations();
     void fileIconFontRegistersIdempotently();
@@ -150,6 +151,20 @@ void IconTest::rendersModesStatesAndDevicePixelRatios() {
     }
 }
 
+void IconTest::explicitSvgIconUsesCallerColors() {
+    const QIcon darkSurfaceIcon = vkui::icon(
+        vkui::VkSymbol::List, QColor(Qt::white));
+    const QColor lightInk = averageVisibleColor(
+        darkSurfaceIcon.pixmap(QSize(24, 24), 2.0).toImage());
+    QVERIFY(lightInk.lightnessF() > 0.8);
+
+    const QIcon lightSurfaceIcon = vkui::icon(
+        vkui::VkSymbol::Background, QColor(Qt::black));
+    const QColor darkInk = averageVisibleColor(
+        lightSurfaceIcon.pixmap(QSize(24, 24), 2.0).toImage());
+    QVERIFY(darkInk.lightnessF() < 0.2);
+}
+
 void IconTest::cacheKeyIncludesEveryRenderDimension() {
     vkui::VkIconCacheKey base;
     base.symbol = vkui::VkSymbol::Search;
@@ -173,6 +188,7 @@ void IconTest::cacheKeyIncludesEveryRenderDimension() {
     verifyDifference([](auto& key) { key.mode = QIcon::Disabled; });
     verifyDifference([](auto& key) { key.state = QIcon::On; });
     verifyDifference([](auto& key) { key.themeGeneration = 10; });
+    verifyDifference([](auto& key) { key.colorIdentity = 42; });
 }
 
 void IconTest::cacheInvalidatesAcrossThemeGenerations() {
@@ -190,6 +206,16 @@ void IconTest::cacheInvalidatesAcrossThemeGenerations() {
     vkui::VkIconCacheKey newer = key;
     newer.themeGeneration = 101;
     QVERIFY(!cache.lookup(newer, &result));
+
+    // A bounded LRU can retain multiple valid theme/color generations. This
+    // prevents semantic and explicit-palette icons from continuously flushing
+    // one another when they are painted in the same frame.
+    vkui::VkIconCacheKey explicitColor = key;
+    explicitColor.themeGeneration = 0;
+    explicitColor.colorIdentity = 0xffeeddcc;
+    cache.insert(explicitColor, source);
+    QVERIFY(cache.lookup(key, &result));
+    QVERIFY(cache.lookup(explicitColor, &result));
     cache.clear();
 }
 

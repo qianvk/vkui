@@ -236,8 +236,37 @@ VkSvgIconEngine::VkSvgIconEngine(const VkSymbol symbol, const VkIconRole role)
     }
 }
 
+VkSvgIconEngine::VkSvgIconEngine(
+    const VkSymbol symbol,
+    QColor primary,
+    QColor secondary)
+    : symbol_(symbol),
+      role_(VkIconRole::Primary),
+      explicitPrimary_(std::move(primary)),
+      explicitSecondary_(std::move(secondary)),
+      usesExplicitColors_(true),
+      source_(loadSource(symbol)) {
+    if (!explicitSecondary_.isValid()) {
+        const QColor presumedSurface = explicitPrimary_.lightnessF() > 0.5
+            ? QColor(Qt::black) : QColor(Qt::white);
+        explicitSecondary_ = blend(
+            explicitPrimary_, presumedSurface, 0.42);
+    }
+    if (!source_.isEmpty()) {
+        const QSvgRenderer renderer(source_);
+        if (renderer.isValid()) {
+            intrinsicSize_ = renderer.defaultSize();
+        }
+    }
+    if (intrinsicSize_.isEmpty()) {
+        intrinsicSize_ = QSize(24, 24);
+    }
+}
+
 QIconEngine* VkSvgIconEngine::clone() const {
-    return new VkSvgIconEngine(symbol_, role_);
+    return usesExplicitColors_
+        ? new VkSvgIconEngine(symbol_, explicitPrimary_, explicitSecondary_)
+        : new VkSvgIconEngine(symbol_, role_);
 }
 
 QString VkSvgIconEngine::key() const {
@@ -316,7 +345,12 @@ QPixmap VkSvgIconEngine::renderPixmap(const QSize& requestedSize,
     cacheKey.devicePixelRatio = encodedDevicePixelRatio(requestedDevicePixelRatio);
     cacheKey.mode = mode;
     cacheKey.state = state;
-    cacheKey.themeGeneration = theme.generation();
+    cacheKey.themeGeneration = usesExplicitColors_ ? 0 : theme.generation();
+    if (usesExplicitColors_) {
+        cacheKey.colorIdentity =
+            (static_cast<quint64>(explicitPrimary_.rgba()) << 32U)
+            | static_cast<quint64>(explicitSecondary_.rgba());
+    }
 
     QPixmap cached;
     if (VkIconCache::instance().lookup(cacheKey, &cached)) {
@@ -329,7 +363,12 @@ QPixmap VkSvgIconEngine::renderPixmap(const QSize& requestedSize,
     QImage image(physicalSize, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
 
-    const ChannelColors colors = channelColors(theme.colors(), role_, mode, state);
+    ChannelColors colors = usesExplicitColors_
+        ? ChannelColors{explicitPrimary_, explicitSecondary_}
+        : channelColors(theme.colors(), role_, mode, state);
+    if (usesExplicitColors_ && mode == QIcon::Disabled) {
+        colors.primary = colors.secondary;
+    }
     const QByteArray svg = coloredSource(source_, colors);
     QSvgRenderer renderer(svg);
     if (!renderer.isValid()) {

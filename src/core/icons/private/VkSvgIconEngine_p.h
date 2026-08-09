@@ -4,6 +4,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QSize>
+#include <QtGui/QColor>
 #include <QtGui/QIconEngine>
 #include <QtGui/QPixmap>
 #include <vkui/core/VkIcon.h>
@@ -13,6 +14,7 @@ namespace vkui {
 class VkSvgIconEngine final : public QIconEngine {
   public:
     VkSvgIconEngine(VkSymbol symbol, VkIconRole role);
+    VkSvgIconEngine(VkSymbol symbol, QColor primary, QColor secondary);
 
     [[nodiscard]] QIconEngine* clone() const override;
     [[nodiscard]] QString key() const override;
@@ -29,6 +31,9 @@ class VkSvgIconEngine final : public QIconEngine {
 
     VkSymbol symbol_;
     VkIconRole role_;
+    QColor explicitPrimary_;
+    QColor explicitSecondary_;
+    bool usesExplicitColors_ = false;
     QByteArray source_;
     QSize intrinsicSize_;
 };
