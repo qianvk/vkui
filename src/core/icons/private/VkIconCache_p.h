@@ -18,6 +18,7 @@ struct VkIconCacheKey final {
     QIcon::Mode mode = QIcon::Normal;
     QIcon::State state = QIcon::Off;
     quint64 themeGeneration = 0;
+    quint64 colorIdentity = 0;
 
     friend bool operator==(const VkIconCacheKey&, const VkIconCacheKey&) = default;
 };
@@ -35,11 +36,8 @@ class VkIconCache final {
   private:
     VkIconCache();
 
-    void synchronizeGeneration(quint64 generation);
-
     QMutex mutex_;
     QCache<VkIconCacheKey, QPixmap> cache_;
-    quint64 generation_ = 0;
 };
 
 } // namespace vkui

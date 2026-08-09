@@ -31,4 +31,9 @@ QIcon icon(const VkSymbol symbol, const VkIconRole role) {
     return QIcon(new VkSvgIconEngine(symbol, role));
 }
 
+QIcon icon(const VkSymbol symbol, const QColor& primary, const QColor& secondary) {
+    detail::ensureResourcesInitialized();
+    return QIcon(new VkSvgIconEngine(symbol, primary, secondary));
+}
+
 } // namespace vkui

@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QtCore/QMetaType>
+#include <QtGui/QColor>
 #include <QtGui/QIcon>
 #include <vkui/VkUiGlobal.h>
 
@@ -68,6 +69,18 @@ enum class VkIconRole {
 
 /** Creates a scalable icon whose semantic colors follow the current theme. */
 [[nodiscard]] VKUI_CORE_EXPORT QIcon icon(VkSymbol symbol, VkIconRole role = VkIconRole::Primary);
+
+/**
+ * Creates a scalable icon with caller-supplied two-tone colors.
+ *
+ * This overload is intended for local surfaces whose palette can legitimately
+ * differ from the process-wide semantic theme. An invalid secondary color is
+ * derived as a quieter contrasting tone.
+ */
+[[nodiscard]] VKUI_CORE_EXPORT QIcon icon(
+    VkSymbol symbol,
+    const QColor& primary,
+    const QColor& secondary = {});
 
 } // namespace vkui
 
