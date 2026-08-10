@@ -81,6 +81,9 @@ struct VKUI_CORE_EXPORT VkFileIconMetrics final {
 [[nodiscard]] VKUI_CORE_EXPORT VkFileIconMetrics fileIconMetrics(const QFont& interfaceFont,
                                                                  qreal devicePixelRatio = 1.0);
 
+/** Resolves the semantic file glyph from a path extension without filesystem I/O. */
+[[nodiscard]] VKUI_CORE_EXPORT VkFileGlyph fileGlyphForPath(QStringView path);
+
 /** Creates an icon whose color follows the current VkUI theme. */
 [[nodiscard]] VKUI_CORE_EXPORT QIcon fileIcon(VkFileGlyph glyph,
                                               VkIconRole role = VkIconRole::Secondary);

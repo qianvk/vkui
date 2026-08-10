@@ -157,6 +157,7 @@ target_sources(vkui_widgets
         include/vkui/widgets/controls/VkSegmentedControl.h
         include/vkui/widgets/overlays/VkPopover.h
         include/vkui/widgets/views/VkDisclosureTreeView.h
+        include/vkui/widgets/views/VkFileTreeView.h
         src/widgets/style/VkStyle.cpp
         src/widgets/style/VkStyleSheet.cpp
         src/widgets/VkComboBox.cpp
@@ -180,6 +181,7 @@ target_sources(vkui_widgets
         src/widgets/overlays/private/VkPopoverShadowCache_p.h
         src/widgets/overlays/private/VkPopoverShadowCache.cpp
         src/widgets/views/VkDisclosureTreeView.cpp
+        src/widgets/views/VkFileTreeView.cpp
 )
 
 target_compile_definitions(vkui_widgets PRIVATE VKUI_BUILDING_WIDGETS)
