@@ -9,5 +9,6 @@
 #include <vkui/widgets/controls/VkSwitch.h>
 #include <vkui/widgets/overlays/VkPopover.h>
 #include <vkui/widgets/views/VkDisclosureTreeView.h>
+#include <vkui/widgets/views/VkFileTreeView.h>
 #include <vkui/widgets/style/VkStyle.h>
 #include <vkui/widgets/style/VkStyleSheet.h>

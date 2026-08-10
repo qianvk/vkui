@@ -107,8 +107,20 @@ class IconTest final : public QObject {
     void fileIconTracksApplicationPaletteAndDevicePixelRatio();
     void fileIconTracksThemeGeneration();
     void fileIconMetricsTrackFontAndDevicePixelRatio();
+    void fileGlyphResolvesFromPathWithoutFilesystemAccess();
     void fileGlyphPainterUsesTheSuppliedPalette();
 };
+
+void IconTest::fileGlyphResolvesFromPathWithoutFilesystemAccess() {
+    using enum vkui::VkFileGlyph;
+    QCOMPARE(vkui::fileGlyphForPath(u"notes/chapter.TXT"), TextFile);
+    QCOMPARE(vkui::fileGlyphForPath(u"src/main.cpp"), CodeFile);
+    QCOMPARE(vkui::fileGlyphForPath(u"covers/hero.webp"), ImageFile);
+    QCOMPARE(vkui::fileGlyphForPath(u"library/book.epub"), BookFile);
+    QCOMPARE(vkui::fileGlyphForPath(u"paper.pdf"), PdfFile);
+    QCOMPARE(vkui::fileGlyphForPath(u"archive.tar.gz"), ArchiveFile);
+    QCOMPARE(vkui::fileGlyphForPath(u"folder.with.dot/file"), File);
+}
 
 void IconTest::everySymbolHasARenderableResource() {
     const QList<vkui::VkSymbol> symbols{

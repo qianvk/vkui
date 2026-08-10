@@ -3,6 +3,7 @@
 #include "private/VkResourceInitializer_p.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QSet>
 #include <QtCore/QThread>
 #include <QtCore/QtMath>
 #include <QtGui/QFontDatabase>
@@ -421,6 +422,58 @@ VkFileIconMetrics fileIconMetrics(const QFont& interfaceFont,
         QSize(std::max(1, qCeil(result.glyphSlotSize.width() * result.devicePixelRatio)),
               std::max(1, qCeil(result.glyphSlotSize.height() * result.devicePixelRatio)));
     return result;
+}
+
+VkFileGlyph fileGlyphForPath(const QStringView path) {
+    const qsizetype separator = std::max(path.lastIndexOf(u'/'), path.lastIndexOf(u'\\'));
+    const qsizetype dot = path.lastIndexOf(u'.');
+    if (dot <= separator || dot + 1 >= path.size()) {
+        return VkFileGlyph::File;
+    }
+
+    const QString suffix = path.sliced(dot + 1).toString().toLower();
+    static const QSet<QString> text{
+        QStringLiteral("txt"), QStringLiteral("md"), QStringLiteral("markdown"),
+        QStringLiteral("log"), QStringLiteral("rtf")};
+    static const QSet<QString> code{
+        QStringLiteral("c"), QStringLiteral("cc"), QStringLiteral("cpp"),
+        QStringLiteral("cxx"), QStringLiteral("h"), QStringLiteral("hpp"),
+        QStringLiteral("m"), QStringLiteral("mm"), QStringLiteral("rs"),
+        QStringLiteral("go"), QStringLiteral("py"), QStringLiteral("js"),
+        QStringLiteral("jsx"), QStringLiteral("ts"), QStringLiteral("tsx"),
+        QStringLiteral("java"), QStringLiteral("kt"), QStringLiteral("swift"),
+        QStringLiteral("lua"), QStringLiteral("json"), QStringLiteral("xml"),
+        QStringLiteral("yaml"), QStringLiteral("yml"), QStringLiteral("toml"),
+        QStringLiteral("cmake"), QStringLiteral("sh")};
+    static const QSet<QString> images{
+        QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+        QStringLiteral("gif"), QStringLiteral("webp"), QStringLiteral("bmp"),
+        QStringLiteral("svg"), QStringLiteral("heic"), QStringLiteral("tif"),
+        QStringLiteral("tiff")};
+    static const QSet<QString> archives{
+        QStringLiteral("zip"), QStringLiteral("7z"), QStringLiteral("rar"),
+        QStringLiteral("tar"), QStringLiteral("gz"), QStringLiteral("bz2"),
+        QStringLiteral("xz")};
+
+    if (text.contains(suffix)) {
+        return VkFileGlyph::TextFile;
+    }
+    if (code.contains(suffix)) {
+        return VkFileGlyph::CodeFile;
+    }
+    if (images.contains(suffix)) {
+        return VkFileGlyph::ImageFile;
+    }
+    if (suffix == QStringLiteral("pdf")) {
+        return VkFileGlyph::PdfFile;
+    }
+    if (suffix == QStringLiteral("epub")) {
+        return VkFileGlyph::BookFile;
+    }
+    if (archives.contains(suffix)) {
+        return VkFileGlyph::ArchiveFile;
+    }
+    return VkFileGlyph::File;
 }
 
 QIcon fileIcon(const VkFileGlyph glyph, const VkIconRole role) {
