@@ -655,6 +655,21 @@ struct BufferSnapshot final
     std::uint64_t revision = 0;
 };
 
+/** Immutable state of one authoritative buffer's branching edit history. */
+struct BufferHistorySnapshot final
+{
+    BufferId id = 0;
+    std::uint64_t current = 0;
+    std::optional<std::uint64_t> clean;
+    bool canUndo = false;
+    bool canRedo = false;
+
+    [[nodiscard]] bool modified() const noexcept
+    {
+        return !clean || *clean != current;
+    }
+};
+
 /**
  * Immutable bounded read from one authoritative buffer revision.
  *

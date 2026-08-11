@@ -33,8 +33,15 @@ Panel (split geometry)       |
 - `VkUI::Buffer` owns text or a bounded range-provider reference. It has no Qt dependency and no
   renderer state.
 - `VkUI::Interaction` is the authoritative modal state machine. It consumes canonical semantic
-  key values, owns buffers and logical windows, and emits host actions. It does not synthesize or
-  forward Qt key events.
+  key values, owns buffers, branching edit history, clean points, and logical windows, and emits
+  host actions. It does not synthesize or forward Qt key events. `bufferHistory()` exposes only an
+  immutable availability/clean-state snapshot; `undo()`, `redo()`, and `setBufferModified()` remain
+  the mutation boundary, so a QWidget host never maintains a competing undo stack. Native
+  non-modal surfaces synchronize their UTF-16 anchor/active selection through
+  `setViewSelectionAtOffsets()`; Core records both boundaries in the same undo node as the text
+  delta, while modal Visual selection remains a separate Neovim state. Explicit document reloads
+  call `resetBufferHistory()` even when text is byte-identical, so the host cannot silently retain
+  a pre-reload branch.
 - `VkUI::Panel` is a renderer-independent split tree. Stable IDs and immutable snapshots keep
   persistence, chooser overlays, resizing, and QWidget projection consistent.
 - `VkUI::InteractionWidgets` is the only layer that knows QWidget. Its block/panel leases make

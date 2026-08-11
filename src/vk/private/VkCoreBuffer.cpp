@@ -220,6 +220,7 @@ BufferAttachStatus VkCore::attachBufferData(
         }
     }
     targetView.buffer = id;
+    targetView.selectionAnchorOffset.reset();
     const auto &buffer = foundBuffer->second;
     targetView.changeIndex = buffer.changeList.size();
     cursor = m_impl->clampCursor(
@@ -290,6 +291,7 @@ bool VkCore::replaceBufferText(
                          || m_impl->baseMode == Mode::Replace)
                         && viewId == m_impl->activeView));
             view.cursors[id] = preserved;
+            view.selectionAnchorOffset.reset();
             view.displayColumns[id] =
                 m_impl->displayColumnForBufferColumn(
                     buffer,
@@ -353,6 +355,110 @@ bool VkCore::applyExternalEdit(
         editOffset + removed,
         std::move(inserted),
         std::pair<ViewId, Cursor>{viewId, cursor});
+}
+
+bool VkCore::applyExternalEditAtOffset(
+    const ViewId viewId,
+    const std::size_t editOffset,
+    const std::size_t removed,
+    std::u16string inserted,
+    const std::size_t cursorOffset)
+{
+    return applyExternalEditWithSelectionAtOffsets(
+        viewId,
+        editOffset,
+        removed,
+        std::move(inserted),
+        cursorOffset,
+        cursorOffset);
+}
+
+bool VkCore::applyExternalEditWithSelectionAtOffsets(
+    const ViewId viewId,
+    const std::size_t editOffset,
+    const std::size_t removed,
+    std::u16string inserted,
+    const std::size_t selectionAnchorOffset,
+    const std::size_t cursorOffset)
+{
+    m_impl->keywordCompletion.reset();
+    const auto foundView = m_impl->views.find(viewId);
+    if (foundView == m_impl->views.end()
+        || foundView->second.buffer == 0) {
+        return false;
+    }
+    const BufferId bufferId = foundView->second.buffer;
+    const auto foundBuffer = m_impl->buffers.find(bufferId);
+    if (foundBuffer == m_impl->buffers.end()
+        || editOffset > foundBuffer->second.text().size()
+        || removed > foundBuffer->second.text().size() - editOffset) {
+        return false;
+    }
+    if (m_impl->baseMode == Mode::Insert
+        && viewId == m_impl->activeView) {
+        m_impl->continueInsertUndoBlock(viewId);
+        m_impl->recordExternalInsertEdit(
+            viewId, editOffset, removed, inserted);
+    }
+    return m_impl->mutateBuffer(
+        nullptr,
+        bufferId,
+        editOffset,
+        editOffset + removed,
+        std::move(inserted),
+        std::nullopt,
+        true,
+        true,
+        VkCore::Implementation::AuthoritativeSelectionOffsetState{
+            viewId,
+            selectionAnchorOffset,
+            cursorOffset});
+}
+
+std::optional<BufferHistorySnapshot> VkCore::bufferHistory(
+    const BufferId id) const
+{
+    const auto found = m_impl->buffers.find(id);
+    if (found == m_impl->buffers.end()) {
+        return std::nullopt;
+    }
+    const Implementation::UndoHistory &history = found->second.undo;
+    const Implementation::UndoNode &current = history.nodes[history.current];
+    BufferHistorySnapshot snapshot;
+    snapshot.id = id;
+    snapshot.current = static_cast<std::uint64_t>(history.current);
+    if (history.clean) {
+        snapshot.clean = static_cast<std::uint64_t>(*history.clean);
+    }
+    snapshot.canUndo = history.current != 0;
+    snapshot.canRedo = current.preferredChild
+        != Implementation::UndoNode::noNode;
+    return snapshot;
+}
+
+bool VkCore::resetBufferHistory(const BufferId id)
+{
+    const auto found = m_impl->buffers.find(id);
+    if (found == m_impl->buffers.end()
+        || !found->second.storage.isOwned()) {
+        return false;
+    }
+    m_impl->resetUndoHistory(found->second, id);
+    return true;
+}
+
+bool VkCore::setBufferModified(
+    const BufferId id,
+    const bool modified)
+{
+    const auto found = m_impl->buffers.find(id);
+    if (found == m_impl->buffers.end()) {
+        return false;
+    }
+    found->second.undo.clean = modified
+        ? std::nullopt
+        : std::optional<std::size_t>(found->second.undo.current);
+    return true;
 }
 
 DispatchResult VkCore::undo(

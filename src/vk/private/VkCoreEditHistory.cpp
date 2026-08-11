@@ -190,7 +190,9 @@ void VkCore::Implementation::patchLineStarts(
     const std::optional<std::pair<ViewId, Cursor>>
         authoritativeCursor,
     const bool recordUndo,
-    const bool emitCursorEvents)
+    const bool emitCursorEvents,
+    const std::optional<AuthoritativeSelectionOffsetState>
+        authoritativeSelectionOffsets)
 {
     const auto foundBuffer = buffers.find(bufferId);
     if (foundBuffer == buffers.end()) {
@@ -247,18 +249,25 @@ void VkCore::Implementation::patchLineStarts(
             buffer.undo.nodes.size() != nodeCount;
     }
 
-    std::vector<std::pair<ViewId, std::size_t>>
-        viewOffsets;
+    struct ViewOffsetState final
+    {
+        ViewId id = 0;
+        std::size_t cursor = 0;
+        std::optional<std::size_t> selectionAnchor;
+    };
+    std::vector<ViewOffsetState> viewOffsets;
     viewOffsets.reserve(views.size());
     for (const auto &[id, view] : views) {
         if (view.buffer == bufferId) {
             const auto cursor =
                 view.cursors.find(bufferId);
-            viewOffsets.emplace_back(
-                id,
-                cursor == view.cursors.cend()
-                    ? 0
-                    : offset(buffer, cursor->second));
+            viewOffsets.push_back(
+                ViewOffsetState{
+                    id,
+                    cursor == view.cursors.cend()
+                        ? 0
+                        : offset(buffer, cursor->second),
+                    view.selectionAnchorOffset});
         }
     }
 
@@ -353,6 +362,8 @@ void VkCore::Implementation::patchLineStarts(
             startedUndoNode,
             authoritativeCursor
                 ? authoritativeCursor->first
+                : authoritativeSelectionOffsets
+                ? authoritativeSelectionOffsets->view
                 : activeView);
         const std::size_t operationEnd = inserted.empty()
             ? boundedStart
@@ -374,13 +385,13 @@ void VkCore::Implementation::patchLineStarts(
         }
     }
 
-    for (const auto &[id, oldOffset] : viewOffsets) {
-        View &view = views.at(id);
-        std::size_t adjusted = oldOffset;
-        if (oldOffset >= boundedEnd) {
+    for (const ViewOffsetState &oldState : viewOffsets) {
+        View &view = views.at(oldState.id);
+        std::size_t adjusted = oldState.cursor;
+        if (oldState.cursor >= boundedEnd) {
             adjusted =
-                oldOffset - removed + inserted.size();
-        } else if (oldOffset > boundedStart) {
+                oldState.cursor - removed + inserted.size();
+        } else if (oldState.cursor > boundedStart) {
             adjusted =
                 boundedStart + inserted.size();
         }
@@ -397,9 +408,38 @@ void VkCore::Implementation::patchLineStarts(
         view.displayColumns.erase(bufferId);
         view.preferredColumn.reset();
         view.preferredDisplayRowColumn.reset();
+        view.selectionAnchorOffset = oldState.selectionAnchor
+            ? std::optional<std::size_t>(adjustAnchor(
+                  *oldState.selectionAnchor))
+            : std::nullopt;
     }
 
-    if (authoritativeCursor) {
+    if (authoritativeSelectionOffsets) {
+        const auto foundView = views.find(
+            authoritativeSelectionOffsets->view);
+        if (foundView != views.end()
+            && foundView->second.buffer == bufferId) {
+            const std::size_t cursorOffset = std::min(
+                authoritativeSelectionOffsets->cursor,
+                buffer.text().size());
+            const std::size_t anchorOffset = std::min(
+                authoritativeSelectionOffsets->anchor,
+                buffer.text().size());
+            foundView->second.cursors[bufferId] = cursorAtOffset(
+                buffer,
+                cursorOffset,
+                !enabled
+                    || baseMode == Mode::Insert
+                    || baseMode == Mode::Replace);
+            foundView->second.selectionAnchorOffset =
+                anchorOffset == cursorOffset
+                ? std::nullopt
+                : std::optional<std::size_t>(anchorOffset);
+            foundView->second.displayColumns.erase(bufferId);
+            foundView->second.preferredColumn.reset();
+            foundView->second.preferredDisplayRowColumn.reset();
+        }
+    } else if (authoritativeCursor) {
         const auto foundView =
             views.find(authoritativeCursor->first);
         if (foundView != views.end()
@@ -414,6 +454,7 @@ void VkCore::Implementation::patchLineStarts(
                     || baseMode == Mode::Replace);
             foundView->second.cursors[bufferId] =
                 cursor;
+            foundView->second.selectionAnchorOffset.reset();
             foundView->second.displayColumns.erase(
                 bufferId);
             foundView->second.preferredColumn.reset();
@@ -446,9 +487,8 @@ void VkCore::Implementation::patchLineStarts(
     edit.editInserted = std::move(inserted);
     result->events.push_back(std::move(edit));
     if (emitCursorEvents) {
-        for (const auto &[id, oldOffset] : viewOffsets) {
-            static_cast<void>(oldOffset);
-            emitCursor(*result, id, views.at(id));
+        for (const ViewOffsetState &oldState : viewOffsets) {
+            emitCursor(*result, oldState.id, views.at(oldState.id));
         }
     }
     return true;

@@ -210,6 +210,33 @@ public:
         std::u16string inserted,
         Cursor cursor);
     /**
+     * Offset-based variant for projected editors whose canonical selection
+     * is already expressed as one UTF-16 buffer boundary.
+     *
+     * The cursor offset is resolved after the edit against Core's patched
+     * line index, avoiding a host-side whole-document line scan.
+     */
+    [[nodiscard]] bool applyExternalEditAtOffset(
+        ViewId view,
+        std::size_t offset,
+        std::size_t removed,
+        std::u16string inserted,
+        std::size_t cursorOffset);
+    /**
+     * Selection-preserving host edit for native non-modal text surfaces.
+     *
+     * Both selection boundaries are canonical UTF-16 offsets in the
+     * post-edit buffer. Core stores them in the same undo node as the text
+     * delta, so undo/redo never depends on a parallel widget history.
+     */
+    [[nodiscard]] bool applyExternalEditWithSelectionAtOffsets(
+        ViewId view,
+        std::size_t offset,
+        std::size_t removed,
+        std::u16string inserted,
+        std::size_t selectionAnchorOffset,
+        std::size_t cursorOffset);
+    /**
      * Replays buffer history through the same incremental event stream used
      * by Normal-mode u and Ctrl-R.
      *
@@ -258,6 +285,14 @@ public:
     [[nodiscard]] bool setViewCursor(
         ViewId view,
         Cursor cursor);
+    /** Synchronizes a native host selection without entering Visual mode. */
+    [[nodiscard]] bool setViewSelectionAtOffsets(
+        ViewId view,
+        std::size_t anchorOffset,
+        std::size_t cursorOffset);
+    /** Returns canonical native-host selection boundaries for one view. */
+    [[nodiscard]] std::optional<std::pair<std::size_t, std::size_t>>
+    viewSelectionOffsets(ViewId view) const;
     /** Records a non-local motion for native CTRL-O/CTRL-I navigation. */
     [[nodiscard]] bool jumpViewCursor(
         ViewId view,
@@ -344,6 +379,13 @@ public:
     [[nodiscard]] bool detachViewBuffer(ViewId view);
     [[nodiscard]] std::optional<BufferSnapshot> buffer(
         BufferId buffer) const;
+    /** Returns Core-owned undo/redo and clean-point state without replaying it. */
+    [[nodiscard]] std::optional<BufferHistorySnapshot> bufferHistory(
+        BufferId buffer) const;
+    /** Resets one buffer to a clean root history node without changing text. */
+    [[nodiscard]] bool resetBufferHistory(BufferId buffer);
+    /** Marks the current Core history node as clean, or explicitly dirty. */
+    [[nodiscard]] bool setBufferModified(BufferId buffer, bool modified);
     /**
      * Zero-content metadata for the authoritative VKBuffer data plane.
      *

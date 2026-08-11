@@ -164,7 +164,8 @@ VkCore::Implementation::captureWindowCursors(const BufferId bufferId) const
                 windowId,
                 cursor == view.cursors.cend()
                     ? Cursor{}
-                    : cursor->second});
+                    : cursor->second,
+                view.selectionAnchorOffset});
     }
     return state;
 }
@@ -187,7 +188,13 @@ void VkCore::Implementation::restoreWindowCursors(
             clampCursor(
                 foundBuffer->second,
                 saved.cursor,
-                false);
+                !enabled);
+        foundView->second.selectionAnchorOffset =
+            saved.selectionAnchorOffset
+            ? std::optional<std::size_t>(std::min(
+                  *saved.selectionAnchorOffset,
+                  foundBuffer->second.text().size()))
+            : std::nullopt;
         foundView->second.preferredColumn.reset();
     }
 }
