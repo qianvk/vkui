@@ -70,6 +70,12 @@ if(VKUI_BUILD_INTERACTION)
         VkUI::InteractionWidgets VkUI::Panel)
 endif()
 
+if(APPLE)
+    target_sources(tst_style PRIVATE
+        private/MacWindowStackProbe.mm
+    )
+endif()
+
 if(TARGET VkUI::Window)
     vkui_add_test(tst_window tst_window.cpp)
     target_link_libraries(tst_window PRIVATE VkUI::Window)

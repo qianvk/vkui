@@ -10,6 +10,7 @@
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
 #include <QtGui/QCloseEvent>
+#include <QtGui/QCursor>
 #include <QtGui/QEnterEvent>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
@@ -243,6 +244,7 @@ void VkPopoverPrivate::openFor(QWidget* newAnchor, const QRect& rectInAnchor) {
     if (previousState == State::Closing) {
         animation.stop();
     }
+    setClosingInputTransparent(false);
 
     if (filtersAttached) {
         detachOpenFilters();
@@ -307,6 +309,7 @@ void VkPopoverPrivate::closeAnimated() {
 
     Q_EMIT q->aboutToClose();
     state = State::Closing;
+    setClosingInputTransparent(true);
     const qreal startOpacity = currentOpacity;
     animation.start(
         0.0, 1.0, VkMotionRole::Exit,
@@ -676,6 +679,32 @@ void VkPopoverPrivate::applyOpacityFrame(qreal opacity) {
     }
 }
 
+void VkPopoverPrivate::setClosingInputTransparent(const bool transparent) {
+    if (!q) {
+        return;
+    }
+
+    q->setAttribute(Qt::WA_TransparentForMouseEvents, transparent);
+    if (QWindow* popupWindow = q->windowHandle()) {
+        popupWindow->setFlag(Qt::WindowTransparentForInput, transparent);
+    }
+
+    if (!transparent) {
+        return;
+    }
+
+    // Qt::Popup owns an implicit mouse and keyboard grab while visible. The visual exit animation
+    // may continue, but chrome and controls below it must receive pointer movement immediately.
+    if (QWidget* mouseGrabber = QWidget::mouseGrabber();
+        mouseGrabber && mouseGrabber->window() == q) {
+        mouseGrabber->releaseMouse();
+    }
+    if (QWidget* keyboardGrabber = QWidget::keyboardGrabber();
+        keyboardGrabber && keyboardGrabber->window() == q) {
+        keyboardGrabber->releaseKeyboard();
+    }
+}
+
 void VkPopoverPrivate::startOpenAnimation() {
     animation.start(
         currentOpacity, 1.0, VkMotionRole::EmphasizedEnter,
@@ -696,15 +725,29 @@ void VkPopoverPrivate::finishClosing() {
         return;
     }
     animation.stop();
+    const bool restorePointerAfterAnimatedClose =
+        q->testAttribute(Qt::WA_TransparentForMouseEvents);
+    QPointer<QWidget> pointerWindow = anchorWindow;
+    const QPoint pointerPosition = QCursor::pos();
     internalHide = true;
     q->hide();
     internalHide = false;
     detachOpenFilters();
     state = State::Closed;
+    setClosingInputTransparent(false);
     currentOpacity = 1.0;
     q->setWindowOpacity(1.0);
     if (finalPlacement.isValid()) {
         q->setGeometry(finalPlacement.popupRect);
+    }
+    if (restorePointerAfterAnimatedClose && pointerWindow) {
+        QTimer::singleShot(0, pointerWindow, [pointerWindow, pointerPosition] {
+            if (pointerWindow) {
+                synchronizeButtonHover(
+                    pointerWindow, buttonAtGlobalPoint(pointerPosition, pointerWindow),
+                    pointerPosition);
+            }
+        });
     }
     Q_EMIT q->closed();
 }

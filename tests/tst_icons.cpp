@@ -141,12 +141,21 @@ void IconTest::everySymbolHasARenderableResource() {
         vkui::VkSymbol::FocusTarget, vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
         vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,       vkui::VkSymbol::Clear,
         vkui::VkSymbol::DefaultTemplate, vkui::VkSymbol::UnsavedIndicator,
-        vkui::VkSymbol::BookmarkFilled,
+        vkui::VkSymbol::BookmarkFilled, vkui::VkSymbol::InsertAbove,
+        vkui::VkSymbol::InsertBelow,
     };
     for (const vkui::VkSymbol symbol : symbols) {
         const QIcon rendered = vkui::icon(symbol);
         QVERIFY2(!rendered.isNull(), "The icon engine was not created");
-        QVERIFY2(!rendered.pixmap(QSize(24, 24)).isNull(), "The SVG resource did not render");
+        const QImage image = rendered.pixmap(QSize(24, 24)).toImage();
+        QVERIFY2(!image.isNull(), "The SVG resource did not render");
+        int visiblePixels = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                visiblePixels += image.pixelColor(x, y).alpha() > 16 ? 1 : 0;
+            }
+        }
+        QVERIFY2(visiblePixels >= 12, "The SVG resource rendered no visible symbol");
     }
 }
 

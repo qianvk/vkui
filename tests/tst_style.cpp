@@ -12,6 +12,7 @@
 #include <QFrame>
 #include <QImage>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPainter>
 #include <QProxyStyle>
 #include <QQueue>
@@ -33,6 +34,10 @@
 #include <vkui/widgets/controls/VkSwitch.h>
 #include <vkui/widgets/style/VkStyle.h>
 #include <vkui/widgets/style/VkStyleSheet.h>
+
+#if defined(Q_OS_MACOS)
+#include "private/MacWindowStackProbe.h"
+#endif
 
 namespace {
 
@@ -154,6 +159,7 @@ class StyleTest final : public QObject {
     void everyAccentHasLegibleSelectedText();
     void comboBoxUsesTwoChevronGlyphs();
     void comboPopupUsesOneRoundedSurface();
+    void submenuStaysAboveItsRestackedParent();
     void existingWidgetsAreRepolishedAfterThemeChange();
     void optionalStyleSheetOverlayTracksPalette();
     void embeddedEditorsDoNotPaintASecondFrame();
@@ -246,6 +252,39 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     QVERIFY(QColor::fromRgba(popupImage.pixel(0, 0)).alpha() < 64);
     QVERIFY(QColor::fromRgba(popupImage.pixel(popupImage.rect().center())).alpha() > 192);
     combo.hidePopup();
+}
+
+void StyleTest::submenuStaysAboveItsRestackedParent() {
+#if defined(Q_OS_MACOS)
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa")) {
+        QSKIP("Native window stacking is only observable through the Cocoa platform plugin");
+    }
+
+    QMenu root;
+    QMenu* submenu = root.addMenu(QStringLiteral("Image Appearance"));
+    submenu->addAction(QStringLiteral("Square"));
+    submenu->addAction(QStringLiteral("No Crop"));
+    root.addSeparator();
+    root.addAction(QStringLiteral("Reset Rows"));
+
+    root.popup(QPoint(200, 200));
+    QTRY_VERIFY(root.isVisible());
+    root.setActiveAction(submenu->menuAction());
+    QTRY_VERIFY(submenu->isVisible());
+    QVERIFY(submenu->windowHandle());
+    QCOMPARE(submenu->windowHandle()->transientParent(), root.windowHandle());
+    QTRY_VERIFY(vkuiNativeWindowIsInFrontOf(submenu->winId(), root.winId()));
+
+    // A pressed parent item can cause the platform popup surface to be restacked. The active
+    // submenu must remain in front of its parent after that native ordering change.
+    root.raise();
+    QCoreApplication::processEvents();
+    QTRY_VERIFY(vkuiNativeWindowIsInFrontOf(submenu->winId(), root.winId()));
+
+    root.close();
+#else
+    QSKIP("Native window stacking probe is only available on macOS");
+#endif
 }
 
 void StyleTest::existingWidgetsAreRepolishedAfterThemeChange() {

@@ -100,6 +100,8 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
         {vkui::VkSymbol::Reveal, QT_TR_NOOP("Reveal")},
         {vkui::VkSymbol::Clear, QT_TR_NOOP("Clear")},
         {vkui::VkSymbol::DefaultTemplate, QT_TR_NOOP("Default template")},
+        {vkui::VkSymbol::InsertAbove, QT_TR_NOOP("Insert above")},
+        {vkui::VkSymbol::InsertBelow, QT_TR_NOOP("Insert below")},
     };
     for (int index = 0; index < symbols.size(); ++index) {
         const SymbolEntry& entry = symbols.at(index);

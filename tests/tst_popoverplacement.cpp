@@ -514,8 +514,12 @@ void PopoverPlacementTest::interruptedAnimationRetargetsCleanly() {
     popover.openFor(&anchor);
     QTest::qWait(20);
     popover.closeAnimated();
+    QVERIFY(popover.testAttribute(Qt::WA_TransparentForMouseEvents));
+    QVERIFY(popover.windowHandle()->flags().testFlag(Qt::WindowTransparentForInput));
     QTest::qWait(20);
     popover.openFor(&anchor);
+    QVERIFY(!popover.testAttribute(Qt::WA_TransparentForMouseEvents));
+    QVERIFY(!popover.windowHandle()->flags().testFlag(Qt::WindowTransparentForInput));
     QTRY_COMPARE_WITH_TIMEOUT(openedSpy.count(), 1, 1000);
     QCOMPARE(closedSpy.count(), 0);
     QVERIFY(popover.isOpen());
@@ -523,6 +527,8 @@ void PopoverPlacementTest::interruptedAnimationRetargetsCleanly() {
     popover.closeAnimated();
     QTRY_COMPARE_WITH_TIMEOUT(closedSpy.count(), 1, 1000);
     QVERIFY(!popover.isOpen());
+    QVERIFY(!popover.testAttribute(Qt::WA_TransparentForMouseEvents));
+    QVERIFY(!popover.windowHandle()->flags().testFlag(Qt::WindowTransparentForInput));
     manager->setAnimationsEnabled(animations);
 }
 
