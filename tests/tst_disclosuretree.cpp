@@ -9,6 +9,7 @@
 #include <QTimeLine>
 #include <QVariantMap>
 #include <QtTest>
+#include <algorithm>
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/views/VkDisclosureTreeView.h>
@@ -191,6 +192,7 @@ class DisclosureTreeTest final : public QObject {
     void longBranchKeepsTrueTrailingChildAtSeam();
     void rowInsertionAndRemovalUseOneLocalTimeline();
     void rowMutationInterruptionStartsAtThePaintedFrame();
+    void hiddenUnrelatedMutationPreservesDisclosureTimeline();
     void contiguousRowMoveUsesOneFrameClockAndBoundedCache();
     void ownedModelCanOutliveAnimationChildrenDuringViewTeardown();
 };
@@ -697,6 +699,79 @@ void DisclosureTreeTest::rowMutationInterruptionStartsAtThePaintedFrame() {
     }
 
     tree.finishRowMutationAnimation();
+    theme->setAnimationsEnabled(originalAnimations);
+}
+
+void DisclosureTreeTest::hiddenUnrelatedMutationPreservesDisclosureTimeline() {
+    auto* theme = vkui::VkThemeManager::instance();
+    const bool originalAnimations = theme->animationsEnabled();
+    theme->setAnimationsEnabled(true);
+
+    QStandardItemModel model;
+    auto* hiddenFolder = new QStandardItem(QStringLiteral("Hidden folder"));
+    hiddenFolder->appendRow(new QStandardItem(QStringLiteral("Hidden child 1")));
+    hiddenFolder->appendRow(new QStandardItem(QStringLiteral("Hidden child 2")));
+    model.appendRow(hiddenFolder);
+    auto* animatedFolder = new QStandardItem(QStringLiteral("Animated folder"));
+    animatedFolder->appendRow(new QStandardItem(QStringLiteral("Animated child 1")));
+    animatedFolder->appendRow(new QStandardItem(QStringLiteral("Animated child 2")));
+    animatedFolder->appendRow(new QStandardItem(QStringLiteral("Animated child 3")));
+    model.appendRow(animatedFolder);
+    model.appendRow(new QStandardItem(QStringLiteral("Following sibling")));
+
+    vkui::VkDisclosureTreeView tree;
+    tree.setModel(&model);
+    tree.setUniformRowHeights(true);
+    tree.setDisclosureSurfaceColor(Qt::white);
+    tree.resize(320, 280);
+    tree.show();
+    QTest::qWait(20);
+
+    const QModelIndex animatedIndex = animatedFolder->index();
+    tree.setExpandedAnimated(animatedIndex, true);
+    auto* timeline = tree.findChild<QTimeLine*>(QStringLiteral("vkDisclosureTimeline"));
+    QVERIFY(timeline != nullptr);
+    timeline->setPaused(true);
+    timeline->setCurrentTime(72);
+    QCoreApplication::processEvents();
+    QWidget* expansionOverlay = tree.viewport()->findChild<QWidget*>(
+        QStringLiteral("vkDisclosureGroupTransition"));
+    QVERIFY(expansionOverlay != nullptr);
+    const qreal expansionProgress = expansionOverlay->property("progress").toReal();
+
+    hiddenFolder->removeRow(0);
+    QCOMPARE(hiddenFolder->rowCount(), 1);
+    QCOMPARE(tree.viewport()->findChild<QWidget*>(
+                 QStringLiteral("vkDisclosureGroupTransition")),
+             expansionOverlay);
+    QCOMPARE(expansionOverlay->property("progress").toReal(), expansionProgress);
+
+    timeline->setCurrentTime(timeline->duration());
+    timeline->resume();
+    QTRY_VERIFY(tree.viewport()->findChild<QWidget*>(
+                    QStringLiteral("vkDisclosureGroupTransition")) == nullptr);
+    QVERIFY(tree.isExpanded(animatedIndex));
+
+    tree.setExpandedAnimated(animatedIndex, false);
+    timeline->setPaused(true);
+    timeline->setCurrentTime(128);
+    QCoreApplication::processEvents();
+    QWidget* collapseOverlay = tree.viewport()->findChild<QWidget*>(
+        QStringLiteral("vkDisclosureGroupTransition"));
+    QVERIFY(collapseOverlay != nullptr);
+    const qreal collapseProgress = collapseOverlay->property("progress").toReal();
+
+    hiddenFolder->appendRow(new QStandardItem(QStringLiteral("Replacement hidden child")));
+    QCOMPARE(tree.viewport()->findChild<QWidget*>(
+                 QStringLiteral("vkDisclosureGroupTransition")),
+             collapseOverlay);
+    QCOMPARE(collapseOverlay->property("progress").toReal(), collapseProgress);
+
+    timeline->setCurrentTime(0);
+    timeline->resume();
+    QTRY_VERIFY(tree.viewport()->findChild<QWidget*>(
+                    QStringLiteral("vkDisclosureGroupTransition")) == nullptr);
+    QVERIFY(!tree.isExpanded(animatedIndex));
     theme->setAnimationsEnabled(originalAnimations);
 }
 
