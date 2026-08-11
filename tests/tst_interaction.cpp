@@ -313,6 +313,7 @@ private slots:
     void surfaceViewsEmitNavigationAndPreserveNativeShortcuts();
     void readOnlyBuffersRejectNormalEditsInCore();
     void externalEditsUseUtf16AndRemainStrict();
+    void bufferHistoryIsCoreOwnedAndExposesCleanState();
     void largeExternalEditsAvoidWholeBufferRescans();
     void displayLayoutCacheStaysSparseForHugeBuffers();
     void staleMappingTimeoutCannotReplayInput();
@@ -2970,6 +2971,117 @@ void VkCoreTests::externalEditsUseUtf16AndRemainStrict()
     QCOMPARE(
         lastCursor(result),
         std::optional<Cursor>(Cursor{1, 0}));
+}
+
+void VkCoreTests::bufferHistoryIsCoreOwnedAndExposesCleanState()
+{
+    VkCore core;
+    core.setEnabled(false);
+    const ViewId editor = core.registerView(ViewKind::Editor);
+    const BufferId buffer = core.synchronizeBuffer(
+        editor,
+        "/vault/history.txt",
+        u"one",
+        {0, 3});
+    QVERIFY(buffer != 0);
+
+    auto history = core.bufferHistory(buffer);
+    QVERIFY(history.has_value());
+    QVERIFY(!history->canUndo);
+    QVERIFY(!history->canRedo);
+    QVERIFY(!history->modified());
+
+    QVERIFY(core.applyExternalEdit(
+        editor, 3, 0, u" two", {0, 7}));
+    history = core.bufferHistory(buffer);
+    QVERIFY(history->canUndo);
+    QVERIFY(!history->canRedo);
+    QVERIFY(history->modified());
+
+    QVERIFY(core.applyExternalEditAtOffset(
+        editor, 7, 0, u"\nline", 12));
+    QCOMPARE(core.window(editor)->cursor, (Cursor{1, 4}));
+    (void)core.undo(editor);
+    QCOMPARE(core.buffer(buffer)->text, std::u16string(u"one two"));
+    QCOMPARE(core.window(editor)->cursor, (Cursor{0, 7}));
+
+    QVERIFY(core.setBufferModified(buffer, false));
+    const std::uint64_t cleanNode =
+        core.bufferHistory(buffer)->current;
+    QVERIFY(!core.bufferHistory(buffer)->modified());
+
+    QVERIFY(core.applyExternalEdit(
+        editor, 7, 0, u" three", {0, 13}));
+    QVERIFY(core.bufferHistory(buffer)->modified());
+    (void)core.undo(editor);
+    history = core.bufferHistory(buffer);
+    QCOMPARE(history->current, cleanNode);
+    QVERIFY(!history->modified());
+    QVERIFY(history->canUndo);
+    QVERIFY(history->canRedo);
+
+    (void)core.redo(editor);
+    history = core.bufferHistory(buffer);
+    QVERIFY(history->modified());
+    QVERIFY(history->canUndo);
+    QVERIFY(!history->canRedo);
+
+    QVERIFY(core.setBufferModified(buffer, true));
+    history = core.bufferHistory(buffer);
+    QVERIFY(!history->clean.has_value());
+    QVERIFY(history->modified());
+    QVERIFY(core.setBufferModified(buffer, false));
+    QVERIFY(!core.bufferHistory(buffer)->modified());
+
+    QVERIFY(!core.bufferHistory(BufferId{999}).has_value());
+    QVERIFY(!core.setBufferModified(BufferId{999}, false));
+
+    // A native host selection is Core state as well: the UTF-16 anchor and
+    // active boundary survive undo/redo without a parallel widget stack.
+    VkCore selectionCore;
+    selectionCore.setEnabled(false);
+    const ViewId selectionView =
+        selectionCore.registerView(ViewKind::Editor);
+    const BufferId selectionBuffer = selectionCore.synchronizeBuffer(
+        selectionView,
+        "/vault/selection.txt",
+        u"A\U0001F600B",
+        {0, 1});
+    QVERIFY(selectionBuffer != 0);
+    QVERIFY(selectionCore.setViewSelectionAtOffsets(
+        selectionView, 1, 3));
+    QCOMPARE(
+        selectionCore.viewSelectionOffsets(selectionView),
+        (std::optional<std::pair<std::size_t, std::size_t>>(
+            std::pair<std::size_t, std::size_t>{1, 3})));
+    QVERIFY(selectionCore.applyExternalEditWithSelectionAtOffsets(
+        selectionView, 1, 2, u"x", 2, 2));
+    QCOMPARE(
+        selectionCore.buffer(selectionBuffer)->text,
+        std::u16string(u"AxB"));
+    (void)selectionCore.undo(selectionView);
+    QCOMPARE(
+        selectionCore.viewSelectionOffsets(selectionView),
+        (std::optional<std::pair<std::size_t, std::size_t>>(
+            std::pair<std::size_t, std::size_t>{1, 3})));
+    (void)selectionCore.redo(selectionView);
+    QCOMPARE(
+        selectionCore.viewSelectionOffsets(selectionView),
+        (std::optional<std::pair<std::size_t, std::size_t>>(
+            std::pair<std::size_t, std::size_t>{2, 2})));
+    QVERIFY(selectionCore.bufferHistory(selectionBuffer)->canUndo);
+    QVERIFY(selectionCore.resetBufferHistory(selectionBuffer));
+    QVERIFY(!selectionCore.bufferHistory(selectionBuffer)->canUndo);
+    QVERIFY(!selectionCore.bufferHistory(selectionBuffer)->canRedo);
+    QVERIFY(!selectionCore.bufferHistory(selectionBuffer)->modified());
+    QVERIFY(!selectionCore.resetBufferHistory(BufferId{999}));
+    QVERIFY(selectionCore.setViewSelectionAtOffsets(
+        selectionView, 0, 2));
+    selectionCore.setEnabled(true);
+    QCOMPARE(
+        selectionCore.viewSelectionOffsets(selectionView),
+        (std::optional<std::pair<std::size_t, std::size_t>>(
+            std::pair<std::size_t, std::size_t>{2, 2})));
 }
 
 void VkCoreTests::largeExternalEditsAvoidWholeBufferRescans()

@@ -25,6 +25,12 @@ void VkCore::setEnabled(const bool enabled)
     m_impl->promptInput.reset();
     m_impl->baseMode = Mode::Normal;
     m_impl->clearPendingState();
+    if (enabled) {
+        for (auto &[viewId, view] : m_impl->views) {
+            static_cast<void>(viewId);
+            view.selectionAnchorOffset.reset();
+        }
+    }
 }
 
 bool VkCore::isEnabled() const noexcept

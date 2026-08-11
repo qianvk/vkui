@@ -26,6 +26,7 @@ bool VkCore::setViewCursor(
                  || m_impl->baseMode == Mode::Replace)
                 && id == m_impl->activeView));
     foundView->second.cursors[foundView->second.buffer] = cursor;
+    foundView->second.selectionAnchorOffset.reset();
     foundView->second.displayColumns[foundView->second.buffer] =
         m_impl->displayColumnForBufferColumn(
             foundBuffer->second,
@@ -38,6 +39,67 @@ bool VkCore::setViewCursor(
         m_impl->keywordCompletion.reset();
     }
     return true;
+}
+
+bool VkCore::setViewSelectionAtOffsets(
+    const ViewId id,
+    const std::size_t rawAnchorOffset,
+    const std::size_t rawCursorOffset)
+{
+    const auto foundView = m_impl->views.find(id);
+    if (foundView == m_impl->views.end()
+        || foundView->second.buffer == 0) {
+        return false;
+    }
+    const auto foundBuffer = m_impl->buffers.find(
+        foundView->second.buffer);
+    if (foundBuffer == m_impl->buffers.end()) {
+        return false;
+    }
+    Implementation::View &view = foundView->second;
+    const Implementation::Buffer &buffer = foundBuffer->second;
+    const std::size_t anchorOffset = std::min(
+        rawAnchorOffset, buffer.text().size());
+    const std::size_t cursorOffset = std::min(
+        rawCursorOffset, buffer.text().size());
+    view.cursors[view.buffer] = m_impl->cursorAtOffset(
+        buffer, cursorOffset, true);
+    if (anchorOffset == cursorOffset) {
+        view.selectionAnchorOffset.reset();
+    } else {
+        view.selectionAnchorOffset = anchorOffset;
+    }
+    view.displayColumns[view.buffer] =
+        m_impl->displayColumnForBufferColumn(
+            buffer,
+            view.cursors.at(view.buffer).line,
+            view.cursors.at(view.buffer).column);
+    view.preferredColumn.reset();
+    view.preferredDisplayRowColumn.reset();
+    return true;
+}
+
+std::optional<std::pair<std::size_t, std::size_t>>
+VkCore::viewSelectionOffsets(const ViewId id) const
+{
+    const auto foundView = m_impl->views.find(id);
+    if (foundView == m_impl->views.cend()
+        || foundView->second.buffer == 0) {
+        return std::nullopt;
+    }
+    const auto foundBuffer = m_impl->buffers.find(
+        foundView->second.buffer);
+    const auto foundCursor = foundView->second.cursors.find(
+        foundView->second.buffer);
+    if (foundBuffer == m_impl->buffers.cend()
+        || foundCursor == foundView->second.cursors.cend()) {
+        return std::nullopt;
+    }
+    const std::size_t cursorOffset = m_impl->offset(
+        foundBuffer->second, foundCursor->second);
+    return std::pair<std::size_t, std::size_t>{
+        foundView->second.selectionAnchorOffset.value_or(cursorOffset),
+        cursorOffset};
 }
 
 bool VkCore::jumpViewCursor(const ViewId id, Cursor cursor)
@@ -68,6 +130,7 @@ bool VkCore::jumpViewCursor(const ViewId id, Cursor cursor)
                 m_impl->offset(foundBuffer->second, cursor)});
     }
     view.cursors[view.buffer] = cursor;
+    view.selectionAnchorOffset.reset();
     view.displayColumns[view.buffer] =
         m_impl->displayColumnForBufferColumn(
             foundBuffer->second, cursor.line, cursor.column);

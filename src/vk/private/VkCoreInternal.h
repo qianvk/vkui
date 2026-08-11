@@ -591,6 +591,14 @@ public:
     {
         WindowId window = 0;
         Cursor cursor;
+        std::optional<std::size_t> selectionAnchorOffset;
+    };
+
+    struct AuthoritativeSelectionOffsetState final
+    {
+        ViewId view = 0;
+        std::size_t anchor = 0;
+        std::size_t cursor = 0;
     };
 
     struct UndoNode final
@@ -615,6 +623,7 @@ public:
 
         std::vector<UndoNode> nodes;
         std::size_t current = 0;
+        std::optional<std::size_t> clean = 0;
         std::optional<std::size_t> openInsertNode;
     };
 
@@ -698,6 +707,10 @@ public:
         ViewKind kind = ViewKind::Other;
         BufferId buffer = 0;
         std::unordered_map<BufferId, Cursor> cursors;
+        // Native non-modal hosts may keep a selection independently of
+        // Neovim Visual mode. The optional anchor is a canonical UTF-16
+        // buffer offset; absence means a collapsed selection at cursors[].
+        std::optional<std::size_t> selectionAnchorOffset;
         std::unordered_map<BufferId, std::size_t>
             displayColumns;
         // Vim's curswant: a display-cell goal, never a UTF-16 buffer column.
@@ -1490,7 +1503,9 @@ public:
         const std::optional<std::pair<ViewId, Cursor>>
             authoritativeCursor = std::nullopt,
         const bool recordUndo = true,
-        const bool emitCursorEvents = true);
+        const bool emitCursorEvents = true,
+        const std::optional<AuthoritativeSelectionOffsetState>
+            authoritativeSelectionOffsets = std::nullopt);
 
     [[nodiscard]] bool applyBufferEdit(
         DispatchResult &result,
