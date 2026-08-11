@@ -30,6 +30,7 @@
         <file alias="insert-below.svg">icons/insert-below.svg</file>
         <file alias="trash.svg">icons/trash.svg</file>
         <file alias="download.svg">icons/download.svg</file>
+        <file alias="install.svg">icons/install.svg</file>
         <file alias="upload.svg">icons/upload.svg</file>
         <file alias="lock.svg">icons/lock.svg</file>
         <file alias="eye.svg">icons/eye.svg</file>

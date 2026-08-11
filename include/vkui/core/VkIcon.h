@@ -35,6 +35,7 @@ enum class VkSymbol {
     Edit,
     Trash,
     Download,
+    Install,
     Upload,
     Lock,
     Eye,
