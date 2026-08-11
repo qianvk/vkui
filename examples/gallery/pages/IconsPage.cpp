@@ -81,6 +81,7 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
         {vkui::VkSymbol::Edit, QT_TR_NOOP("Edit")},
         {vkui::VkSymbol::Trash, QT_TR_NOOP("Trash")},
         {vkui::VkSymbol::Download, QT_TR_NOOP("Download")},
+        {vkui::VkSymbol::Install, QT_TR_NOOP("Install")},
         {vkui::VkSymbol::Upload, QT_TR_NOOP("Upload")},
         {vkui::VkSymbol::Lock, QT_TR_NOOP("Lock")},
         {vkui::VkSymbol::Eye, QT_TR_NOOP("Eye")},

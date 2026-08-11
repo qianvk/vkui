@@ -77,6 +77,8 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("trash");
     case VkSymbol::Download:
         return QStringLiteral("download");
+    case VkSymbol::Install:
+        return QStringLiteral("install");
     case VkSymbol::Upload:
         return QStringLiteral("upload");
     case VkSymbol::Lock:
