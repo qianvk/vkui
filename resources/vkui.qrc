@@ -26,6 +26,8 @@
         <file alias="edit.svg">icons/edit.svg</file>
         <file alias="bookmark.svg">icons/bookmark.svg</file>
         <file alias="bookmark-filled.svg">icons/bookmark-filled.svg</file>
+        <file alias="insert-above.svg">icons/insert-above.svg</file>
+        <file alias="insert-below.svg">icons/insert-below.svg</file>
         <file alias="trash.svg">icons/trash.svg</file>
         <file alias="download.svg">icons/download.svg</file>
         <file alias="upload.svg">icons/upload.svg</file>

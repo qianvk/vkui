@@ -57,6 +57,8 @@ enum class VkSymbol {
     UnsavedIndicator,
     Bookmark,
     BookmarkFilled,
+    InsertAbove,
+    InsertBelow,
 };
 
 enum class VkIconRole {

@@ -99,6 +99,7 @@ class VkPopoverPrivate final : public QObject {
     [[nodiscard]] QScreen* screenForAnchor(const QRectF& globalAnchor) const;
 
     void applyOpacityFrame(qreal opacity);
+    void setClosingInputTransparent(bool transparent);
     void startOpenAnimation();
     void finishOpening();
     void finishClosing();

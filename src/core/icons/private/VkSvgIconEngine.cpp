@@ -69,6 +69,10 @@ QString symbolName(const VkSymbol symbol) {
         return QStringLiteral("bookmark");
     case VkSymbol::BookmarkFilled:
         return QStringLiteral("bookmark-filled");
+    case VkSymbol::InsertAbove:
+        return QStringLiteral("insert-above");
+    case VkSymbol::InsertBelow:
+        return QStringLiteral("insert-below");
     case VkSymbol::Trash:
         return QStringLiteral("trash");
     case VkSymbol::Download:

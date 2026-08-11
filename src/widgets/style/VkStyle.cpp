@@ -15,6 +15,7 @@
 #include <QFrame>
 #include <QHash>
 #include <QItemSelectionModel>
+#include <QMenu>
 #include <QPainter>
 #include <QPointer>
 #include <QRegion>
@@ -35,6 +36,7 @@
 #include <QStyleOptionViewItem>
 #include <QTimer>
 #include <QWidget>
+#include <QWindow>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -280,7 +282,6 @@ class VkPopupSurfaceStyler final : public QObject {
             break;
         }
         case QEvent::Resize:
-        case QEvent::Show:
         case QEvent::ChildAdded:
         case QEvent::StyleChange:
         case QEvent::PaletteChange:
@@ -288,6 +289,21 @@ class VkPopupSurfaceStyler final : public QObject {
             popup->clearMask();
             configureView(popup, m_popups[popup]);
             popup->update();
+            break;
+        case QEvent::Show:
+            applyTransparentPalette(*popup);
+            popup->clearMask();
+            configureView(popup, m_popups[popup]);
+            popup->update();
+            if (auto* menu = qobject_cast<QMenu*>(popup)) {
+                scheduleMenuStackRestore(menu, true);
+            }
+            break;
+        case QEvent::MouseButtonPress:
+        case QEvent::ZOrderChange:
+            if (auto* menu = qobject_cast<QMenu*>(popup)) {
+                scheduleMenuStackRestore(menu, false);
+            }
             break;
         default:
             break;
@@ -319,6 +335,52 @@ class VkPopupSurfaceStyler final : public QObject {
     struct ComboState {
         QMetaObject::Connection currentIndexConnection;
     };
+
+    static void raiseVisibleSubmenuChain(QMenu* menu) {
+        if (!menu || !menu->isVisible()) {
+            return;
+        }
+        for (QAction* action : menu->actions()) {
+            QMenu* submenu = action ? action->menu() : nullptr;
+            if (!submenu || !submenu->isVisible()) {
+                continue;
+            }
+            submenu->raise();
+            raiseVisibleSubmenuChain(submenu);
+        }
+    }
+
+    static bool hasMenuTransientParent(const QMenu* menu) {
+        const QWindow* popupWindow = menu ? menu->windowHandle() : nullptr;
+        const QWindow* transientParent = popupWindow ? popupWindow->transientParent() : nullptr;
+        if (!transientParent) {
+            return false;
+        }
+        return std::ranges::any_of(QApplication::topLevelWidgets(),
+                                   [transientParent](const QWidget* widget) {
+                                       return qobject_cast<const QMenu*>(widget) &&
+                                              widget->windowHandle() == transientParent;
+                                   });
+    }
+
+    static void scheduleMenuStackRestore(QMenu* menu, const bool raiseMenu) {
+        if (!menu) {
+            return;
+        }
+        const QPointer<QMenu> guardedMenu(menu);
+        QTimer::singleShot(0, menu, [guardedMenu, raiseMenu] {
+            if (!guardedMenu || !guardedMenu->isVisible()) {
+                return;
+            }
+            if (raiseMenu && hasMenuTransientParent(guardedMenu)) {
+                // Styled menus are translucent top-level popup surfaces. Some window managers
+                // keep transient popups at the same native level, so showing a submenu does not
+                // by itself guarantee that it stays above its parent.
+                guardedMenu->raise();
+            }
+            raiseVisibleSubmenuChain(guardedMenu);
+        });
+    }
 
     void polishCombo(QComboBox* combo) {
         if (!combo || m_combos.contains(combo)) {
