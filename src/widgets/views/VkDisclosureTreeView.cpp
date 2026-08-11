@@ -12,7 +12,6 @@
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QTimeLine>
-#include <QVariantMap>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
@@ -601,10 +600,49 @@ void VkDisclosureTreeView::beginRowMutation(const RowMutationKind kind,
                                             const QModelIndex& sourceParent, const int first,
                                             const int last, const QModelIndex& destinationParent,
                                             const int destinationRow) {
-    finishDisclosureAnimation();
     if (model() == nullptr) {
         return;
     }
+
+    const auto parentCanMoveVisibleRows = [this](const QModelIndex& parent) {
+        if (!parent.isValid()) {
+            return !rootIndex().isValid();
+        }
+        if (parent == rootIndex()) {
+            return true;
+        }
+        return isExpanded(parent) && visualRect(parent).isValid();
+    };
+    const auto parentTouchesDisclosure = [this](const QModelIndex& parent) {
+        if (!m_disclosureIndex.isValid()) {
+            return false;
+        }
+        if (!parent.isValid()) {
+            return !rootIndex().isValid();
+        }
+        return parent == m_disclosureIndex ||
+               isDescendantOf(parent, m_disclosureIndex) ||
+               isDescendantOf(m_disclosureIndex, parent);
+    };
+    const bool sourceVisible = parentCanMoveVisibleRows(sourceParent);
+    const bool destinationVisible = kind == RowMutationKind::Move &&
+                                    parentCanMoveVisibleRows(destinationParent);
+    const bool related = parentTouchesDisclosure(sourceParent) ||
+                         (kind == RowMutationKind::Move &&
+                          parentTouchesDisclosure(destinationParent));
+    const bool preserveDisclosure = m_disclosureOverlay != nullptr && !related &&
+                                    !sourceVisible && !destinationVisible;
+    if (preserveDisclosure) {
+        // A collapsed, unrelated subtree has no rows in QTreeView's visible
+        // geometry. Its asynchronous load/eviction may update the folder's
+        // disclosure affordance, but cannot move any row captured by the
+        // active transaction. Starting a second overlay here used to stop the
+        // current disclosure at an arbitrary frame and made its children
+        // flash in or disappear. Let the model update underneath instead.
+        m_pendingMutation.reset();
+        return;
+    }
+    finishDisclosureAnimation();
 
     auto transaction = std::make_unique<RowMutationTransaction>();
     transaction->kind = kind;
