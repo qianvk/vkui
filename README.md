@@ -29,7 +29,7 @@ symbol artwork.
 - Standard controls remain standard Qt Widgets. `VStyle` preserves their interaction,
   accessibility, focus, and keyboard behavior.
 - Fixed-proportion controls use Small/Regular/Large extent tokens with an optional exact
-  logical-pixel override; updates remain local to the affected widget.
+  logical-pixel override. Presets follow the interface text scale; exact values remain absolute.
 - Painting and animation drivers are private implementation details. Public APIs expose policy and
   behavior rather than a second framework.
 
@@ -95,6 +95,17 @@ vkui::installVkUi(application);
 `installVkUi()` initializes resources and theme state, installs a Fusion-backed `VStyle`, and
 applies the resolved palette. Change appearance later through `VkThemeManager`; the style is not
 recreated.
+
+Interface typography can be adjusted live without a global widget traversal:
+
+```cpp
+vkui::VkThemeManager::instance()->setTextScale(1.25); // Snaps to a 5% step in the 80–160% range.
+vkui::setTextStyle(*sectionTitle, vkui::VTextStyle::Title);
+```
+
+Qt propagates the scaled body font and invalidates affected layouts. Semantic text roles,
+predefined control extents, style icon metrics, spacing, and radii resolve from the same theme;
+explicit per-widget control or icon dimensions remain authoritative.
 
 `VkUI::Window` uses VkUI-owned, per-window AppKit and Win32 backends and depends only on public Qt
 APIs. The previous QWindowKit source remains in the repository for reference but is not compiled or

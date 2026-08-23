@@ -19,6 +19,7 @@
 #include <vkui/core/VkIcon.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/VTextStyle.h>
 
 namespace {
 
@@ -145,10 +146,7 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Theme-aware SVG Icons"), canvas);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     auto* introduction = new QLabel(
         tr("Each original SVG contains semantic primary and optional secondary channels. Colors "

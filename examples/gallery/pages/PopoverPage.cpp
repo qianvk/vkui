@@ -17,6 +17,7 @@
 #include <QVBoxLayout>
 #include <vkui/core/VkIcon.h>
 #include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/overlays/VPopover.h>
 
 PopoverPage::PopoverPage(QWidget* parent) : QWidget(parent), popover_(new vkui::VPopover(this)) {
@@ -30,10 +31,7 @@ PopoverPage::PopoverPage(QWidget* parent) : QWidget(parent), popover_(new vkui::
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Popover"), this);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     auto* introduction = new QLabel(
         tr("VPopover is an anchor-aware top-level overlay. Move or resize the gallery while it is "
@@ -150,9 +148,7 @@ QWidget* PopoverPage::makePopoverContent() {
     content->setMinimumWidth(largeContent_->isChecked() ? 390 : 235);
     auto* layout = new QVBoxLayout(content);
     auto* title = new QLabel(tr("Anchored Popover"), content);
-    QFont font = title->font();
-    font.setWeight(QFont::DemiBold);
-    title->setFont(font);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Headline);
     layout->addWidget(title);
     auto* message =
         new QLabel(largeContent_->isChecked() ? tr("This larger surface demonstrates body "

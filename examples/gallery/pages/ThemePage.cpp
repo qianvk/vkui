@@ -3,16 +3,26 @@
 #include "ThemePage.h"
 
 #include <QButtonGroup>
+#include <QCheckBox>
 #include <QFormLayout>
+#include <QFontInfo>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QRadioButton>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
+#include <QtMath>
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkAppearance.h>
+#include <vkui/core/VkIcon.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VTextStyle.h>
+#include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
 
 namespace {
@@ -47,10 +57,7 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Theme and Appearance"), this);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     auto* introduction = new QLabel(
         tr("Auto follows the platform color scheme. A resolved immutable theme supplies semantic "
@@ -114,6 +121,84 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
             });
     layout->addWidget(accentGroup);
 
+    auto* textSizeGroup = new QGroupBox(tr("Interface text size"), this);
+    textSizeGroup->setObjectName(QStringLiteral("interfaceTextSizeGroup"));
+    auto* textSizeLayout = new QVBoxLayout(textSizeGroup);
+    auto* textSizeExplanation = new QLabel(
+        tr("Text follows the platform system font. Controls, meaningful icons, spacing, and "
+           "semantic text styles respond without uniformly zooming window chrome."),
+        textSizeGroup);
+    textSizeExplanation->setWordWrap(true);
+    textSizeLayout->addWidget(textSizeExplanation);
+
+    auto* sliderRow = new QHBoxLayout;
+    auto* minimumLabel = new QLabel(tr("80%"), textSizeGroup);
+    auto* textScaleSlider = new vkui::VSlider(Qt::Horizontal, textSizeGroup);
+    textScaleSlider->setObjectName(QStringLiteral("interfaceTextScaleSlider"));
+    textScaleSlider->setAccessibleName(tr("Interface text size"));
+    textScaleSlider->setRange(qRound(vkui::VkMinimumTextScale * 100.0),
+                              qRound(vkui::VkMaximumTextScale * 100.0));
+    textScaleSlider->setSingleStep(qRound(vkui::VkTextScaleStep * 100.0));
+    textScaleSlider->setPageStep(10);
+    textScaleSlider->setTickInterval(10);
+    textScaleSlider->setTickPosition(QSlider::TicksBelow);
+    textScaleSlider->setTracking(true);
+    textScaleSlider->setValue(
+        qRound(vkui::VkThemeManager::instance()->textScale() * 100.0));
+    auto* maximumLabel = new QLabel(tr("160%"), textSizeGroup);
+    sliderRow->addWidget(minimumLabel);
+    sliderRow->addWidget(textScaleSlider, 1);
+    sliderRow->addWidget(maximumLabel);
+    textSizeLayout->addLayout(sliderRow);
+
+    auto* scaleFooter = new QHBoxLayout;
+    textScaleValueLabel_ = new QLabel(textSizeGroup);
+    vkui::setTextStyle(*textScaleValueLabel_, vkui::VTextStyle::BodyEmphasized);
+    auto* resetTextScale = new QPushButton(tr("Reset to 100%"), textSizeGroup);
+    scaleFooter->addWidget(textScaleValueLabel_);
+    scaleFooter->addStretch();
+    scaleFooter->addWidget(resetTextScale);
+    textSizeLayout->addLayout(scaleFooter);
+
+    auto* previewRow = new QHBoxLayout;
+    auto* previewButton = new QPushButton(vkui::icon(vkui::VkSymbol::Settings),
+                                          tr("Settings"), textSizeGroup);
+    auto* previewCheck = new QCheckBox(tr("Option"), textSizeGroup);
+    previewCheck->setChecked(true);
+    auto* previewCombo = new vkui::VCombobox(textSizeGroup);
+    previewCombo->addItems({tr("System"), tr("Automatic")});
+    previewCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    auto* previewSwitch = new vkui::VSwitch(textSizeGroup);
+    previewSwitch->setAccessibleName(tr("Preview switch"));
+    previewSwitch->setChecked(true);
+    previewRow->addWidget(previewButton);
+    previewRow->addWidget(previewCheck);
+    previewRow->addWidget(previewCombo);
+    previewRow->addWidget(previewSwitch);
+    previewRow->addStretch();
+    textSizeLayout->addLayout(previewRow);
+
+    connect(textScaleSlider, &QSlider::valueChanged, this,
+            [textScaleSlider](const int percent) {
+                const int minimum = textScaleSlider->minimum();
+                const int step = textScaleSlider->singleStep();
+                const int canonicalPercent =
+                    minimum + qRound(static_cast<qreal>(percent - minimum) / step) * step;
+                if (canonicalPercent != percent) {
+                    const QSignalBlocker blocker(textScaleSlider);
+                    textScaleSlider->setValue(canonicalPercent);
+                }
+                vkui::VkThemeManager::instance()->setTextScale(canonicalPercent / 100.0);
+            });
+    connect(resetTextScale, &QPushButton::clicked, vkui::VkThemeManager::instance(),
+            &vkui::VkThemeManager::resetTextScale);
+    connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::textScaleChanged,
+            textScaleSlider, [textScaleSlider](const qreal scale) {
+                const QSignalBlocker blocker(textScaleSlider);
+                textScaleSlider->setValue(qRound(scale * 100.0));
+            });
+    layout->addWidget(textSizeGroup);
+
     auto* motionGroup = new QGroupBox(tr("Motion policy"), this);
     auto* motionLayout = new QHBoxLayout(motionGroup);
     auto* motionLabel = new QLabel(tr("Enable interface animations"), motionGroup);
@@ -134,9 +219,11 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     auto* diagnosticsLayout = new QFormLayout(diagnostics);
     effectiveLabel_ = new QLabel(diagnostics);
     accentLabel_ = new QLabel(diagnostics);
+    typographyLabel_ = new QLabel(diagnostics);
     generationLabel_ = new QLabel(diagnostics);
     diagnosticsLayout->addRow(tr("Effective appearance"), effectiveLabel_);
     diagnosticsLayout->addRow(tr("Accent color"), accentLabel_);
+    diagnosticsLayout->addRow(tr("Responsive metrics"), typographyLabel_);
     diagnosticsLayout->addRow(tr("Theme generation"), generationLabel_);
     layout->addWidget(diagnostics);
 
@@ -154,9 +241,21 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
 }
 
 void ThemePage::updateSummary() {
-    const auto appearance = vkui::VkThemeManager::instance()->effectiveAppearance();
+    const auto* manager = vkui::VkThemeManager::instance();
+    const auto appearance = manager->effectiveAppearance();
     effectiveLabel_->setText(appearance == vkui::VkAppearance::Dark ? tr("Dark") : tr("Light"));
-    accentLabel_->setText(accentColorName(vkui::VkThemeManager::instance()->accentColor()));
-    generationLabel_->setText(
-        QString::number(vkui::VkThemeManager::instance()->theme().generation()));
+    accentLabel_->setText(accentColorName(manager->accentColor()));
+
+    const vkui::VkTheme& theme = manager->theme();
+    const int percent = qRound(manager->textScale() * 100.0);
+    const qreal bodyPoints = QFontInfo(theme.typography().body).pointSizeF();
+    textScaleValueLabel_->setText(
+        bodyPoints > 0.0
+            ? tr("%1% · %2 pt body").arg(percent).arg(bodyPoints, 0, 'f', 1)
+            : tr("%1% · %2 px body").arg(percent).arg(theme.typography().body.pixelSize()));
+    const int controlHeight = qRound(theme.metrics().controlHeightRegular);
+    const int iconExtent = qRound(theme.metrics().controlHeightSmall * 0.67);
+    typographyLabel_->setText(
+        tr("%1 px control · %2 px icon").arg(controlHeight).arg(iconExtent));
+    generationLabel_->setText(QString::number(theme.generation()));
 }

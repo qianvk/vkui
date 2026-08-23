@@ -27,6 +27,7 @@
 #include <vkui/core/VkIcon.h>
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/VControlSize.h>
+#include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/views/VFileTreeView.h>
 
 namespace {
@@ -59,10 +60,7 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Standard Qt Widgets"), canvas);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     layout->addWidget(makeIntroduction(
         tr("vkui keeps Qt's interaction, keyboard, and accessibility semantics while VStyle "

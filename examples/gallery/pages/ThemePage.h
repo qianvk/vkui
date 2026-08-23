@@ -17,5 +17,7 @@ class ThemePage final : public QWidget {
 
     QLabel* effectiveLabel_ = nullptr;
     QLabel* accentLabel_ = nullptr;
+    QLabel* textScaleValueLabel_ = nullptr;
+    QLabel* typographyLabel_ = nullptr;
     QLabel* generationLabel_ = nullptr;
 };

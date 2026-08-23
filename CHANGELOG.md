@@ -5,6 +5,9 @@ releases are tagged.
 
 ## Unreleased
 
+- Added live 80–160% interface-text scaling in five-percent steps, semantic `VTextStyle` roles,
+  responsive control/icon/spacing metrics, non-compounding baseline font resolution, and a Gallery
+  slider with representative controls and resolved metric diagnostics.
 - Replaced the disclosure-only tree base and Gallery-specific tree painting with `VTreeView`,
   `VTreeItemDelegate`, and `VFileTreeView`: shared styling, delegate-authoritative icon hit testing,
   interruptible icon-only expansion, reusable branch connectors, and view-owned structural motion.

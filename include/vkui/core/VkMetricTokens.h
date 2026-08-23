@@ -22,7 +22,7 @@ struct VKUI_CORE_EXPORT VkMetricTokens final {
     qreal controlHeightRegular = 0.0;
     qreal controlHeightLarge = 0.0;
 
-    // Named fixed-proportion controls resolve to these logical-pixel extents.
+    // Named fixed-proportion controls resolve to these text-responsive logical-pixel extents.
     qreal fixedControlExtentSmall = 0.0;
     qreal fixedControlExtentRegular = 0.0;
     qreal fixedControlExtentLarge = 0.0;

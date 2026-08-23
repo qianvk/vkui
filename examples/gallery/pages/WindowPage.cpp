@@ -13,6 +13,7 @@
 #endif
 #include <QVBoxLayout>
 #include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VTextStyle.h>
 #include <vkui/window/VMessageDialog.h>
 #include <vkui/window/VWindowAgent.h>
 
@@ -23,10 +24,7 @@ WindowPage::WindowPage(vkui::VWindowAgent& windowAgent, QWidget* parent)
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Windows and Dialogs"), this);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
 
     auto* introduction = new QLabel(

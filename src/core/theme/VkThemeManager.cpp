@@ -11,6 +11,7 @@
 #include <QtGui/QFontDatabase>
 #include <QtGui/QPalette>
 #include <algorithm>
+#include <cmath>
 #include <vkui/core/VkThemeManager.h>
 
 namespace vkui {
@@ -225,32 +226,45 @@ VkColorTokens darkColors(const VkAccentColor accentColor) {
     return colors;
 }
 
-VkMetricTokens defaultMetrics() {
-    VkMetricTokens metrics;
-    metrics.spacing2 = 2.0;
-    metrics.spacing4 = 4.0;
-    metrics.spacing6 = 6.0;
-    metrics.spacing8 = 8.0;
-    metrics.spacing12 = 12.0;
-    metrics.spacing16 = 16.0;
-    metrics.spacing20 = 20.0;
-    metrics.spacing24 = 24.0;
+qreal responsiveScale(const qreal textScale, const qreal textContribution) {
+    return 1.0 + (textScale - 1.0) * textContribution;
+}
 
-    metrics.controlHeightSmall = 22.0;
-    metrics.controlHeightRegular = 28.0;
-    metrics.controlHeightLarge = 36.0;
+VkMetricTokens defaultMetrics(const qreal textScale) {
+    // Typography grows directly. Supporting chrome grows more slowly so a larger reading size
+    // does not turn desktop controls into uniformly zoomed touch controls.
+    const qreal spatialScale = std::sqrt(textScale);
+    const qreal controlScale = responsiveScale(textScale, 0.65);
+    const qreal symbolScale = responsiveScale(textScale, 0.80);
+
+    VkMetricTokens metrics;
+    metrics.spacing2 = 2.0 * spatialScale;
+    metrics.spacing4 = 4.0 * spatialScale;
+    metrics.spacing6 = 6.0 * spatialScale;
+    metrics.spacing8 = 8.0 * spatialScale;
+    metrics.spacing12 = 12.0 * spatialScale;
+    metrics.spacing16 = 16.0 * spatialScale;
+    metrics.spacing20 = 20.0 * spatialScale;
+    metrics.spacing24 = 24.0 * spatialScale;
+
+    metrics.controlHeightSmall = 22.0 * controlScale;
+    metrics.controlHeightRegular = 28.0 * controlScale;
+    metrics.controlHeightLarge = 36.0 * controlScale;
 
     metrics.fixedControlExtentSmall = 14.0;
     metrics.fixedControlExtentRegular = 18.0;
     metrics.fixedControlExtentLarge = 22.0;
+    metrics.fixedControlExtentSmall *= symbolScale;
+    metrics.fixedControlExtentRegular *= symbolScale;
+    metrics.fixedControlExtentLarge *= symbolScale;
 
-    metrics.cornerRadiusSmall = 5.0;
-    metrics.cornerRadiusRegular = 7.0;
+    metrics.cornerRadiusSmall = 5.0 * spatialScale;
+    metrics.cornerRadiusRegular = 7.0 * spatialScale;
     metrics.windowCornerRadius = platformWindowCornerRadius();
     metrics.cornerRadiusLarge = metrics.windowCornerRadius;
     metrics.popoverCornerRadius = metrics.windowCornerRadius;
     // AppKit pop-up buttons use a tighter radius than detached menu surfaces.
-    metrics.comboBoxCornerRadius = 6.0;
+    metrics.comboBoxCornerRadius = 6.0 * spatialScale;
 #if defined(Q_OS_MACOS)
     metrics.menuCornerRadius = 16.0;
     metrics.comboBoxPopupCornerRadius = 16.0;
@@ -261,11 +275,11 @@ VkMetricTokens defaultMetrics() {
     metrics.popoverShadowRadius = 24.0;
 
     metrics.borderWidth = 1.0;
-    metrics.focusRingWidth = 3.0;
+    metrics.focusRingWidth = 3.0 * spatialScale;
 
-    metrics.switchTrackWidth = 34.0;
-    metrics.switchTrackHeight = 18.0;
-    metrics.switchThumbDiameter = 14.0;
+    metrics.switchTrackWidth = 34.0 * symbolScale;
+    metrics.switchTrackHeight = 18.0 * symbolScale;
+    metrics.switchThumbDiameter = 14.0 * symbolScale;
 
     metrics.popoverArrowWidth = 18.0;
     metrics.popoverArrowDepth = 10.0;
@@ -284,22 +298,38 @@ QFont adjustedFont(QFont font, const qreal pointDelta, const QFont::Weight weigh
     return font;
 }
 
-VkTypographyTokens defaultTypography() {
-    QFont body;
-    QFont caption;
-    if (currentGuiApplication() != nullptr) {
-        body = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
-        caption = QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
+QFont scaledFont(QFont font, const qreal textScale) {
+    if (font.pointSizeF() > 0.0) {
+        font.setPointSizeF(std::max(1.0, font.pointSizeF() * textScale));
+    } else if (font.pixelSize() > 0) {
+        font.setPixelSize(std::max(1, qRound(font.pixelSize() * textScale)));
     }
+    return font;
+}
 
-    VkTypographyTokens typography;
-    typography.caption = caption;
-    typography.body = body;
-    typography.bodyEmphasized = adjustedFont(body, 0.0, QFont::DemiBold);
-    typography.headline = adjustedFont(body, 1.0, QFont::DemiBold);
-    typography.title = adjustedFont(body, 4.0, QFont::Medium);
-    typography.largeTitle = adjustedFont(body, 10.0, QFont::Medium);
+VkTypographyTokens defaultTypography(const QFont& body, const QFont& caption,
+                                     const qreal textScale) {
+    VkTypographyTokens typography{
+        caption,
+        body,
+        adjustedFont(body, 0.0, QFont::DemiBold),
+        adjustedFont(body, 0.0, QFont::Bold),
+        adjustedFont(body, 4.0, QFont::Medium),
+        adjustedFont(body, 13.0, QFont::Medium),
+    };
+    typography.caption = scaledFont(typography.caption, textScale);
+    typography.body = scaledFont(typography.body, textScale);
+    typography.bodyEmphasized = scaledFont(typography.bodyEmphasized, textScale);
+    typography.headline = scaledFont(typography.headline, textScale);
+    typography.title = scaledFont(typography.title, textScale);
+    typography.largeTitle = scaledFont(typography.largeTitle, textScale);
     return typography;
+}
+
+qreal canonicalTextScale(const qreal requestedScale) {
+    const qreal clamped = std::clamp(requestedScale, VkMinimumTextScale, VkMaximumTextScale);
+    const qreal step = std::round((clamped - VkMinimumTextScale) / VkTextScaleStep);
+    return VkMinimumTextScale + step * VkTextScaleStep;
 }
 
 VkMotionTokens defaultMotion() {
@@ -427,7 +457,14 @@ bool motionTokensEqual(const VkMotionTokens& a, const VkMotionTokens& b) {
 } // namespace
 
 VkThemeManagerPrivate::VkThemeManagerPrivate(VkThemeManager* manager)
-    : q(manager), resolvedTheme(createTheme(systemAppearance(), requestedAccentColor, 1, 1)) {}
+    : q(manager),
+      baseBodyFont(currentGuiApplication() == nullptr ? QFont{}
+                                                      : currentGuiApplication()->font()),
+      baseCaptionFont(currentGuiApplication() == nullptr
+                          ? QFont{}
+                          : QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont)),
+      resolvedTheme(createTheme(systemAppearance(), requestedAccentColor, requestedTextScale,
+                                baseBodyFont, baseCaptionFont, 1, 1)) {}
 
 VkAppearance VkThemeManagerPrivate::resolveEffectiveAppearance() const {
     return requestedAppearance == VkAppearance::Auto ? systemAppearance() : requestedAppearance;
@@ -435,12 +472,16 @@ VkAppearance VkThemeManagerPrivate::resolveEffectiveAppearance() const {
 
 VkTheme VkThemeManagerPrivate::createTheme(const VkAppearance appearance,
                                            const VkAccentColor accentColor,
+                                           const qreal textScale,
+                                           const QFont& baseBodyFont,
+                                           const QFont& baseCaptionFont,
                                            const quint64 generation,
                                            const quint64 colorGeneration) {
     return VkTheme(appearance == VkAppearance::Dark ? darkColors(accentColor)
                                                     : lightColors(accentColor),
-                   defaultMetrics(), defaultTypography(), defaultMotion(), appearance, generation,
-                   colorGeneration);
+                   defaultMetrics(textScale),
+                   defaultTypography(baseBodyFont, baseCaptionFont, textScale), defaultMotion(),
+                   textScale, appearance, generation, colorGeneration);
 }
 
 VkThemeChanges VkThemeManagerPrivate::changedTokenGroups(const VkTheme& previous,
@@ -464,8 +505,10 @@ VkThemeChanges VkThemeManagerPrivate::changedTokenGroups(const VkTheme& previous
 
 VkThemeChanges VkThemeManagerPrivate::refreshTheme() {
     const VkAppearance effective = resolveEffectiveAppearance();
-    const VkTheme candidate = createTheme(
-        effective, requestedAccentColor, resolvedTheme.generation_, resolvedTheme.colorGeneration_);
+    const VkTheme candidate =
+        createTheme(effective, requestedAccentColor, requestedTextScale,
+                    baseBodyFont, baseCaptionFont, resolvedTheme.generation_,
+                    resolvedTheme.colorGeneration_);
     const VkThemeChanges changes = changedTokenGroups(resolvedTheme, candidate);
     if (changes == VkThemeChange::None) {
         return {};
@@ -473,7 +516,8 @@ VkThemeChanges VkThemeManagerPrivate::refreshTheme() {
 
     const quint64 colorGeneration =
         resolvedTheme.colorGeneration_ + (changes.testFlag(VkThemeChange::Colors) ? 1U : 0U);
-    resolvedTheme = createTheme(effective, requestedAccentColor, resolvedTheme.generation_ + 1,
+    resolvedTheme = createTheme(effective, requestedAccentColor, requestedTextScale,
+                                baseBodyFont, baseCaptionFont, resolvedTheme.generation_ + 1,
                                 colorGeneration);
     return changes;
 }
@@ -485,6 +529,14 @@ void VkThemeManagerPrivate::applyPalette() const {
         if (application->palette() != palette) {
             application->setPalette(palette);
         }
+    }
+}
+
+void VkThemeManagerPrivate::applyFont() const {
+    if (application != nullptr && application->font() != resolvedTheme.typography_.body) {
+        // Qt owns application-font inheritance, FontChange delivery, layout invalidation, and
+        // preservation of per-widget explicit font overrides.
+        application->setFont(resolvedTheme.typography_.body);
     }
 }
 
@@ -508,6 +560,11 @@ void VkThemeManagerPrivate::attachToApplication() {
         q->setParent(currentApplication);
     }
     application = currentApplication;
+    // Capture the unscaled application baseline exactly once for this application instance.
+    // QFontDatabase::GeneralFont can reflect QApplication::setFont() on some platforms, so it
+    // cannot serve as a stable source while a live scale slider is moving.
+    baseBodyFont = currentApplication->font();
+    baseCaptionFont = QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
     styleHints = currentApplication->styleHints();
     colorSchemeConnection =
         QObject::connect(styleHints, &QStyleHints::colorSchemeChanged, q,
@@ -516,9 +573,10 @@ void VkThemeManagerPrivate::attachToApplication() {
     const VkAppearance previousEffective = resolvedTheme.effectiveAppearance_;
     const VkThemeChanges changes = refreshTheme();
 
-    // A palette may have been customized between manager construction and the
-    // creation of QGuiApplication, so apply it even if token values compare equal.
+    // Palette and font state may have been customized between manager construction and the
+    // creation of QGuiApplication, so apply both even if token values compare equal.
     applyPalette();
+    applyFont();
     if (resolvedTheme.effectiveAppearance_ != previousEffective) {
         Q_EMIT q->effectiveAppearanceChanged(resolvedTheme.effectiveAppearance_);
     }
@@ -556,6 +614,22 @@ void VkThemeManagerPrivate::setAccentColor(const VkAccentColor accentColor) {
     applyPalette();
 
     Q_EMIT q->accentColorChanged(requestedAccentColor);
+    if (changes != VkThemeChange::None) {
+        Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
+    }
+}
+
+void VkThemeManagerPrivate::setTextScale(const qreal scale) {
+    const qreal canonicalScale = canonicalTextScale(scale);
+    if (qFuzzyCompare(requestedTextScale, canonicalScale)) {
+        return;
+    }
+
+    requestedTextScale = canonicalScale;
+    const VkThemeChanges changes = refreshTheme();
+    applyFont();
+
+    Q_EMIT q->textScaleChanged(requestedTextScale);
     if (changes != VkThemeChange::None) {
         Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
     }
@@ -628,6 +702,23 @@ void VkThemeManager::setAccentColor(const VkAccentColor accentColor) {
     }
     d->attachToApplication();
     d->setAccentColor(accentColor);
+}
+
+qreal VkThemeManager::textScale() const noexcept {
+    return d->requestedTextScale;
+}
+
+void VkThemeManager::setTextScale(const qreal scale) {
+    if (!std::isfinite(scale)) {
+        qWarning("VkThemeManager::setTextScale received a non-finite value");
+        return;
+    }
+    d->attachToApplication();
+    d->setTextScale(scale);
+}
+
+void VkThemeManager::resetTextScale() {
+    setTextScale(VkDefaultTextScale);
 }
 
 bool VkThemeManager::animationsEnabled() const noexcept {

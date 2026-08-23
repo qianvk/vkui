@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QLabel>
 #include <QWidget>
 #include <vkui/Core.h>
 #include <vkui/Widgets.h>
@@ -14,6 +15,15 @@ int main(int argc, char* argv[]) {
     vkui::installVkUi(application);
 
     auto* themeManager = vkui::VkThemeManager::instance();
+    QLabel sectionTitle(QStringLiteral("Installed typography API"));
+    vkui::setTextStyle(sectionTitle, vkui::VTextStyle::Title);
+    themeManager->setTextScale(1.25);
+    const bool typographyApiValid = themeManager->theme().textScale() == 1.25 &&
+                                    vkui::textStyle(sectionTitle) == vkui::VTextStyle::Title &&
+                                    sectionTitle.font() ==
+                                        vkui::textStyleFont(vkui::VTextStyle::Title);
+    themeManager->resetTextScale();
+
     const quint64 previousColorGeneration = themeManager->theme().colorGeneration();
     vkui::VkThemeChanges observedChanges;
     QObject::connect(
@@ -53,7 +63,7 @@ int main(int argc, char* argv[]) {
     QCheckBox checkBox;
     vkui::setControlSize(checkBox, vkui::VControlSize::Large);
     vkui::setControlExtent(checkBox, 27);
-    return windowApiValid && control.isChecked() &&
+    return windowApiValid && typographyApiValid && control.isChecked() &&
                    vkui::controlSize(checkBox) == vkui::VControlSize::Large &&
                    vkui::controlExtent(checkBox) == 27 &&
                    themeManager->theme().colorGeneration() > previousColorGeneration &&

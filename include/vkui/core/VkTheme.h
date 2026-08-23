@@ -27,6 +27,8 @@ class VKUI_CORE_EXPORT VkTheme final {
     [[nodiscard]] const VkMetricTokens& metrics() const noexcept;
     [[nodiscard]] const VkTypographyTokens& typography() const noexcept;
     [[nodiscard]] const VkMotionTokens& motion() const noexcept;
+    /** Relative interface-text scale used to resolve typography and responsive geometry. */
+    [[nodiscard]] qreal textScale() const noexcept;
 
     [[nodiscard]] VkAppearance effectiveAppearance() const noexcept;
     /** Increments whenever any resolved token group changes. */
@@ -36,13 +38,14 @@ class VKUI_CORE_EXPORT VkTheme final {
 
   private:
     VkTheme(VkColorTokens colors, VkMetricTokens metrics, VkTypographyTokens typography,
-            VkMotionTokens motion, VkAppearance effectiveAppearance, quint64 generation,
-            quint64 colorGeneration);
+            VkMotionTokens motion, qreal textScale, VkAppearance effectiveAppearance,
+            quint64 generation, quint64 colorGeneration);
 
     VkColorTokens colors_;
     VkMetricTokens metrics_;
     VkTypographyTokens typography_;
     VkMotionTokens motion_;
+    qreal textScale_ = 1.0;
     VkAppearance effectiveAppearance_ = VkAppearance::Light;
     quint64 generation_ = 0;
     quint64 colorGeneration_ = 0;
