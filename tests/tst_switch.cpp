@@ -3,7 +3,7 @@
 #include <QAccessible>
 #include <QSignalSpy>
 #include <QtTest>
-#include <vkui/widgets/controls/VkSwitch.h>
+#include <vkui/widgets/controls/VSwitch.h>
 
 class SwitchTest final : public QObject {
     Q_OBJECT
@@ -20,14 +20,14 @@ class SwitchTest final : public QObject {
 };
 
 void SwitchTest::startsUncheckedAndCheckable() {
-    vkui::VkSwitch control;
+    vkui::VSwitch control;
     QVERIFY(control.isCheckable());
     QVERIFY(!control.isChecked());
     QVERIFY(control.sizeHint().isValid());
 }
 
 void SwitchTest::mouseAndKeyboardToggle() {
-    vkui::VkSwitch control;
+    vkui::VSwitch control;
     control.show();
     QTest::qWait(1);
     QTest::mouseClick(&control, Qt::LeftButton, Qt::NoModifier, control.rect().center());
@@ -38,7 +38,7 @@ void SwitchTest::mouseAndKeyboardToggle() {
 }
 
 void SwitchTest::disabledSwitchDoesNotToggle() {
-    vkui::VkSwitch control;
+    vkui::VSwitch control;
     control.setEnabled(false);
     control.show();
     QTest::mouseClick(&control, Qt::LeftButton, Qt::NoModifier, control.rect().center());
@@ -48,15 +48,15 @@ void SwitchTest::disabledSwitchDoesNotToggle() {
 }
 
 void SwitchTest::emitsInheritedToggledSignal() {
-    vkui::VkSwitch control;
-    QSignalSpy spy(&control, &vkui::VkSwitch::toggled);
+    vkui::VSwitch control;
+    QSignalSpy spy(&control, &vkui::VSwitch::toggled);
     control.toggle();
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.first().first().toBool(), true);
 }
 
 void SwitchTest::rapidRetargetingKeepsLogicalState() {
-    vkui::VkSwitch control;
+    vkui::VSwitch control;
     control.show();
     for (int index = 0; index < 17; ++index) {
         control.toggle();
@@ -68,12 +68,12 @@ void SwitchTest::rapidRetargetingKeepsLogicalState() {
 }
 
 void SwitchTest::sizeHintsReflectControlSize() {
-    vkui::VkSwitch control;
-    control.setControlSize(vkui::VkControlSize::Small);
+    vkui::VSwitch control;
+    control.setControlSize(vkui::VControlSize::Small);
     const QSize small = control.sizeHint();
-    control.setControlSize(vkui::VkControlSize::Regular);
+    control.setControlSize(vkui::VControlSize::Regular);
     const QSize regular = control.sizeHint();
-    control.setControlSize(vkui::VkControlSize::Large);
+    control.setControlSize(vkui::VControlSize::Large);
     const QSize large = control.sizeHint();
     QVERIFY(regular.width() > small.width());
     QVERIFY(regular.height() > small.height());
@@ -83,9 +83,9 @@ void SwitchTest::sizeHintsReflectControlSize() {
 }
 
 void SwitchTest::exactExtentOverridesAndResetsPreset() {
-    vkui::VkSwitch control;
+    vkui::VSwitch control;
     QCOMPARE(control.controlExtent(), 18);
-    QSignalSpy spy(&control, &vkui::VkSwitch::controlExtentChanged);
+    QSignalSpy spy(&control, &vkui::VSwitch::controlExtentChanged);
 
     control.setControlExtent(31);
     QCOMPARE(control.controlExtent(), 31);
@@ -93,18 +93,18 @@ void SwitchTest::exactExtentOverridesAndResetsPreset() {
     QCOMPARE(spy.count(), 1);
 
     control.resetControlExtent();
-    QCOMPARE(control.controlExtent(), vkui::controlExtent(vkui::VkControlSize::Regular));
+    QCOMPARE(control.controlExtent(), vkui::controlExtent(vkui::VControlSize::Regular));
     QVERIFY(!vkui::customControlExtent(control));
 
     control.setControlExtent(500);
-    QCOMPARE(control.controlExtent(), vkui::VkMaximumControlExtent);
-    control.setControlSize(vkui::VkControlSize::Small);
-    QCOMPARE(control.controlExtent(), vkui::controlExtent(vkui::VkControlSize::Small));
+    QCOMPARE(control.controlExtent(), vkui::VMaximumControlExtent);
+    control.setControlSize(vkui::VControlSize::Small);
+    QCOMPARE(control.controlExtent(), vkui::controlExtent(vkui::VControlSize::Small));
     QVERIFY(!vkui::customControlExtent(control));
 }
 
 void SwitchTest::rightToLeftRendersAndReportsCheckedState() {
-    vkui::VkSwitch control;
+    vkui::VSwitch control;
     control.setLayoutDirection(Qt::RightToLeft);
     control.setAccessibleName(QStringLiteral("Wi-Fi"));
     control.setChecked(true);

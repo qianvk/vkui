@@ -25,6 +25,13 @@ bool VkCore::setViewCursor(
             || ((m_impl->baseMode == Mode::Insert
                  || m_impl->baseMode == Mode::Replace)
                 && id == m_impl->activeView));
+    if (foundBuffer->second.storage.isExternalSession()) {
+        const std::size_t cursorOffset = m_impl->offset(foundBuffer->second, cursor);
+        if (!foundBuffer->second.storage.setExternalSelection(
+                vkui::buffer::TextSelection{cursorOffset, cursorOffset})) {
+            return false;
+        }
+    }
     foundView->second.cursors[foundView->second.buffer] = cursor;
     foundView->second.selectionAnchorOffset.reset();
     foundView->second.displayColumns[foundView->second.buffer] =
@@ -62,6 +69,11 @@ bool VkCore::setViewSelectionAtOffsets(
         rawAnchorOffset, buffer.text().size());
     const std::size_t cursorOffset = std::min(
         rawCursorOffset, buffer.text().size());
+    if (foundBuffer->second.storage.isExternalSession() &&
+        !foundBuffer->second.storage.setExternalSelection(
+            vkui::buffer::TextSelection{anchorOffset, cursorOffset})) {
+        return false;
+    }
     view.cursors[view.buffer] = m_impl->cursorAtOffset(
         buffer, cursorOffset, true);
     if (anchorOffset == cursorOffset) {
@@ -119,6 +131,13 @@ bool VkCore::jumpViewCursor(const ViewId id, Cursor cursor)
         view.cursors[view.buffer],
         false);
     cursor = m_impl->clampCursor(foundBuffer->second, cursor, false);
+    if (foundBuffer->second.storage.isExternalSession()) {
+        const std::size_t cursorOffset = m_impl->offset(foundBuffer->second, cursor);
+        if (!foundBuffer->second.storage.setExternalSelection(
+                vkui::buffer::TextSelection{cursorOffset, cursorOffset})) {
+            return false;
+        }
+    }
     if (origin != cursor) {
         m_impl->recordJump(
             view,
@@ -144,8 +163,7 @@ std::optional<std::size_t> VkCore::bufferOffset(
     Cursor cursor) const
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.cend()
-        || !found->second.storage.isOwned()) {
+    if (found == m_impl->buffers.cend() || found->second.storage.isProviderBacked()) {
         return std::nullopt;
     }
     cursor = m_impl->clampCursor(
@@ -158,8 +176,7 @@ std::optional<Cursor> VkCore::cursorForBufferOffset(
     const std::size_t rawOffset) const
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.cend()
-        || !found->second.storage.isOwned()) {
+    if (found == m_impl->buffers.cend() || found->second.storage.isProviderBacked()) {
         return std::nullopt;
     }
     const std::size_t bounded = std::min(
@@ -172,8 +189,7 @@ bool VkCore::setBufferReadOnly(
     const bool readOnly)
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.end()
-        || !found->second.storage.isOwned()) {
+    if (found == m_impl->buffers.end() || found->second.storage.isProviderBacked()) {
         return false;
     }
     found->second.readOnly = readOnly;
@@ -188,8 +204,7 @@ bool VkCore::setBufferTabStop(
         return false;
     }
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.end()
-        || !found->second.storage.isOwned()) {
+    if (found == m_impl->buffers.end() || found->second.storage.isProviderBacked()) {
         return false;
     }
     auto &buffer = found->second;
@@ -225,8 +240,7 @@ std::optional<DisplayLayoutCacheStats>
 VkCore::displayLayoutCacheStats(const BufferId id) const
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.cend()
-        || !found->second.storage.isOwned()) {
+    if (found == m_impl->buffers.cend() || found->second.storage.isProviderBacked()) {
         return std::nullopt;
     }
     DisplayLayoutCacheStats stats;
@@ -246,12 +260,9 @@ std::optional<DisplayPosition> VkCore::displayPosition(
     const Cursor cursor) const
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.cend()
-        || !found->second.storage.isOwned()
-        || cursor.line >= found->second.lineStarts.size()
-        || m_impl->clampCursor(
-               found->second, cursor, true)
-            != cursor) {
+    if (found == m_impl->buffers.cend() || found->second.storage.isProviderBacked() ||
+        cursor.line >= found->second.lineStarts.size() ||
+        m_impl->clampCursor(found->second, cursor, true) != cursor) {
         return std::nullopt;
     }
     return DisplayPosition{
@@ -269,9 +280,8 @@ std::optional<DisplayPosition> VkCore::displayPositionForColumn(
     const DisplayColumnMode mode) const
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.cend()
-        || !found->second.storage.isOwned()
-        || line >= found->second.lineStarts.size()) {
+    if (found == m_impl->buffers.cend() || found->second.storage.isProviderBacked() ||
+        line >= found->second.lineStarts.size()) {
         return std::nullopt;
     }
     const Implementation::Buffer &buffer = found->second;
@@ -577,6 +587,46 @@ VkCore::bufferDataDescriptor(const BufferId id) const
     return found == m_impl->buffers.end()
         ? std::nullopt
         : found->second.storage.describe();
+}
+
+std::optional<std::size_t> VkCore::bufferResidentCodeUnits(const BufferId id) const noexcept {
+    const auto found = m_impl->buffers.find(id);
+    return found == m_impl->buffers.end()
+               ? std::nullopt
+               : std::optional<std::size_t>(found->second.storage.residentCodeUnits());
+}
+
+std::optional<std::size_t> VkCore::bufferCachedCodeUnits(const BufferId id) const noexcept {
+    const auto found = m_impl->buffers.find(id);
+    return found == m_impl->buffers.end()
+               ? std::nullopt
+               : std::optional<std::size_t>(found->second.storage.cachedCodeUnits());
+}
+
+std::optional<BufferAuthoritySnapshot> VkCore::bufferAuthority(const BufferId id) const noexcept {
+    const auto found = m_impl->buffers.find(id);
+    if (found == m_impl->buffers.end()) {
+        return std::nullopt;
+    }
+    const auto& buffer = found->second;
+    const bool external = buffer.storage.isExternalSession();
+    const bool desynchronized =
+        buffer.authorityDesynchronized || buffer.storage.externalReadFaulted();
+    const auto lastExternal = buffer.storage.lastExternalDescriptor();
+    return BufferAuthoritySnapshot{id,
+                                   external,
+                                   external,
+                                   buffer.storage.residentCodeUnits(),
+                                   buffer.storage.cachedCodeUnits(),
+                                   buffer.lineStarts.residentEntries(),
+                                   buffer.undo ? buffer.undo->nodes.size() : 0,
+                                   desynchronized,
+                                   buffer.authorityDesynchronized   ? buffer.desynchronizedRevision
+                                   : desynchronized && lastExternal ? lastExternal->revision
+                                                                    : buffer.revision(),
+                                   buffer.authorityDesynchronized   ? buffer.desynchronizedSize
+                                   : desynchronized && lastExternal ? lastExternal->size
+                                                                    : buffer.text().size()};
 }
 
 vkui::buffer::RangeRead VkCore::readBufferDataRange(

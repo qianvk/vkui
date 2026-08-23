@@ -1,21 +1,22 @@
 # vkui
 
 `vkui` is a macOS 15-inspired visual foundation and small component library for Qt Widgets.
-It gives standard Qt controls a coherent, restrained appearance and adds only three controls that
-Qt Widgets genuinely lacks: a switch, a segmented control, and an anchor-aware Popover.
+It gives standard Qt controls a coherent, restrained appearance and adds focused components only
+where a style alone cannot provide the required behavior.
 
 The project uses C++20, Qt 6.6 or newer, and CMake 3.24 or newer. It supports macOS, Windows, and
 Linux, including high-DPI and right-to-left environments. Its original artwork and implementation
 are MIT licensed; it does not ship Apple fonts, SF Symbols, screenshots, or private resources.
-Core includes an open-source Fira Code Nerd Font for its named file-glyph API under the upstream
-licenses. It is registered only inside the running application and is never installed into the
-operating system. See [third-party notices](THIRD_PARTY_NOTICES.md).
+Core uses SVG exclusively for named symbols, including file-system icons. See
+[third-party notices](THIRD_PARTY_NOTICES.md) for the temporary converted catalog and derived file
+symbol artwork.
 
 ## Design boundaries
 
 - `VkUI::Core` contains appearance resolution, immutable semantic tokens, theme-aware SVG and
   named file icons, and motion specifications. It has no QWidget subclasses.
-- `VkUI::Widgets` contains `VkStyle`, `VkSwitch`, `VkSegmentedControl`, and `VkPopover`.
+- `VkUI::Widgets` contains `VStyle` plus focused controls, views, and overlays such as `VSwitch`,
+  `VSegmentedControl`, `VSplitter`, `VTreeView`, and `VPopover`.
 - `VkUI::Buffer` is the renderer-independent owned/provider-backed text data plane.
 - `VkUI::Interaction` owns canonical key input, modal grammar, commands, registers, buffers,
   semantic windows, and trusted interaction-plugin lifecycle. It never depends on QWidget.
@@ -23,9 +24,9 @@ operating system. See [third-party notices](THIRD_PARTY_NOTICES.md).
   navigation used by any renderer.
 - `VkUI::InteractionWidgets` projects interaction intents onto standard Qt item views, controls,
   blocks, and mounted panels without synthesizing `QKeyEvent` objects.
-- `VkUI::Window` is an optional, host-owned frameless-window module with native move/resize,
+- `VkUI::Window` is an optional, per-window composed full-content module with native move/resize,
   multiple transparent title bars, system-button policy, and unified dialog chrome.
-- Standard controls remain standard Qt Widgets. `VkStyle` preserves their interaction,
+- Standard controls remain standard Qt Widgets. `VStyle` preserves their interaction,
   accessibility, focus, and keyboard behavior.
 - Fixed-proportion controls use Small/Regular/Large extent tokens with an optional exact
   logical-pixel override; updates remain local to the affected widget.
@@ -33,6 +34,9 @@ operating system. See [third-party notices](THIRD_PARTY_NOTICES.md).
   behavior rather than a second framework.
 
 ## Build the gallery and tests
+
+The Gallery and `VkUI::Window` are available on macOS and Windows. Linux builds
+Core/Widgets with both options disabled by default.
 
 ```sh
 cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.6-or-newer \
@@ -49,10 +53,12 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-The main options are `VKUI_BUILD_SHARED`, `VKUI_BUILD_EXAMPLES`, `VKUI_BUILD_TESTS`,
-`VKUI_BUILD_WINDOW`, `VKUI_BUILD_INTERACTION`, `VKUI_INSTALL`, `VKUI_ENABLE_WARNINGS`, and
-`VKUI_ENABLE_SANITIZERS`. `VKUI_BUILD_WINDOW_QUICK` is reserved for internal compile
-validation and requires `VKUI_INSTALL=OFF`.
+The main options are `VKUI_BUILD_SHARED`, `VKUI_BUILD_EXAMPLES`, `VKUI_BUILD_ICON_CHOSEN`,
+`VKUI_BUILD_TESTS`, `VKUI_BUILD_WINDOW`, `VKUI_BUILD_INTERACTION`, `VKUI_INSTALL`,
+`VKUI_ENABLE_WARNINGS`, and `VKUI_ENABLE_SANITIZERS`. `VKUI_BUILD_WINDOW` and
+`VKUI_BUILD_EXAMPLES` default to on only on macOS and Windows. The temporary `icon-chosen` tool
+follows `VKUI_BUILD_EXAMPLES` by default and remains isolated from the Gallery and installed
+libraries.
 
 Top-level builds also export and refresh `compile_commands.json` for clangd by default. See the
 [clangd and Neovim development guide](docs/development.md) for indexing and navigation setup.
@@ -86,18 +92,23 @@ QApplication application(argc, argv);
 vkui::installVkUi(application);
 ```
 
-`installVkUi()` initializes resources and theme state, installs a Fusion-backed `VkStyle`, and
+`installVkUi()` initializes resources and theme state, installs a Fusion-backed `VStyle`, and
 applies the resolved palette. Change appearance later through `VkThemeManager`; the style is not
 recreated.
 
-`VkUI::Window` is built directly from the migrated window implementation and has no QWindowKit,
-qmsetup, submodule, or external package dependency. Applications include `<vkui/Window.h>` and use
-`VkWindowAgent`, `VkFramelessDialog`, and `VkMessageDialog`. See the
-[windowing guide](docs/windowing.md).
+`VkUI::Window` uses VkUI-owned, per-window AppKit and Win32 backends and depends only on public Qt
+APIs. The previous QWindowKit source remains in the repository for reference but is not compiled or
+linked. Applications include `<vkui/Window.h>` and use `VWindowAgent` for application windows or
+`VMessageDialog` for prompts. See the [windowing guide](docs/windowing.md).
 
-VkUI uses no QSS by default. Applications that need a narrow override layer can call
-`applyStyleSheetFile()` after installation; palette-based QSS follows runtime appearance changes
-without regenerating the stylesheet.
+VkUI renders standard controls through `QStyle` and `QPainter`, backed by semantic theme tokens.
+Application-wide QSS is intentionally unsupported because it bypasses parts of the custom-style
+contract and makes runtime theme invalidation less predictable. Compose application-specific UI
+with palette roles, tokens, and ordinary widget properties instead.
+
+`VTreeView` keeps model data, row rendering, and structural animation separate. Custom row layouts
+derive from `VTreeItemDelegate`; their leading-icon geometry automatically remains the expansion
+hit target. See the [tree-view guide](docs/tree-view.md) and [file-tree guide](docs/file-tree.md).
 
 ## Status
 

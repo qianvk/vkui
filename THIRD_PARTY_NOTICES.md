@@ -1,24 +1,21 @@
 # Third-party notices
 
-## Fira Code Nerd Font
+## Nerd Font-derived SVG symbols
 
-`VkUI::Core` embeds `FiraCodeNerdFont-Regular.ttf` from the official Nerd Fonts
-release archive. It is derived from Fira Code and includes glyphs from the Nerd
-Fonts aggregation project.
-
-The font is registered as an application font on demand and is not installed
-into the operating system. The public file-icon API keeps upstream private code
-points out of application code. The upstream license and release notes are
-preserved in `resources/fonts/`.
+VkUI's compact file symbols and the temporary standalone `icon-chosen` catalog
+were converted to SVG outlines from Fira Code Nerd Font v3.4.0. No font file is
+linked, embedded, installed, or loaded at runtime. The converted outlines remain
+covered by the upstream license preserved in
+`resources/fonts/LICENSE-FIRACODE-NERD-FONT.txt`.
 
 - Nerd Fonts: <https://github.com/ryanoasis/nerd-fonts>
 - Fira Code: <https://github.com/tonsky/FiraCode>
 
-## Integrated window implementation
+## Retained QWindowKit reference source
 
-`VkUI::Window` contains a migrated and adapted implementation derived from
-QWindowKit. The source is compiled directly as a VkUI module; VkUI does not
-fetch, link, or install QWindowKit as a separate dependency.
+The repository retains the previous migrated QWindowKit implementation for
+history and implementation comparison. It is not compiled, linked, installed,
+or used by the active `VkUI::Window` implementation.
 
 The migrated files retain their original copyright and Apache-2.0 SPDX
 headers. A copy of the upstream license is preserved at

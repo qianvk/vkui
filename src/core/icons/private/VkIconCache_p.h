@@ -17,7 +17,7 @@ struct VkIconCacheKey final {
     qint64 devicePixelRatio = 1024;
     QIcon::Mode mode = QIcon::Normal;
     QIcon::State state = QIcon::Off;
-    quint64 themeGeneration = 0;
+    quint64 colorGeneration = 0;
     quint64 colorIdentity = 0;
 
     friend bool operator==(const VkIconCacheKey&, const VkIconCacheKey&) = default;

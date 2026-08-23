@@ -27,6 +27,15 @@ bool VkCore::shouldCapture(
     if (view == 0) {
         return false;
     }
+    const auto authorityView = m_impl->views.find(view);
+    if (authorityView != m_impl->views.end() && authorityView->second.buffer != 0) {
+        const auto authorityBuffer = m_impl->buffers.find(authorityView->second.buffer);
+        if (authorityBuffer != m_impl->buffers.end() &&
+            (authorityBuffer->second.authorityDesynchronized ||
+             authorityBuffer->second.storage.externalReadFaulted())) {
+            return true;
+        }
+    }
     const detail::KeySequence &canonical =
         m_impl->canonicalEvents.keys(event);
     if (canonical.empty()) {
@@ -345,6 +354,33 @@ DispatchResult VkCore::dispatch(
     }
     if (view == 0) {
         return {};
+    }
+    const auto authorityView = m_impl->views.find(view);
+    if (authorityView != m_impl->views.end() && authorityView->second.buffer != 0) {
+        const auto authorityBuffer = m_impl->buffers.find(authorityView->second.buffer);
+        if (authorityBuffer != m_impl->buffers.end() &&
+            (authorityBuffer->second.authorityDesynchronized ||
+             authorityBuffer->second.storage.externalReadFaulted())) {
+            DispatchResult blocked;
+            blocked.disposition = InputDisposition::Consumed;
+            if (!authorityBuffer->second.authorityDesynchronized) {
+                const auto descriptor = authorityBuffer->second.storage.lastExternalDescriptor();
+                m_impl->desynchronizeExternalAuthority(
+                    &blocked, authorityBuffer->second, authorityView->second.buffer, view,
+                    descriptor ? descriptor->revision : 0, descriptor ? descriptor->size : 0);
+            } else {
+                Event authorityEvent;
+                authorityEvent.type = EventType::ExternalAuthorityDesynchronized;
+                authorityEvent.view = view;
+                authorityEvent.buffer = authorityView->second.buffer;
+                authorityEvent.authorityRevision = authorityBuffer->second.desynchronizedRevision;
+                authorityEvent.authoritySize = authorityBuffer->second.desynchronizedSize;
+                authorityEvent.message = "external authority is desynchronized";
+                blocked.events.push_back(std::move(authorityEvent));
+            }
+            blocked.events.back().inputTarget = inputTarget;
+            return blocked;
+        }
     }
     const detail::KeySequence &canonical =
         m_impl->canonicalEvents.keys(event);

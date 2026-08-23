@@ -13,7 +13,7 @@
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
-#include <vkui/widgets/controls/VkSwitch.h>
+#include <vkui/widgets/controls/VSwitch.h>
 
 namespace {
 
@@ -117,17 +117,17 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     auto* motionGroup = new QGroupBox(tr("Motion policy"), this);
     auto* motionLayout = new QHBoxLayout(motionGroup);
     auto* motionLabel = new QLabel(tr("Enable interface animations"), motionGroup);
-    auto* motionSwitch = new vkui::VkSwitch(motionGroup);
+    auto* motionSwitch = new vkui::VSwitch(motionGroup);
     motionSwitch->setAccessibleName(tr("Enable interface animations"));
     motionSwitch->setChecked(vkui::VkThemeManager::instance()->animationsEnabled());
     motionLabel->setBuddy(motionSwitch);
     motionLayout->addWidget(motionLabel);
     motionLayout->addWidget(motionSwitch);
     motionLayout->addStretch();
-    connect(motionSwitch, &vkui::VkSwitch::toggled, vkui::VkThemeManager::instance(),
+    connect(motionSwitch, &vkui::VSwitch::toggled, vkui::VkThemeManager::instance(),
             &vkui::VkThemeManager::setAnimationsEnabled);
     connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::animationsEnabledChanged,
-            motionSwitch, &vkui::VkSwitch::setChecked);
+            motionSwitch, &vkui::VSwitch::setChecked);
     layout->addWidget(motionGroup);
 
     auto* diagnostics = new QGroupBox(tr("Resolved theme"), this);
@@ -142,7 +142,7 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
 
     auto* note = new QLabel(
         tr("Theme changes update the application palette and invalidate generation-keyed icon and "
-           "paint caches. VkStyle itself is not recreated."),
+           "paint caches. VStyle itself is not recreated."),
         this);
     note->setWordWrap(true);
     layout->addWidget(note);

@@ -27,11 +27,26 @@ void ensureResourcesInitialized() {
 namespace vkui {
 
 QIcon icon(const VkSymbol symbol, const VkIconRole role) {
+    if (symbol < VkSymbol::ChevronLeft || symbol >= VkSymbol::Count) {
+        return {};
+    }
     detail::ensureResourcesInitialized();
     return QIcon(new VkSvgIconEngine(symbol, role));
 }
 
+QIcon icon(const VkSymbol symbol, const QPalette::ColorRole role,
+           const QPalette::ColorGroup group) {
+    if (symbol < VkSymbol::ChevronLeft || symbol >= VkSymbol::Count) {
+        return {};
+    }
+    detail::ensureResourcesInitialized();
+    return QIcon(new VkSvgIconEngine(symbol, role, group));
+}
+
 QIcon icon(const VkSymbol symbol, const QColor& primary, const QColor& secondary) {
+    if (symbol < VkSymbol::ChevronLeft || symbol >= VkSymbol::Count || !primary.isValid()) {
+        return {};
+    }
     detail::ensureResourcesInitialized();
     return QIcon(new VkSvgIconEngine(symbol, primary, secondary));
 }

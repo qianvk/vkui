@@ -10,7 +10,7 @@ VkCore::Implementation::textObjectRange(
     const bool around,
     const std::size_t rawCount) const
 {
-    const std::u16string &text = buffer.text();
+    const BufferTextView& text = buffer.text();
     if (text.empty()) {
         return std::nullopt;
     }
@@ -571,15 +571,10 @@ VkCore::Implementation::textObjectRange(
                 cursorAtOffset(buffer, right);
             const std::size_t closingLineStart =
                 buffer.lineStarts[closingCursor.line];
-            const bool closingAfterIndent =
-                std::ranges::all_of(
-                    std::u16string_view{
-                        text.data() + closingLineStart,
-                        right - closingLineStart},
-                    [](const char16_t value) {
-                        return value == u' '
-                            || value == u'\t';
-                    });
+            const bool closingAfterIndent = std::ranges::all_of(
+                text.cbegin() + static_cast<std::ptrdiff_t>(closingLineStart),
+                text.cbegin() + static_cast<std::ptrdiff_t>(right),
+                [](const char16_t value) { return value == u' ' || value == u'\t'; });
             if (closingAfterIndent) {
                 // For a block whose closing delimiter is the first
                 // non-blank character of its line, Neovim keeps the line
@@ -967,10 +962,34 @@ VkCore::Implementation::nextScalarOffset(
 }
 
 [[nodiscard]] std::size_t
-VkCore::Implementation::previousScalarOffset(
-    const std::u16string &text,
-    std::size_t offset) noexcept
-{
+VkCore::Implementation::nextScalarOffset(const BufferTextView& text,
+                                         const std::size_t offset) noexcept {
+    if (offset >= text.size()) {
+        return text.size();
+    }
+    return QChar::isHighSurrogate(text[offset]) && offset + 1 < text.size() &&
+                   QChar::isLowSurrogate(text[offset + 1])
+               ? offset + 2
+               : offset + 1;
+}
+
+[[nodiscard]] std::size_t
+VkCore::Implementation::previousScalarOffset(const std::u16string& text,
+                                             std::size_t offset) noexcept {
+    if (offset == 0) {
+        return 0;
+    }
+    --offset;
+    if (offset > 0 && QChar::isLowSurrogate(text[offset]) &&
+        QChar::isHighSurrogate(text[offset - 1])) {
+        --offset;
+    }
+    return offset;
+}
+
+[[nodiscard]] std::size_t
+VkCore::Implementation::previousScalarOffset(const BufferTextView& text,
+                                             std::size_t offset) noexcept {
     if (offset == 0) {
         return 0;
     }
@@ -1049,8 +1068,7 @@ VkCore::Implementation::matchingPairTarget(
         return std::nullopt;
     }
 
-    const std::u16string &text =
-        buffer.text();
+    const BufferTextView& text = buffer.text();
     const std::size_t initial =
         buffer.lineStarts[cursor.line] + column;
     std::size_t depth = 1;
@@ -1344,7 +1362,7 @@ VkCore::Implementation::nextWordEnd(
     if (offset >= buffer.text().size()) {
         return WordClass::White;
     }
-    const std::u16string &text = buffer.text();
+    const BufferTextView& text = buffer.text();
     const char16_t first = text[offset];
     const char32_t scalar = QChar::isHighSurrogate(first)
             && offset + 1 < text.size()
@@ -1374,7 +1392,7 @@ VkCore::Implementation::nextWordEnd(
     Cursor cursor,
     const bool bigWord) const noexcept
 {
-    const std::u16string &text = buffer.text();
+    const BufferTextView& text = buffer.text();
     if (text.empty()) {
         return std::nullopt;
     }
@@ -1429,7 +1447,7 @@ VkCore::Implementation::nextWordEnd(
 [[nodiscard]] std::vector<std::size_t> VkCore::Implementation::sentenceStarts(
     const Buffer &buffer) const
 {
-    const std::u16string &text = buffer.text();
+    const BufferTextView& text = buffer.text();
     std::vector<std::size_t> starts{0};
     starts.reserve(buffer.lineStarts.size() * 2);
 
@@ -1568,7 +1586,7 @@ VkCore::Implementation::nextWordEnd(
         return false;
     }
     const std::size_t start = buffer.lineStarts[line];
-    const std::u16string &text = buffer.text();
+    const BufferTextView& text = buffer.text();
     if (text[start] == u'\f') {
         return true;
     }

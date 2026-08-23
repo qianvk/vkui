@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-#include "GalleryWindow.h"
+#include "GalleryApplicationController.h"
 
 #include <QApplication>
 #include <QLocale>
@@ -18,9 +18,8 @@ int main(int argc, char* argv[]) {
 
     vkui::installVkUi(application);
 
-    GalleryWindow window;
-    window.resize(1120, 760);
-    window.show();
+    GalleryApplicationController controller;
+    controller.showMainWindow();
 
     return application.exec();
 }

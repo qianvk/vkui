@@ -3,24 +3,22 @@
 #include "SwitchPage.h"
 
 #include <QCheckBox>
-#include <QComboBox>
 #include <QFormLayout>
-#include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QRadioButton>
-#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTimer>
 #include <QVBoxLayout>
-#include <vkui/widgets/controls/VkSwitch.h>
+#include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/controls/VSwitch.h>
 
 namespace {
 
-void addSwitchRow(QFormLayout* form, const QString& labelText, vkui::VkSwitch* control,
+void addSwitchRow(QFormLayout* form, const QString& labelText, vkui::VSwitch* control,
                   const QString& accessibleName) {
     auto* label = new QLabel(labelText, form->parentWidget());
     label->setBuddy(control);
@@ -31,12 +29,7 @@ void addSwitchRow(QFormLayout* form, const QString& labelText, vkui::VkSwitch* c
 } // namespace
 
 SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
-    auto* outer = new QVBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    auto* canvas = new QWidget(scrollArea);
+    auto* canvas = this;
     auto* layout = new QVBoxLayout(canvas);
     layout->setContentsMargins(4, 4, 14, 14);
     layout->setSpacing(14);
@@ -48,7 +41,7 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
     title->setFont(titleFont);
     layout->addWidget(title);
     auto* introduction = new QLabel(
-        tr("VkSwitch adds the one common binary control Qt Widgets does not provide. It keeps "
+        tr("VSwitch adds the one common binary control Qt Widgets does not provide. It keeps "
            "QAbstractButton semantics, including Space-key activation and checked-state signals."),
         canvas);
     introduction->setWordWrap(true);
@@ -57,50 +50,50 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
     auto* states = new QGroupBox(tr("States and sizes"), canvas);
     auto* form = new QFormLayout(states);
 
-    auto* uncheckedSwitch = new vkui::VkSwitch(states);
+    auto* uncheckedSwitch = new vkui::VSwitch(states);
     addSwitchRow(form, tr("Unchecked"), uncheckedSwitch, tr("Unchecked example"));
 
-    auto* checkedSwitch = new vkui::VkSwitch(states);
+    auto* checkedSwitch = new vkui::VSwitch(states);
     checkedSwitch->setChecked(true);
     addSwitchRow(form, tr("Checked"), checkedSwitch, tr("Checked example"));
 
-    auto* disabledSwitch = new vkui::VkSwitch(states);
+    auto* disabledSwitch = new vkui::VSwitch(states);
     disabledSwitch->setChecked(true);
     disabledSwitch->setEnabled(false);
     addSwitchRow(form, tr("Disabled"), disabledSwitch, tr("Disabled example"));
 
-    auto* focusedSwitch = new vkui::VkSwitch(states);
+    auto* focusedSwitch = new vkui::VSwitch(states);
     focusedSwitch->setChecked(true);
     addSwitchRow(form, tr("Keyboard focus"), focusedSwitch, tr("Focused example"));
 
-    auto* smallSwitch = new vkui::VkSwitch(states);
-    smallSwitch->setControlSize(vkui::VkControlSize::Small);
+    auto* smallSwitch = new vkui::VSwitch(states);
+    smallSwitch->setControlSize(vkui::VControlSize::Small);
     smallSwitch->setChecked(true);
     addSwitchRow(form, tr("Small"), smallSwitch, tr("Small switch example"));
 
-    auto* regularSwitch = new vkui::VkSwitch(states);
-    regularSwitch->setControlSize(vkui::VkControlSize::Regular);
+    auto* regularSwitch = new vkui::VSwitch(states);
+    regularSwitch->setControlSize(vkui::VControlSize::Regular);
     addSwitchRow(form, tr("Regular"), regularSwitch, tr("Regular switch example"));
 
-    auto* largeSwitch = new vkui::VkSwitch(states);
-    largeSwitch->setControlSize(vkui::VkControlSize::Large);
+    auto* largeSwitch = new vkui::VSwitch(states);
+    largeSwitch->setControlSize(vkui::VControlSize::Large);
     largeSwitch->setChecked(true);
     addSwitchRow(form, tr("Large"), largeSwitch, tr("Large switch example"));
     layout->addWidget(states);
 
     auto* sizing = new QGroupBox(tr("Preset and exact sizing"), canvas);
     auto* sizingForm = new QFormLayout(sizing);
-    auto* preset = new QComboBox(sizing);
-    preset->addItem(tr("Small"), static_cast<int>(vkui::VkControlSize::Small));
-    preset->addItem(tr("Regular"), static_cast<int>(vkui::VkControlSize::Regular));
-    preset->addItem(tr("Large"), static_cast<int>(vkui::VkControlSize::Large));
+    auto* preset = new vkui::VCombobox(sizing);
+    preset->addItem(tr("Small"), static_cast<int>(vkui::VControlSize::Small));
+    preset->addItem(tr("Regular"), static_cast<int>(vkui::VControlSize::Regular));
+    preset->addItem(tr("Large"), static_cast<int>(vkui::VControlSize::Large));
     preset->addItem(tr("Custom"), -1);
     preset->setCurrentIndex(1);
     auto* exactExtent = new QSpinBox(sizing);
-    exactExtent->setRange(vkui::VkMinimumControlExtent, vkui::VkMaximumControlExtent);
+    exactExtent->setRange(vkui::VMinimumControlExtent, vkui::VMaximumControlExtent);
     exactExtent->setSuffix(QStringLiteral(" px"));
     exactExtent->setAccelerated(true);
-    exactExtent->setValue(vkui::controlExtent(vkui::VkControlSize::Regular));
+    exactExtent->setValue(vkui::controlExtent(vkui::VControlSize::Regular));
     sizingForm->addRow(tr("Preset"), preset);
     sizingForm->addRow(tr("Exact visual extent"), exactExtent);
 
@@ -111,7 +104,7 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
     previewCheck->setChecked(true);
     auto* previewRadio = new QRadioButton(tr("Radio button"), preview);
     previewRadio->setChecked(true);
-    auto* previewSwitch = new vkui::VkSwitch(preview);
+    auto* previewSwitch = new vkui::VSwitch(preview);
     previewSwitch->setChecked(true);
     previewLayout->addWidget(previewCheck);
     previewLayout->addWidget(previewRadio);
@@ -119,7 +112,7 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
     previewLayout->addStretch();
     sizingForm->addRow(tr("Live preview"), preview);
 
-    auto applyPreset = [previewCheck, previewRadio, previewSwitch](vkui::VkControlSize size) {
+    auto applyPreset = [previewCheck, previewRadio, previewSwitch](vkui::VControlSize size) {
         vkui::setControlSize(*previewCheck, size);
         vkui::setControlSize(*previewRadio, size);
         previewSwitch->setControlSize(size);
@@ -136,7 +129,7 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
                     applyExact(exactExtent->value());
                     return;
                 }
-                const auto size = static_cast<vkui::VkControlSize>(value);
+                const auto size = static_cast<vkui::VControlSize>(value);
                 applyPreset(size);
                 const QSignalBlocker blocker(exactExtent);
                 exactExtent->setValue(vkui::controlExtent(size));
@@ -150,14 +143,14 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
         const QSignalBlocker presetBlocker(preset);
         const QSignalBlocker extentBlocker(exactExtent);
         preset->setCurrentIndex(1);
-        exactExtent->setValue(vkui::controlExtent(vkui::VkControlSize::Regular));
+        exactExtent->setValue(vkui::controlExtent(vkui::VControlSize::Regular));
     }
-    applyPreset(vkui::VkControlSize::Regular);
+    applyPreset(vkui::VControlSize::Regular);
     layout->addWidget(sizing);
 
     auto* interaction = new QGroupBox(tr("Animation interruption"), canvas);
     auto* interactionLayout = new QHBoxLayout(interaction);
-    auto* rapidSwitch = new vkui::VkSwitch(interaction);
+    auto* rapidSwitch = new vkui::VSwitch(interaction);
     rapidSwitch->setAccessibleName(tr("Rapid toggling target"));
     auto* toggleButton = new QPushButton(tr("Run rapid toggling"), interaction);
     auto* timer = new QTimer(interaction);
@@ -187,9 +180,6 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
     note->setWordWrap(true);
     layout->addWidget(note);
     layout->addStretch();
-
-    scrollArea->setWidget(canvas);
-    outer->addWidget(scrollArea);
 
     QTimer::singleShot(0, focusedSwitch, [focusedSwitch] { focusedSwitch->setFocus(); });
 }

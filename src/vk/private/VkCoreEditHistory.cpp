@@ -6,8 +6,14 @@ void VkCore::Implementation::resetUndoHistory(
     Buffer &buffer,
     const BufferId bufferId)
 {
-    buffer.undo = UndoHistory{};
+    if (buffer.storage.isExternalSession()) {
+        (void)buffer.storage.resetExternalHistory();
+        buffer.undo.reset();
+    } else {
+        buffer.undo.emplace();
+    }
     buffer.lastOperationUndoNode.reset();
+    buffer.lastExternalMetadataGroup.reset();
     buffer.changeList.clear();
     for (auto &[viewId, view] : views) {
         static_cast<void>(viewId);
@@ -16,6 +22,7 @@ void VkCore::Implementation::resetUndoHistory(
         }
     }
     if (insertUndoBuffer == bufferId) {
+        externalEditGroups.erase(bufferId);
         insertUndoBuffer.reset();
     }
 }
@@ -98,7 +105,7 @@ void VkCore::Implementation::recordChangePosition(
     const bool groupWithInsert,
     std::vector<WindowCursorState> beforeCursors)
 {
-    UndoHistory &history = buffer.undo;
+    UndoHistory& history = *buffer.undo;
     if (groupWithInsert
         && history.openInsertNode
         && history.current == *history.openInsertNode) {
@@ -126,6 +133,9 @@ void VkCore::Implementation::patchLineStarts(
     const std::size_t end,
     const std::u16string_view inserted)
 {
+    if (buffer.lineStarts.external()) {
+        return;
+    }
     const auto firstRemoved = std::upper_bound(
         buffer.lineStarts.cbegin(),
         buffer.lineStarts.cend(),
@@ -146,17 +156,8 @@ void VkCore::Implementation::patchLineStarts(
         afterRemoved);
 
     const std::size_t removed = end - start;
-    for (std::size_t index = insertionIndex;
-         index < buffer.lineStarts.size();
-         ++index) {
-        if (inserted.size() >= removed) {
-            buffer.lineStarts[index] +=
-                inserted.size() - removed;
-        } else {
-            buffer.lineStarts[index] -=
-                removed - inserted.size();
-        }
-    }
+    buffer.lineStarts.shiftOwnedFrom(insertionIndex, static_cast<std::ptrdiff_t>(inserted.size()) -
+                                                         static_cast<std::ptrdiff_t>(removed));
 
     std::vector<std::size_t> addedStarts;
     addedStarts.reserve(
@@ -181,6 +182,30 @@ void VkCore::Implementation::patchLineStarts(
         addedStarts.cend());
 }
 
+void VkCore::Implementation::desynchronizeExternalAuthority(DispatchResult* const result,
+                                                            Buffer& buffer, const BufferId bufferId,
+                                                            const ViewId viewId,
+                                                            const std::uint64_t revision,
+                                                            const std::size_t size) {
+    buffer.authorityDesynchronized = true;
+    buffer.desynchronizedRevision = revision;
+    buffer.desynchronizedSize = size;
+    buffer.displayLines.clear();
+    buffer.storage.invalidateExternalProjection();
+    externalEditGroups.erase(bufferId);
+    if (result == nullptr) {
+        return;
+    }
+    Event event;
+    event.type = EventType::ExternalAuthorityDesynchronized;
+    event.view = viewId;
+    event.buffer = bufferId;
+    event.authorityRevision = revision;
+    event.authoritySize = size;
+    event.message = "external authority committed without a usable immutable snapshot";
+    result->events.push_back(std::move(event));
+}
+
 [[nodiscard]] bool VkCore::Implementation::mutateBuffer(
     DispatchResult *const result,
     const BufferId bufferId,
@@ -199,6 +224,15 @@ void VkCore::Implementation::patchLineStarts(
         return false;
     }
     Buffer &buffer = foundBuffer->second;
+    if (buffer.storage.externalReadFaulted() && !buffer.authorityDesynchronized) {
+        const auto descriptor = buffer.storage.lastExternalDescriptor();
+        desynchronizeExternalAuthority(result, buffer, bufferId, activeView,
+                                       descriptor ? descriptor->revision : 0,
+                                       descriptor ? descriptor->size : 0);
+    }
+    if (buffer.authorityDesynchronized) {
+        return false;
+    }
     const std::size_t boundedStart =
         std::min(start, buffer.text().size());
     const std::size_t boundedEnd =
@@ -208,6 +242,16 @@ void VkCore::Implementation::patchLineStarts(
             buffer.text().size());
     const std::size_t removed =
         boundedEnd - boundedStart;
+    const auto adjustAnchor = [boundedStart, boundedEnd, removed,
+                               insertedSize = inserted.size()](const std::size_t oldOffset) {
+        if (oldOffset > boundedEnd) {
+            return oldOffset - removed + insertedSize;
+        }
+        if (oldOffset >= boundedStart) {
+            return boundedStart + std::min(oldOffset - boundedStart, insertedSize);
+        }
+        return oldOffset;
+    };
     if (removed == inserted.size()
         && std::equal(
             inserted.cbegin(),
@@ -228,25 +272,6 @@ void VkCore::Implementation::patchLineStarts(
                 std::move(error));
         }
         return false;
-    }
-
-    std::optional<std::size_t> undoNode;
-    bool startedUndoNode = false;
-    std::u16string removedText;
-    if (recordUndo) {
-        removedText = buffer.text().substr(
-            boundedStart, removed);
-        const bool groupWithInsert =
-            insertUndoBuffer
-            && *insertUndoBuffer == bufferId;
-        const std::size_t nodeCount =
-            buffer.undo.nodes.size();
-        undoNode = ensureUndoNode(
-            buffer,
-            groupWithInsert,
-            captureWindowCursors(bufferId));
-        startedUndoNode =
-            buffer.undo.nodes.size() != nodeCount;
     }
 
     struct ViewOffsetState final
@@ -271,22 +296,77 @@ void VkCore::Implementation::patchLineStarts(
         }
     }
 
-    const auto adjustAnchor =
-        [boundedStart, boundedEnd, removed,
-         insertedSize = inserted.size()](
-            const std::size_t oldOffset) {
-            if (oldOffset > boundedEnd) {
-                return oldOffset - removed
-                    + insertedSize;
+    const bool externalSession = buffer.storage.isExternalSession();
+    std::optional<std::uint64_t> externalMetadataGroup;
+    bool startedExternalMetadataGroup = false;
+    if (externalSession) {
+        vkui::buffer::EditRequest request;
+        request.offset = boundedStart;
+        request.removedLength = removed;
+        request.inserted = inserted;
+        request.expectedRevision = buffer.revision();
+        const ViewId selectionView = authoritativeSelectionOffsets
+                                         ? authoritativeSelectionOffsets->view
+                                     : authoritativeCursor ? authoritativeCursor->first
+                                                           : activeView;
+        const auto selected =
+            std::ranges::find_if(viewOffsets, [selectionView](const ViewOffsetState& state) {
+                return state.id == selectionView;
+            });
+        if (selected != viewOffsets.cend()) {
+            request.selectionBefore = vkui::buffer::TextSelection{
+                selected->selectionAnchor.value_or(selected->cursor), selected->cursor};
+            request.selectionAfter =
+                authoritativeSelectionOffsets
+                    ? std::optional<vkui::buffer::TextSelection>(
+                          vkui::buffer::TextSelection{authoritativeSelectionOffsets->anchor,
+                                                      authoritativeSelectionOffsets->cursor})
+                    : std::optional<vkui::buffer::TextSelection>(vkui::buffer::TextSelection{
+                          adjustAnchor(selected->selectionAnchor.value_or(selected->cursor)),
+                          adjustAnchor(selected->cursor)});
+        }
+        if (const auto group = externalEditGroups.find(bufferId);
+            group != externalEditGroups.end()) {
+            request.group = group->second;
+        }
+        externalMetadataGroup = request.group;
+        startedExternalMetadataGroup =
+            !externalMetadataGroup || buffer.lastExternalMetadataGroup != externalMetadataGroup;
+        const auto editResult = buffer.storage.edit(std::move(request));
+        if (editResult.status == vkui::buffer::EditStatus::CommittedSnapshotUnavailable) {
+            desynchronizeExternalAuthority(result, buffer, bufferId, activeView,
+                                           editResult.revision, editResult.size);
+            return false;
+        }
+        if (!editResult.accepted()) {
+            if (result != nullptr) {
+                Event error;
+                error.type = EventType::InputError;
+                error.view = activeView;
+                error.buffer = bufferId;
+                error.message = editResult.status == vkui::buffer::EditStatus::StaleRevision
+                                    ? "external document revision is stale"
+                                    : "external document rejected edit";
+                result->events.push_back(std::move(error));
             }
-            if (oldOffset >= boundedStart) {
-                return boundedStart
-                    + std::min(
-                        oldOffset - boundedStart,
-                        insertedSize);
-            }
-            return oldOffset;
-        };
+            return false;
+        }
+        if (editResult.status == vkui::buffer::EditStatus::Unchanged) {
+            return true;
+        }
+    }
+
+    std::optional<std::size_t> undoNode;
+    bool startedUndoNode = false;
+    std::u16string removedText;
+    if (recordUndo && !buffer.storage.isExternalSession()) {
+        removedText = buffer.text().substr(boundedStart, removed);
+        const bool groupWithInsert = insertUndoBuffer && *insertUndoBuffer == bufferId;
+        const std::size_t nodeCount = buffer.undo->nodes.size();
+        undoNode = ensureUndoNode(buffer, groupWithInsert, captureWindowCursors(bufferId));
+        startedUndoNode = buffer.undo->nodes.size() != nodeCount;
+    }
+
     for (auto &mark : buffer.localMarks) {
         if (mark) {
             *mark = adjustAnchor(*mark);
@@ -346,30 +426,24 @@ void VkCore::Implementation::patchLineStarts(
         boundedStart,
         boundedEnd,
         inserted);
-    if (!buffer.editText(
-            boundedStart,
-            removed,
-            inserted)) {
+    if (!externalSession && !buffer.editText(boundedStart, removed, inserted)) {
         return false;
     }
     buffer.displayLines.clear();
     if (recordUndo) {
         buffer.lastChangeMark = boundedStart;
-        recordChangePosition(
-            buffer,
-            bufferId,
-            boundedStart,
-            startedUndoNode,
-            authoritativeCursor
-                ? authoritativeCursor->first
-                : authoritativeSelectionOffsets
-                ? authoritativeSelectionOffsets->view
-                : activeView);
+        recordChangePosition(buffer, bufferId, boundedStart,
+                             externalSession ? startedExternalMetadataGroup : startedUndoNode,
+                             authoritativeCursor             ? authoritativeCursor->first
+                             : authoritativeSelectionOffsets ? authoritativeSelectionOffsets->view
+                                                             : activeView);
         const std::size_t operationEnd = inserted.empty()
             ? boundedStart
             : boundedStart + inserted.size() - 1;
-        if (undoNode
-            && buffer.lastOperationUndoNode == undoNode) {
+        const bool continuesOperation = externalSession
+                                            ? externalMetadataGroup && !startedExternalMetadataGroup
+                                            : undoNode && buffer.lastOperationUndoNode == undoNode;
+        if (continuesOperation) {
             buffer.lastOperationStartMark = std::min(
                 buffer.lastOperationStartMark.value_or(
                     boundedStart),
@@ -382,6 +456,10 @@ void VkCore::Implementation::patchLineStarts(
             buffer.lastOperationStartMark = boundedStart;
             buffer.lastOperationEndMark = operationEnd;
             buffer.lastOperationUndoNode = undoNode;
+        }
+        if (externalSession) {
+            buffer.lastExternalMetadataGroup = externalMetadataGroup;
+            buffer.lastOperationUndoNode.reset();
         }
     }
 
@@ -464,8 +542,7 @@ void VkCore::Implementation::patchLineStarts(
     }
 
     if (undoNode) {
-        UndoNode &node =
-            buffer.undo.nodes[*undoNode];
+        UndoNode& node = buffer.undo->nodes[*undoNode];
         node.deltas.push_back(
             EditDelta{
                 boundedStart,
@@ -489,6 +566,212 @@ void VkCore::Implementation::patchLineStarts(
     if (emitCursorEvents) {
         for (const ViewOffsetState &oldState : viewOffsets) {
             emitCursor(*result, oldState.id, views.at(oldState.id));
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool VkCore::Implementation::mutateExternalBatch(
+    DispatchResult* const result, const BufferId bufferId,
+    std::vector<vkui::buffer::TransactionEdit> edits,
+    const vkui::buffer::TextSelection selectionBefore,
+    const vkui::buffer::TextSelection selectionAfter, const ViewId authoritativeView,
+    const std::optional<std::uint64_t> group, const bool emitCursorEvents) {
+    const auto foundBuffer = buffers.find(bufferId);
+    if (foundBuffer == buffers.end() || !foundBuffer->second.storage.isExternalSession() ||
+        foundBuffer->second.readOnly) {
+        return false;
+    }
+    Buffer& buffer = foundBuffer->second;
+    if (buffer.storage.externalReadFaulted() && !buffer.authorityDesynchronized) {
+        const auto descriptor = buffer.storage.lastExternalDescriptor();
+        desynchronizeExternalAuthority(result, buffer, bufferId, authoritativeView,
+                                       descriptor ? descriptor->revision : 0,
+                                       descriptor ? descriptor->size : 0);
+    }
+    if (buffer.authorityDesynchronized) {
+        return false;
+    }
+    const auto descriptor = buffer.storage.describe();
+    if (!descriptor || selectionBefore.anchor > descriptor->size ||
+        selectionBefore.cursor > descriptor->size) {
+        return false;
+    }
+    std::size_t candidateSize = descriptor->size;
+    for (const auto& edit : edits) {
+        if (edit.offset > candidateSize || edit.removedLength > candidateSize - edit.offset ||
+            edit.inserted.size() >
+                std::numeric_limits<std::size_t>::max() - (candidateSize - edit.removedLength)) {
+            return false;
+        }
+        candidateSize = candidateSize - edit.removedLength + edit.inserted.size();
+    }
+    if (selectionAfter.anchor > candidateSize || selectionAfter.cursor > candidateSize) {
+        return false;
+    }
+
+    struct ViewOffsets final {
+        ViewId id = 0;
+        std::size_t cursor = 0;
+        std::optional<std::size_t> anchor;
+    };
+    std::vector<ViewOffsets> viewOffsets;
+    for (const auto& [id, view] : views) {
+        if (view.buffer != bufferId) {
+            continue;
+        }
+        const auto cursor = view.cursors.find(bufferId);
+        viewOffsets.push_back(
+            ViewOffsets{id, cursor == view.cursors.cend() ? 0 : offset(buffer, cursor->second),
+                        view.selectionAnchorOffset});
+    }
+
+    vkui::buffer::EditTransactionRequest transaction;
+    transaction.edits = edits;
+    transaction.expectedRevision = descriptor->revision;
+    transaction.selectionBefore = selectionBefore;
+    transaction.selectionAfter = selectionAfter;
+    transaction.group = group;
+    const bool startedExternalMetadataGroup = !group || buffer.lastExternalMetadataGroup != group;
+    const auto applied = buffer.storage.editTransaction(std::move(transaction));
+    if (applied.status == vkui::buffer::EditStatus::CommittedSnapshotUnavailable) {
+        desynchronizeExternalAuthority(result, buffer, bufferId, authoritativeView,
+                                       applied.revision, applied.size);
+        return false;
+    }
+    if (!applied.accepted()) {
+        return false;
+    }
+
+    const auto adjustOffset = [&edits](std::size_t value) {
+        for (const auto& edit : edits) {
+            const std::size_t end = edit.offset + edit.removedLength;
+            if (value > end) {
+                value = value - edit.removedLength + edit.inserted.size();
+            } else if (value >= edit.offset) {
+                value = edit.offset + std::min(value - edit.offset, edit.inserted.size());
+            }
+        }
+        return value;
+    };
+    for (auto& mark : buffer.localMarks) {
+        if (mark) {
+            *mark = adjustOffset(*mark);
+        }
+    }
+    const auto adjustMark = [&adjustOffset](auto& mark) {
+        if (mark) {
+            *mark = adjustOffset(*mark);
+        }
+    };
+    adjustMark(buffer.lastChangeMark);
+    adjustMark(buffer.lastInsertExitMark);
+    adjustMark(buffer.lastOperationStartMark);
+    adjustMark(buffer.lastOperationEndMark);
+    adjustMark(buffer.lastVisualStartMark);
+    adjustMark(buffer.lastVisualEndMark);
+    adjustMark(buffer.lastCursorMark);
+    for (std::size_t& change : buffer.changeList) {
+        change = adjustOffset(change);
+    }
+    for (auto& mark : globalMarks) {
+        if (mark && mark->buffer == bufferId) {
+            mark->offset = adjustOffset(mark->offset);
+        }
+    }
+    for (auto& [id, view] : views) {
+        static_cast<void>(id);
+        for (Location& jump : view.jumpList) {
+            if (jump.buffer == bufferId) {
+                jump.offset = adjustOffset(jump.offset);
+            }
+        }
+        if (view.previousContext && view.previousContext->buffer == bufferId) {
+            view.previousContext->offset = adjustOffset(view.previousContext->offset);
+        }
+    }
+    if (pendingLocationMove) {
+        if (pendingLocationMove->origin.buffer == bufferId) {
+            pendingLocationMove->origin.offset = adjustOffset(pendingLocationMove->origin.offset);
+        }
+        if (pendingLocationMove->destination.buffer == bufferId) {
+            pendingLocationMove->destination.offset =
+                adjustOffset(pendingLocationMove->destination.offset);
+        }
+    }
+    for (const ViewOffsets& old : viewOffsets) {
+        View& view = views.at(old.id);
+        const std::size_t cursor =
+            old.id == authoritativeView ? selectionAfter.cursor : adjustOffset(old.cursor);
+        view.cursors[bufferId] = cursorAtOffset(buffer, cursor, true);
+        const std::size_t anchor = old.id == authoritativeView
+                                       ? selectionAfter.anchor
+                                       : adjustOffset(old.anchor.value_or(old.cursor));
+        view.selectionAnchorOffset =
+            anchor == cursor ? std::nullopt : std::optional<std::size_t>(anchor);
+        view.topline = std::min(view.topline, buffer.lineStarts.size() - 1);
+        view.displayColumns[bufferId] = displayColumnForBufferColumn(
+            buffer, view.cursors[bufferId].line, view.cursors[bufferId].column);
+        view.preferredColumn.reset();
+        view.preferredDisplayRowColumn.reset();
+    }
+    buffer.displayLines.clear();
+
+    if (!edits.empty()) {
+        const auto adjustOne = [](std::size_t value, const vkui::buffer::TransactionEdit& edit) {
+            const std::size_t end = edit.offset + edit.removedLength;
+            if (value > end) {
+                return value - edit.removedLength + edit.inserted.size();
+            }
+            if (value >= edit.offset) {
+                return edit.offset + std::min(value - edit.offset, edit.inserted.size());
+            }
+            return value;
+        };
+        std::optional<std::size_t> operationStart;
+        std::optional<std::size_t> operationEnd;
+        for (const auto& edit : edits) {
+            if (operationStart) {
+                *operationStart = adjustOne(*operationStart, edit);
+                *operationEnd = adjustOne(*operationEnd, edit);
+            }
+            const std::size_t editEnd =
+                edit.inserted.empty() ? edit.offset : edit.offset + edit.inserted.size() - 1;
+            operationStart = std::min(operationStart.value_or(edit.offset), edit.offset);
+            operationEnd = std::max(operationEnd.value_or(editEnd), editEnd);
+        }
+
+        buffer.lastChangeMark = edits.back().offset;
+        recordChangePosition(buffer, bufferId, *buffer.lastChangeMark, startedExternalMetadataGroup,
+                             authoritativeView);
+        if (group && !startedExternalMetadataGroup) {
+            buffer.lastOperationStartMark =
+                std::min(buffer.lastOperationStartMark.value_or(*operationStart), *operationStart);
+            buffer.lastOperationEndMark =
+                std::max(buffer.lastOperationEndMark.value_or(*operationEnd), *operationEnd);
+        } else {
+            buffer.lastOperationStartMark = operationStart;
+            buffer.lastOperationEndMark = operationEnd;
+        }
+        buffer.lastExternalMetadataGroup = group;
+        buffer.lastOperationUndoNode.reset();
+    }
+
+    if (result != nullptr) {
+        for (const auto& committed : edits) {
+            Event edit;
+            edit.type = EventType::BufferEdited;
+            edit.view = authoritativeView;
+            edit.buffer = bufferId;
+            edit.editOffset = committed.offset;
+            edit.editRemoved = committed.removedLength;
+            edit.editInserted = committed.inserted;
+            result->events.push_back(std::move(edit));
+        }
+        if (emitCursorEvents) {
+            for (const ViewOffsets& old : viewOffsets) {
+                emitCursor(*result, old.id, views.at(old.id));
+            }
         }
     }
     return true;
@@ -674,38 +957,59 @@ void VkCore::Implementation::finishInsertRepeat(
         && !activeInsertRepeat->insertedText.empty()) {
         const BlockInsertState block =
             *activeBlockInsert;
-        // Apply from the bottom upwards. Every edit offset is therefore
-        // valid for the document state produced by the preceding edit,
-        // and the entire block remains one open undo transaction.
-        for (std::size_t line = block.lastLine;
-             line > block.firstLine;
-             --line) {
-            auto found = buffers.find(block.buffer);
-            if (found == buffers.end()
-                || line >= found->second.lineStarts.size()) {
-                continue;
+        auto initial = buffers.find(block.buffer);
+        if (initial != buffers.end() && initial->second.storage.isExternalSession()) {
+            Buffer& buffer = initial->second;
+            std::vector<vkui::buffer::TransactionEdit> edits;
+            edits.reserve(block.lastLine - block.firstLine);
+            for (std::size_t line = block.lastLine; line > block.firstLine; --line) {
+                if (line >= buffer.lineStarts.size()) {
+                    continue;
+                }
+                const auto insertion =
+                    blockInsertionEdit(buffer, line, block.displayColumn, block.padShortLines);
+                if (!insertion) {
+                    continue;
+                }
+                std::u16string replacement = insertion->replacement;
+                replacement.insert(insertion->insertionOffset, activeInsertRepeat->insertedText);
+                const std::size_t lineStart = buffer.lineStarts[line];
+                edits.push_back(vkui::buffer::TransactionEdit{
+                    lineStart + insertion->bufferStart,
+                    insertion->bufferEnd - insertion->bufferStart, std::move(replacement)});
             }
-            const auto insertion = blockInsertionEdit(
-                found->second,
-                line,
-                block.displayColumn,
-                block.padShortLines);
-            if (!insertion) {
-                continue;
+            const auto foundView = views.find(block.window);
+            if (foundView != views.end() && foundView->second.buffer == block.buffer) {
+                const std::size_t cursor = offset(buffer, foundView->second.cursors[block.buffer]);
+                const vkui::buffer::TextSelection selection{
+                    foundView->second.selectionAnchorOffset.value_or(cursor), cursor};
+                const auto group = externalEditGroups.find(block.buffer);
+                (void)mutateExternalBatch(result, block.buffer, std::move(edits), selection,
+                                          selection, block.window,
+                                          group == externalEditGroups.end()
+                                              ? std::nullopt
+                                              : std::optional<std::uint64_t>(group->second));
             }
-            std::u16string replacement =
-                insertion->replacement;
-            replacement.insert(
-                insertion->insertionOffset,
-                activeInsertRepeat->insertedText);
-            const std::size_t lineStart =
-                found->second.lineStarts[line];
-            (void)mutateBuffer(
-                result,
-                block.buffer,
-                lineStart + insertion->bufferStart,
-                lineStart + insertion->bufferEnd,
-                std::move(replacement));
+        } else {
+            // Apply from the bottom upwards. Every edit offset is therefore
+            // valid for the document state produced by the preceding edit,
+            // and the entire block remains one open undo transaction.
+            for (std::size_t line = block.lastLine; line > block.firstLine; --line) {
+                auto found = buffers.find(block.buffer);
+                if (found == buffers.end() || line >= found->second.lineStarts.size()) {
+                    continue;
+                }
+                const auto insertion = blockInsertionEdit(found->second, line, block.displayColumn,
+                                                          block.padShortLines);
+                if (!insertion) {
+                    continue;
+                }
+                std::u16string replacement = insertion->replacement;
+                replacement.insert(insertion->insertionOffset, activeInsertRepeat->insertedText);
+                const std::size_t lineStart = found->second.lineStarts[line];
+                (void)mutateBuffer(result, block.buffer, lineStart + insertion->bufferStart,
+                                   lineStart + insertion->bufferEnd, std::move(replacement));
+            }
         }
     }
     if (activeInsertRepeat
@@ -728,14 +1032,12 @@ void VkCore::Implementation::finishInsertRepeat(
     const bool redo)
 {
     const auto foundBuffer = buffers.find(bufferId);
-    if (foundBuffer == buffers.end()
-        || nodeIndex
-            >= foundBuffer->second.undo.nodes.size()) {
+    if (foundBuffer == buffers.end() || !foundBuffer->second.undo ||
+        nodeIndex >= foundBuffer->second.undo->nodes.size()) {
         return false;
     }
     Buffer &buffer = foundBuffer->second;
-    const UndoNode &node =
-        buffer.undo.nodes[nodeIndex];
+    const UndoNode& node = buffer.undo->nodes[nodeIndex];
     if (redo) {
         for (const EditDelta &delta : node.deltas) {
             if (!mutateBuffer(
@@ -794,6 +1096,24 @@ void VkCore::Implementation::undoOrRedo(
         return;
     }
     Buffer &buffer = foundBuffer->second;
+    if (buffer.storage.externalReadFaulted() && !buffer.authorityDesynchronized) {
+        const auto descriptor = buffer.storage.lastExternalDescriptor();
+        desynchronizeExternalAuthority(&result, buffer, bufferId, windowId,
+                                       descriptor ? descriptor->revision : 0,
+                                       descriptor ? descriptor->size : 0);
+        return;
+    }
+    if (buffer.authorityDesynchronized) {
+        Event event;
+        event.type = EventType::ExternalAuthorityDesynchronized;
+        event.view = windowId;
+        event.buffer = bufferId;
+        event.authorityRevision = buffer.desynchronizedRevision;
+        event.authoritySize = buffer.desynchronizedSize;
+        event.message = "external authority is desynchronized";
+        result.events.push_back(std::move(event));
+        return;
+    }
     if (buffer.readOnly) {
         Event error;
         error.type = EventType::InputError;
@@ -804,11 +1124,154 @@ void VkCore::Implementation::undoOrRedo(
         return;
     }
 
+    if (buffer.storage.isExternalSession()) {
+        const auto beforeDescriptor = buffer.storage.describe();
+        if (!beforeDescriptor) {
+            return;
+        }
+        struct ViewOffsets final {
+            ViewId id = 0;
+            std::size_t cursor = 0;
+            std::optional<std::size_t> anchor;
+        };
+        std::vector<ViewOffsets> beforeViews;
+        beforeViews.reserve(views.size());
+        for (const auto& [id, view] : views) {
+            if (view.buffer != bufferId) {
+                continue;
+            }
+            const auto cursor = view.cursors.find(bufferId);
+            beforeViews.push_back(
+                ViewOffsets{id, cursor == view.cursors.cend() ? 0 : offset(buffer, cursor->second),
+                            view.selectionAnchorOffset});
+        }
+        const auto replay = buffer.storage.replayExternalHistory(count, redo);
+        if (replay.status == vkui::buffer::HistoryReplayStatus::CommittedSnapshotUnavailable) {
+            desynchronizeExternalAuthority(&result, buffer, bufferId, windowId, replay.revision,
+                                           replay.size);
+            return;
+        }
+        if (!replay.accepted() || replay.status == vkui::buffer::HistoryReplayStatus::Unchanged) {
+            return;
+        }
+        std::size_t candidateSize = beforeDescriptor->size;
+        for (const auto& committed : replay.edits) {
+            if (committed.offset > candidateSize ||
+                committed.removedLength > candidateSize - committed.offset ||
+                committed.inserted.size() > std::numeric_limits<std::size_t>::max() -
+                                                (candidateSize - committed.removedLength)) {
+                desynchronizeExternalAuthority(&result, buffer, bufferId, windowId, replay.revision,
+                                               replay.size);
+                return;
+            }
+            candidateSize = candidateSize - committed.removedLength + committed.inserted.size();
+        }
+        if (candidateSize != replay.size) {
+            desynchronizeExternalAuthority(&result, buffer, bufferId, windowId, replay.revision,
+                                           replay.size);
+            return;
+        }
+        if ((replay.cursor && *replay.cursor > replay.size) ||
+            (replay.selectionAnchor && (!replay.cursor || *replay.selectionAnchor > replay.size))) {
+            desynchronizeExternalAuthority(&result, buffer, bufferId, windowId, replay.revision,
+                                           replay.size);
+            return;
+        }
+        const auto adjustOffset = [&replay](std::size_t value) {
+            for (const auto& committed : replay.edits) {
+                const std::size_t end = committed.offset + committed.removedLength;
+                if (value > end) {
+                    value = value - committed.removedLength + committed.inserted.size();
+                } else if (value >= committed.offset) {
+                    value = committed.offset +
+                            std::min(value - committed.offset, committed.inserted.size());
+                }
+            }
+            return value;
+        };
+        for (auto& mark : buffer.localMarks) {
+            if (mark) {
+                *mark = adjustOffset(*mark);
+            }
+        }
+        const auto adjustMark = [&adjustOffset](auto& mark) {
+            if (mark) {
+                *mark = adjustOffset(*mark);
+            }
+        };
+        adjustMark(buffer.lastChangeMark);
+        adjustMark(buffer.lastInsertExitMark);
+        adjustMark(buffer.lastOperationStartMark);
+        adjustMark(buffer.lastOperationEndMark);
+        adjustMark(buffer.lastVisualStartMark);
+        adjustMark(buffer.lastVisualEndMark);
+        adjustMark(buffer.lastCursorMark);
+        for (std::size_t& change : buffer.changeList) {
+            change = adjustOffset(change);
+        }
+        for (auto& mark : globalMarks) {
+            if (mark && mark->buffer == bufferId) {
+                mark->offset = adjustOffset(mark->offset);
+            }
+        }
+        for (auto& [id, view] : views) {
+            static_cast<void>(id);
+            for (Location& jump : view.jumpList) {
+                if (jump.buffer == bufferId) {
+                    jump.offset = adjustOffset(jump.offset);
+                }
+            }
+            if (view.previousContext && view.previousContext->buffer == bufferId) {
+                view.previousContext->offset = adjustOffset(view.previousContext->offset);
+            }
+        }
+        if (pendingLocationMove) {
+            if (pendingLocationMove->origin.buffer == bufferId) {
+                pendingLocationMove->origin.offset =
+                    adjustOffset(pendingLocationMove->origin.offset);
+            }
+            if (pendingLocationMove->destination.buffer == bufferId) {
+                pendingLocationMove->destination.offset =
+                    adjustOffset(pendingLocationMove->destination.offset);
+            }
+        }
+        for (const auto& committed : replay.edits) {
+            Event edit;
+            edit.type = EventType::BufferEdited;
+            edit.view = windowId;
+            edit.buffer = bufferId;
+            edit.editOffset = committed.offset;
+            edit.editRemoved = committed.removedLength;
+            edit.editInserted = committed.inserted;
+            result.events.push_back(std::move(edit));
+        }
+        for (const ViewOffsets& before : beforeViews) {
+            View& view = views.at(before.id);
+            const std::size_t cursor = before.id == windowId && replay.cursor
+                                           ? *replay.cursor
+                                           : adjustOffset(before.cursor);
+            const std::size_t anchor = before.id == windowId && replay.cursor
+                                           ? replay.selectionAnchor.value_or(cursor)
+                                           : adjustOffset(before.anchor.value_or(before.cursor));
+            view.cursors[bufferId] = cursorAtOffset(buffer, cursor, true);
+            view.selectionAnchorOffset =
+                anchor == cursor ? std::nullopt : std::optional<std::size_t>(anchor);
+            view.topline = std::min(view.topline, buffer.lineStarts.size() - 1);
+            view.displayColumns[bufferId] = displayColumnForBufferColumn(
+                buffer, view.cursors[bufferId].line, view.cursors[bufferId].column);
+            view.preferredColumn.reset();
+            view.preferredDisplayRowColumn.reset();
+        }
+        buffer.displayLines.clear();
+        emitAttachedCursors(result, bufferId);
+        return;
+    }
+
     bool changedText = false;
     for (std::size_t step = 0;
          step < count;
          ++step) {
-        UndoHistory &history = buffer.undo;
+        UndoHistory& history = *buffer.undo;
         if (redo) {
             const UndoNode &current =
                 history.nodes[history.current];

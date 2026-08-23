@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-#include "widgets/overlays/private/VkPopoverPath_p.h"
-#include "widgets/overlays/private/VkPopoverShadowCache_p.h"
+#include "widgets/overlays/private/VPopoverPath_p.h"
+#include "widgets/overlays/private/VPopoverShadowCache_p.h"
 
 #include <QImage>
 #include <QtTest>
@@ -25,13 +25,13 @@ void PopoverPathTest::continuousCurvedArrowForEveryDirection_data() {
     QTest::addColumn<int>("placement");
     QTest::addColumn<QPointF>("tip");
     QTest::addColumn<QPointF>("base");
-    QTest::newRow("below") << static_cast<int>(vkui::VkPopoverPlacement::Below)
+    QTest::newRow("below") << static_cast<int>(vkui::VPopoverPlacement::Below)
                            << QPointF(120.0, 4.0) << QPointF(120.0, 20.0);
-    QTest::newRow("above") << static_cast<int>(vkui::VkPopoverPlacement::Above)
+    QTest::newRow("above") << static_cast<int>(vkui::VPopoverPlacement::Above)
                            << QPointF(120.0, 156.0) << QPointF(120.0, 140.0);
-    QTest::newRow("right") << static_cast<int>(vkui::VkPopoverPlacement::Right)
+    QTest::newRow("right") << static_cast<int>(vkui::VPopoverPlacement::Right)
                            << QPointF(4.0, 80.0) << QPointF(20.0, 80.0);
-    QTest::newRow("left") << static_cast<int>(vkui::VkPopoverPlacement::Left)
+    QTest::newRow("left") << static_cast<int>(vkui::VPopoverPlacement::Left)
                           << QPointF(236.0, 80.0) << QPointF(220.0, 80.0);
 }
 
@@ -40,8 +40,8 @@ void PopoverPathTest::continuousCurvedArrowForEveryDirection() {
     QFETCH(QPointF, tip);
     QFETCH(QPointF, base);
     const QRectF body(20.0, 20.0, 200.0, 120.0);
-    const QPainterPath path = vkui::VkPopoverPath::create(
-        body, static_cast<vkui::VkPopoverPlacement>(placement), tip, base, 20.0, 12.0);
+    const QPainterPath path = vkui::VPopoverPath::create(
+        body, static_cast<vkui::VPopoverPlacement>(placement), tip, base, 20.0, 12.0);
     QVERIFY(!path.isEmpty());
     QVERIFY(path.boundingRect().contains(body));
     QVERIFY(path.boundingRect().contains(tip));
@@ -59,7 +59,7 @@ void PopoverPathTest::continuousCurvedArrowForEveryDirection() {
 void PopoverPathTest::containsBodyCenterAndArrowTipBounds() {
     const QRectF body(20.0, 20.0, 200.0, 120.0);
     const QPointF tip(130.0, 3.0);
-    const QPainterPath path = vkui::VkPopoverPath::create(body, vkui::VkPopoverPlacement::Below,
+    const QPainterPath path = vkui::VPopoverPath::create(body, vkui::VPopoverPlacement::Below,
                                                           tip, QPointF(130.0, 20.0), 20.0, 12.0);
     QVERIFY(path.contains(body.center()));
     QVERIFY(path.boundingRect().contains(tip));
@@ -72,8 +72,8 @@ void PopoverPathTest::clampsArrowBaseAwayFromCorners() {
     const QRectF body(20.0, 20.0, 200.0, 120.0);
     const qreal radius = 12.0;
     const qreal arrowWidth = 20.0;
-    const QPainterPath path = vkui::VkPopoverPath::create(
-        body, vkui::VkPopoverPlacement::Below, QPointF(body.left(), 3.0),
+    const QPainterPath path = vkui::VPopoverPath::create(
+        body, vkui::VPopoverPlacement::Below, QPointF(body.left(), 3.0),
         QPointF(body.left(), body.top()), arrowWidth, radius);
     QVERIFY(path.elementCount() > 2);
     const QPainterPath::Element firstBase = path.elementAt(1);
@@ -82,7 +82,7 @@ void PopoverPathTest::clampsArrowBaseAwayFromCorners() {
 }
 
 void PopoverPathTest::invalidBodyProducesEmptyPath() {
-    QVERIFY(vkui::VkPopoverPath::create(QRectF{}, vkui::VkPopoverPlacement::Below, QPointF{},
+    QVERIFY(vkui::VPopoverPath::create(QRectF{}, vkui::VPopoverPlacement::Below, QPointF{},
                                         QPointF{}, 20.0, 12.0)
                 .isEmpty());
 }
@@ -100,7 +100,7 @@ void PopoverPathTest::shadowIsDprCorrectAndSymmetric() {
     QPainterPath path;
     path.addRoundedRect(body, 12.0, 12.0);
 
-    vkui::VkPopoverShadowCache cache;
+    vkui::VPopoverShadowCache cache;
     const QPixmap& shadow =
         cache.shadow(path, logicalSize, devicePixelRatio, QColor(0, 0, 0, 112), 8.0,
                      QPointF(0.0, 2.0));

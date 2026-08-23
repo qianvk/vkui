@@ -5,20 +5,6 @@
 include(CMakeFindDependencyMacro)
 find_dependency(Qt6 6.6 REQUIRED COMPONENTS Core Gui Svg)
 
-macro(_vkui_find_qt_private_component component)
-    if(NOT TARGET Qt6::${component}Private)
-        get_filename_component(
-            _vkui_qt_cmake_root
-            "${Qt6${component}_DIR}/.."
-            ABSOLUTE)
-        set(QT_NO_PRIVATE_MODULE_WARNING ON)
-        find_dependency(
-            Qt6${component}Private @Qt6_VERSION@ EXACT CONFIG
-            PATHS "${_vkui_qt_cmake_root}/Qt6${component}Private"
-            NO_DEFAULT_PATH)
-    endif()
-endmacro()
-
 include("${CMAKE_CURRENT_LIST_DIR}/VkUICoreTargets.cmake")
 set(VkUI_Core_FOUND TRUE)
 
@@ -43,7 +29,7 @@ if("Buffer" IN_LIST VkUI_FIND_COMPONENTS
                 endif()
             endforeach()
         endif()
-        find_dependency(ICU 70 REQUIRED COMPONENTS uc)
+        find_dependency(ICU 70 REQUIRED COMPONENTS uc i18n)
         include("${CMAKE_CURRENT_LIST_DIR}/VkUIInteractionTargets.cmake")
         set(VkUI_Buffer_FOUND TRUE)
         set(VkUI_Interaction_FOUND TRUE)
@@ -64,15 +50,7 @@ endif()
 
 if("Window" IN_LIST VkUI_FIND_COMPONENTS)
     if(@VKUI_BUILD_WINDOW@)
-        # Native contexts use Qt private ABI. Reject a different patch release
-        # instead of allowing a package that may link and fail at runtime.
-        find_dependency(Qt6 @Qt6_VERSION@ EXACT REQUIRED
-                        COMPONENTS Core Gui Widgets)
-        if(NOT @VKUI_BUILD_SHARED@)
-            _vkui_find_qt_private_component(Core)
-            _vkui_find_qt_private_component(Gui)
-            _vkui_find_qt_private_component(Widgets)
-        endif()
+        find_dependency(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets)
         include("${CMAKE_CURRENT_LIST_DIR}/VkUIWindowTargets.cmake")
         set(VkUI_Window_FOUND TRUE)
     else()
@@ -80,14 +58,6 @@ if("Window" IN_LIST VkUI_FIND_COMPONENTS)
         set(VkUI_NOT_FOUND_MESSAGE
             "This VkUI package was built without the Window component.")
     endif()
-endif()
-
-if("WindowQuick" IN_LIST VkUI_FIND_COMPONENTS)
-    # Migrated Qt Quick sources are retained as an internal compile-validation
-    # target, but VkUI does not yet promise a public Quick facade or package ABI.
-    set(VkUI_WindowQuick_FOUND FALSE)
-    set(VkUI_NOT_FOUND_MESSAGE
-        "WindowQuick is internal-only and is not an installable VkUI component.")
 endif()
 
 check_required_components(VkUI)

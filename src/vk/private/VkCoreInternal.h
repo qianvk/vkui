@@ -2,11 +2,8 @@
 
 // Private state declaration shared only by VkCore translation units. It is
 // neither installed nor available to QWidget/plugin code.
-#include "VkCore.h"
-
-#include <vkui/buffer/BufferStorage.h>
-
 #include "VkCanonicalKeyEvent.h"
+#include "VkCore.h"
 #include "VkInputEngine.h"
 #include "VkWindowCommands.h"
 
@@ -15,19 +12,19 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QTextBoundaryFinder>
-
-#include <unicode/uchar.h>
-
 #include <algorithm>
 #include <array>
+#include <compare>
 #include <iterator>
 #include <limits>
 #include <optional>
 #include <ranges>
 #include <string_view>
+#include <unicode/uchar.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vkui/buffer/BufferStorage.h>
 
 namespace vkui::vk {
 namespace core_detail {
@@ -554,6 +551,288 @@ struct StringViewHash final
     }
 };
 
+class BufferTextView final {
+  public:
+    static constexpr std::size_t npos = std::u16string::npos;
+
+    class Iterator final {
+      public:
+        using iterator_category = std::random_access_iterator_tag;
+        using iterator_concept = std::random_access_iterator_tag;
+        using value_type = char16_t;
+        using difference_type = std::ptrdiff_t;
+        using reference = char16_t;
+        using pointer = void;
+
+        Iterator() = default;
+        Iterator(const vkui::buffer::BufferStorage* storage, const std::u16string* owned,
+                 const std::size_t offset)
+            : m_storage(storage), m_owned(owned), m_offset(offset) {}
+
+        [[nodiscard]] char16_t operator*() const noexcept {
+            return m_owned != nullptr     ? (*m_owned)[m_offset]
+                   : m_storage == nullptr ? char16_t{}
+                                          : m_storage->codeUnitAt(m_offset).value_or(char16_t{});
+        }
+        [[nodiscard]] char16_t operator[](const difference_type distance) const noexcept {
+            return *(*this + distance);
+        }
+        Iterator& operator++() noexcept {
+            ++m_offset;
+            return *this;
+        }
+        Iterator operator++(int) noexcept {
+            auto copy = *this;
+            ++*this;
+            return copy;
+        }
+        Iterator& operator--() noexcept {
+            --m_offset;
+            return *this;
+        }
+        Iterator operator--(int) noexcept {
+            auto copy = *this;
+            --*this;
+            return copy;
+        }
+        Iterator& operator+=(const difference_type distance) noexcept {
+            m_offset = static_cast<std::size_t>(static_cast<difference_type>(m_offset) + distance);
+            return *this;
+        }
+        Iterator& operator-=(const difference_type distance) noexcept {
+            return *this += -distance;
+        }
+        friend Iterator operator+(Iterator iterator, const difference_type distance) noexcept {
+            iterator += distance;
+            return iterator;
+        }
+        friend Iterator operator+(const difference_type distance, Iterator iterator) noexcept {
+            return iterator + distance;
+        }
+        friend Iterator operator-(Iterator iterator, const difference_type distance) noexcept {
+            iterator -= distance;
+            return iterator;
+        }
+        friend difference_type operator-(const Iterator left, const Iterator right) noexcept {
+            return static_cast<difference_type>(left.m_offset) -
+                   static_cast<difference_type>(right.m_offset);
+        }
+        friend bool operator==(const Iterator&, const Iterator&) = default;
+        friend std::strong_ordering operator<=>(const Iterator left,
+                                                const Iterator right) noexcept {
+            return left.m_offset <=> right.m_offset;
+        }
+
+      private:
+        const vkui::buffer::BufferStorage* m_storage = nullptr;
+        const std::u16string* m_owned = nullptr;
+        std::size_t m_offset = 0;
+    };
+
+    BufferTextView() = default;
+    explicit BufferTextView(const vkui::buffer::BufferStorage* storage) {
+        bind(storage);
+    }
+
+    void bind(const vkui::buffer::BufferStorage* storage) noexcept {
+        m_storage = storage;
+        const auto* owned = storage == nullptr ? nullptr : storage->ownedText();
+        m_owned = owned == nullptr ? nullptr : &owned->text();
+    }
+    [[nodiscard]] std::size_t size() const noexcept {
+        if (m_owned != nullptr) {
+            return m_owned->size();
+        }
+        const auto descriptor = m_storage == nullptr ? std::nullopt : m_storage->describe();
+        return descriptor ? descriptor->size : 0;
+    }
+    [[nodiscard]] bool empty() const noexcept {
+        return size() == 0;
+    }
+    [[nodiscard]] char16_t operator[](const std::size_t offset) const noexcept {
+        return m_owned != nullptr     ? (*m_owned)[offset]
+               : m_storage == nullptr ? char16_t{}
+                                      : m_storage->codeUnitAt(offset).value_or(char16_t{});
+    }
+    [[nodiscard]] char16_t back() const noexcept {
+        return empty() ? char16_t{} : (*this)[size() - 1];
+    }
+    [[nodiscard]] Iterator cbegin() const noexcept {
+        return Iterator{m_storage, m_owned, 0};
+    }
+    [[nodiscard]] Iterator cend() const noexcept {
+        return Iterator{m_storage, m_owned, size()};
+    }
+    [[nodiscard]] Iterator begin() const noexcept {
+        return cbegin();
+    }
+    [[nodiscard]] Iterator end() const noexcept {
+        return cend();
+    }
+    [[nodiscard]] std::u16string substr(const std::size_t offset,
+                                        const std::size_t length = npos) const {
+        const std::size_t boundedOffset = std::min(offset, size());
+        const std::size_t boundedLength = std::min(length, size() - boundedOffset);
+        return m_storage == nullptr
+                   ? std::u16string{}
+                   : m_storage->readExact(boundedOffset, boundedLength).value_or(std::u16string{});
+    }
+    [[nodiscard]] std::size_t find(const char16_t value,
+                                   const std::size_t offset = 0) const noexcept {
+        for (std::size_t index = std::min(offset, size()); index < size(); ++index) {
+            if ((*this)[index] == value) {
+                return index;
+            }
+        }
+        return npos;
+    }
+    friend bool operator==(const BufferTextView& left, const std::u16string_view right) {
+        return left.size() == right.size() &&
+               std::equal(left.cbegin(), left.cend(), right.cbegin());
+    }
+    friend bool operator==(const std::u16string_view left, const BufferTextView& right) {
+        return right == left;
+    }
+
+  private:
+    const vkui::buffer::BufferStorage* m_storage = nullptr;
+    const std::u16string* m_owned = nullptr;
+};
+
+class LineIndex final {
+  public:
+    class Iterator final {
+      public:
+        using iterator_category = std::random_access_iterator_tag;
+        using iterator_concept = std::random_access_iterator_tag;
+        using value_type = std::size_t;
+        using difference_type = std::ptrdiff_t;
+        using reference = std::size_t;
+        using pointer = void;
+
+        Iterator() = default;
+        Iterator(const LineIndex* index, const std::size_t line) : m_index(index), m_line(line) {}
+        [[nodiscard]] std::size_t operator*() const noexcept {
+            return (*m_index)[m_line];
+        }
+        [[nodiscard]] std::size_t operator[](const difference_type distance) const noexcept {
+            return *(*this + distance);
+        }
+        Iterator& operator++() noexcept {
+            ++m_line;
+            return *this;
+        }
+        Iterator operator++(int) noexcept {
+            auto copy = *this;
+            ++*this;
+            return copy;
+        }
+        Iterator& operator--() noexcept {
+            --m_line;
+            return *this;
+        }
+        Iterator operator--(int) noexcept {
+            auto copy = *this;
+            --*this;
+            return copy;
+        }
+        Iterator& operator+=(const difference_type distance) noexcept {
+            m_line = static_cast<std::size_t>(static_cast<difference_type>(m_line) + distance);
+            return *this;
+        }
+        Iterator& operator-=(const difference_type distance) noexcept {
+            return *this += -distance;
+        }
+        friend Iterator operator+(Iterator iterator, const difference_type distance) noexcept {
+            iterator += distance;
+            return iterator;
+        }
+        friend Iterator operator+(const difference_type distance, Iterator iterator) noexcept {
+            return iterator + distance;
+        }
+        friend Iterator operator-(Iterator iterator, const difference_type distance) noexcept {
+            iterator -= distance;
+            return iterator;
+        }
+        friend difference_type operator-(const Iterator left, const Iterator right) noexcept {
+            return static_cast<difference_type>(left.m_line) -
+                   static_cast<difference_type>(right.m_line);
+        }
+        friend bool operator==(const Iterator&, const Iterator&) = default;
+        friend std::strong_ordering operator<=>(const Iterator left,
+                                                const Iterator right) noexcept {
+            return left.m_line <=> right.m_line;
+        }
+
+      private:
+        const LineIndex* m_index = nullptr;
+        std::size_t m_line = 0;
+    };
+
+    LineIndex() : m_owned{0} {}
+    LineIndex& operator=(std::vector<std::size_t> starts) {
+        m_storage = nullptr;
+        m_owned = std::move(starts);
+        if (m_owned.empty()) {
+            m_owned.push_back(0);
+        }
+        return *this;
+    }
+    void bindExternal(const vkui::buffer::BufferStorage* storage) noexcept {
+        m_owned.clear();
+        m_storage = storage;
+    }
+    [[nodiscard]] bool external() const noexcept {
+        return m_storage != nullptr;
+    }
+    [[nodiscard]] std::size_t size() const noexcept {
+        if (m_storage == nullptr) {
+            return m_owned.size();
+        }
+        return std::max<std::size_t>(1, m_storage->lineCount().value_or(1));
+    }
+    [[nodiscard]] std::size_t residentEntries() const noexcept {
+        return m_storage == nullptr ? m_owned.size() : 0;
+    }
+    [[nodiscard]] std::size_t operator[](const std::size_t line) const noexcept {
+        if (m_storage == nullptr) {
+            return line < m_owned.size() ? m_owned[line] : 0;
+        }
+        return m_storage->lineStart(line).value_or(0);
+    }
+    [[nodiscard]] Iterator cbegin() const noexcept {
+        return Iterator{this, 0};
+    }
+    [[nodiscard]] Iterator cend() const noexcept {
+        return Iterator{this, size()};
+    }
+    void erase(const Iterator first, const Iterator last) {
+        if (m_storage == nullptr) {
+            m_owned.erase(m_owned.cbegin() + (first - cbegin()),
+                          m_owned.cbegin() + (last - cbegin()));
+        }
+    }
+    template <typename InputIterator>
+    void insert(const Iterator position, InputIterator first, InputIterator last) {
+        if (m_storage == nullptr) {
+            m_owned.insert(m_owned.cbegin() + (position - cbegin()), first, last);
+        }
+    }
+    void shiftOwnedFrom(const std::size_t first, const std::ptrdiff_t delta) {
+        if (m_storage != nullptr) {
+            return;
+        }
+        for (std::size_t index = first; index < m_owned.size(); ++index) {
+            m_owned[index] =
+                static_cast<std::size_t>(static_cast<std::ptrdiff_t>(m_owned[index]) + delta);
+        }
+    }
+
+  private:
+    const vkui::buffer::BufferStorage* m_storage = nullptr;
+    std::vector<std::size_t> m_owned;
+};
+
 } // namespace core_detail
 
 // State ownership remains singular even though behavior is compiled by
@@ -632,7 +911,7 @@ public:
         BufferId id = 0;
         std::string path;
         vkui::buffer::BufferStorage storage;
-        std::vector<std::size_t> lineStarts{0};
+        LineIndex lineStarts;
         std::size_t tabStop = 8;
         // Line layouts are derived data. A text edit clears this sparse cache
         // in O(1); it never allocates one entry per line. Within each cached
@@ -640,7 +919,13 @@ public:
         mutable std::unordered_map<std::size_t, DisplayLine>
             displayLines;
         bool readOnly = false;
-        UndoHistory undo;
+        // Set only when an external authority reports that it committed but
+        // fails to provide the immutable post-commit snapshot promised by
+        // IEditableTextSession. No further command may interpret this buffer.
+        bool authorityDesynchronized = false;
+        std::uint64_t desynchronizedRevision = 0;
+        std::size_t desynchronizedSize = 0;
+        std::optional<UndoHistory> undo{std::in_place};
         std::array<std::optional<std::size_t>, 26>
             localMarks;
         std::optional<std::size_t> lastChangeMark;
@@ -651,22 +936,23 @@ public:
         std::optional<std::size_t> lastVisualEndMark;
         std::optional<std::size_t> lastCursorMark;
         std::optional<std::size_t> lastOperationUndoNode;
+        std::optional<std::uint64_t> lastExternalMetadataGroup;
         // Neovim stores change positions in the buffer while each window
         // owns its traversal index. Offsets keep anchors compact and are
         // repaired incrementally by mutateBuffer().
         std::vector<std::size_t> changeList;
 
-        [[nodiscard]] const std::u16string &text() const noexcept
-        {
-            // VkCore creates owned editor storage only. Provider-backed
-            // buffers enter through the generic VKBuffer data plane after
-            // cursor/motion algorithms have migrated to bounded reads.
-            return storage.ownedText()->text();
+        mutable BufferTextView textAccess;
+
+        [[nodiscard]] const BufferTextView& text() const noexcept {
+            textAccess.bind(&storage);
+            return textAccess;
         }
 
         [[nodiscard]] std::uint64_t revision() const noexcept
         {
-            return storage.ownedText()->revision();
+            const auto descriptor = storage.describe();
+            return descriptor ? descriptor->revision : 0;
         }
 
         [[nodiscard]] bool replaceText(
@@ -683,13 +969,16 @@ public:
             const std::size_t removed,
             const std::u16string_view inserted)
         {
-            return storage.editOwned(
-                       offset,
-                       removed,
-                       inserted,
-                       revision())
-                       .status
-                == vkui::buffer::EditStatus::Applied;
+            vkui::buffer::EditRequest request;
+            request.offset = offset;
+            request.removedLength = removed;
+            request.inserted.assign(
+
+                inserted);
+            request.expectedRevision = revision();
+            const auto result = storage.edit(std::move(request));
+            return result.status == vkui::buffer::EditStatus::Applied ||
+                   result.status == vkui::buffer::EditStatus::Unchanged;
         }
 
         [[nodiscard]] std::optional<BufferSnapshot>
@@ -698,7 +987,7 @@ public:
             if (!storage.isOwned()) {
                 return std::nullopt;
             }
-            return BufferSnapshot{id, path, text(), revision()};
+            return BufferSnapshot{id, path, text().substr(0), revision()};
         }
     };
 
@@ -995,10 +1284,13 @@ public:
         const std::u16string &text,
         const std::size_t offset) noexcept;
 
-    [[nodiscard]] static std::size_t
-    previousScalarOffset(
-        const std::u16string &text,
-        std::size_t offset) noexcept;
+    [[nodiscard]] static std::size_t nextScalarOffset(const BufferTextView& text,
+                                                      std::size_t offset) noexcept;
+
+    [[nodiscard]] static std::size_t previousScalarOffset(const std::u16string& text,
+                                                          std::size_t offset) noexcept;
+    [[nodiscard]] static std::size_t previousScalarOffset(const BufferTextView& text,
+                                                          std::size_t offset) noexcept;
 
     [[nodiscard]] std::optional<Cursor>
     matchingPairTarget(
@@ -1507,6 +1799,17 @@ public:
         const std::optional<AuthoritativeSelectionOffsetState>
             authoritativeSelectionOffsets = std::nullopt);
 
+    [[nodiscard]] bool mutateExternalBatch(DispatchResult* result, BufferId buffer,
+                                           std::vector<vkui::buffer::TransactionEdit> edits,
+                                           vkui::buffer::TextSelection selectionBefore,
+                                           vkui::buffer::TextSelection selectionAfter,
+                                           ViewId authoritativeView,
+                                           std::optional<std::uint64_t> group = std::nullopt,
+                                           bool emitCursorEvents = true);
+
+    void desynchronizeExternalAuthority(DispatchResult* result, Buffer& buffer, BufferId bufferId,
+                                        ViewId viewId, std::uint64_t revision, std::size_t size);
+
     [[nodiscard]] bool applyBufferEdit(
         DispatchResult &result,
         const BufferId bufferId,
@@ -1924,6 +2227,8 @@ public:
     bool insertOneNormalSawKey = false;
     bool replayingChange = false;
     std::optional<BufferId> insertUndoBuffer;
+    std::unordered_map<BufferId, std::uint64_t> externalEditGroups;
+    std::uint64_t nextExternalEditGroup = 1;
     std::size_t normalCount = 0;
     std::uint64_t inputGeneration = 0;
     std::optional<std::uint64_t> pendingGeneration;

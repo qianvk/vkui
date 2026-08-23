@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "core/icons/private/VkIconCache_p.h"
+#include "core/icons/private/VkSvgIconSourceCache_p.h"
 
 #include <QApplication>
-#include <QFontDatabase>
 #include <QImage>
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
 #include <QtMath>
 #include <QtTest>
+#include <algorithm>
 #include <limits>
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkIcon.h>
@@ -100,52 +101,34 @@ class IconTest final : public QObject {
     void everySymbolHasARenderableResource();
     void rendersModesStatesAndDevicePixelRatios();
     void explicitSvgIconUsesCallerColors();
+    void explicitSvgIconPreservesCallerAlpha();
+    void sourceAndMetadataAreSharedPerSymbol();
+    void chosenSymbolsUseCanonicalCanvas();
     void cacheKeyIncludesEveryRenderDimension();
-    void cacheInvalidatesAcrossThemeGenerations();
-    void fileIconFontRegistersIdempotently();
-    void everyFileGlyphRendersWithoutClipping();
+    void cacheInvalidatesAcrossColorGenerations();
+    void everyFileSymbolRendersWithoutClipping();
     void fileIconTracksApplicationPaletteAndDevicePixelRatio();
-    void fileIconTracksThemeGeneration();
+    void fileIconTracksColorGeneration();
     void fileIconMetricsTrackFontAndDevicePixelRatio();
-    void fileGlyphResolvesFromPathWithoutFilesystemAccess();
-    void fileGlyphPainterUsesTheSuppliedPalette();
+    void fileSymbolResolvesFromPathWithoutFilesystemAccess();
+    void fileIconUsesTheSuppliedPalette();
 };
 
-void IconTest::fileGlyphResolvesFromPathWithoutFilesystemAccess() {
-    using enum vkui::VkFileGlyph;
-    QCOMPARE(vkui::fileGlyphForPath(u"notes/chapter.TXT"), TextFile);
-    QCOMPARE(vkui::fileGlyphForPath(u"src/main.cpp"), CodeFile);
-    QCOMPARE(vkui::fileGlyphForPath(u"covers/hero.webp"), ImageFile);
-    QCOMPARE(vkui::fileGlyphForPath(u"library/book.epub"), BookFile);
-    QCOMPARE(vkui::fileGlyphForPath(u"paper.pdf"), PdfFile);
-    QCOMPARE(vkui::fileGlyphForPath(u"archive.tar.gz"), ArchiveFile);
-    QCOMPARE(vkui::fileGlyphForPath(u"folder.with.dot/file"), File);
+void IconTest::fileSymbolResolvesFromPathWithoutFilesystemAccess() {
+    QCOMPARE(vkui::fileSymbolForPath(u"notes/chapter.TXT"), vkui::VkSymbol::FileText);
+    QCOMPARE(vkui::fileSymbolForPath(u"notes/readme.md"), vkui::VkSymbol::FileMarkdown);
+    QCOMPARE(vkui::fileSymbolForPath(u"notes/spec.MARKDOWN"), vkui::VkSymbol::FileMarkdown);
+    QCOMPARE(vkui::fileSymbolForPath(u"src/main.cpp"), vkui::VkSymbol::FileCode);
+    QCOMPARE(vkui::fileSymbolForPath(u"covers/hero.webp"), vkui::VkSymbol::FileImage);
+    QCOMPARE(vkui::fileSymbolForPath(u"library/book.epub"), vkui::VkSymbol::FileBook);
+    QCOMPARE(vkui::fileSymbolForPath(u"paper.pdf"), vkui::VkSymbol::FilePdf);
+    QCOMPARE(vkui::fileSymbolForPath(u"archive.tar.gz"), vkui::VkSymbol::FileArchive);
+    QCOMPARE(vkui::fileSymbolForPath(u"folder.with.dot/file"), vkui::VkSymbol::FileGeneric);
 }
 
 void IconTest::everySymbolHasARenderableResource() {
-    const QList<vkui::VkSymbol> symbols{
-        vkui::VkSymbol::ChevronLeft, vkui::VkSymbol::ChevronRight, vkui::VkSymbol::ChevronUp,
-        vkui::VkSymbol::ChevronDown, vkui::VkSymbol::Plus,         vkui::VkSymbol::Minus,
-        vkui::VkSymbol::Close,       vkui::VkSymbol::Checkmark,    vkui::VkSymbol::Information,
-        vkui::VkSymbol::Warning,     vkui::VkSymbol::Settings,     vkui::VkSymbol::Search,
-        vkui::VkSymbol::Folder,      vkui::VkSymbol::Document,     vkui::VkSymbol::Share,
-        vkui::VkSymbol::More,        vkui::VkSymbol::ToggleOff,    vkui::VkSymbol::ToggleOn,
-        vkui::VkSymbol::Power,       vkui::VkSymbol::Sidebar,      vkui::VkSymbol::Grid,
-        vkui::VkSymbol::List,        vkui::VkSymbol::Edit,         vkui::VkSymbol::Bookmark,
-        vkui::VkSymbol::Trash,
-        vkui::VkSymbol::Download,    vkui::VkSymbol::Install,      vkui::VkSymbol::Upload,
-        vkui::VkSymbol::Lock,
-        vkui::VkSymbol::Eye,         vkui::VkSymbol::Save,         vkui::VkSymbol::Reset,
-        vkui::VkSymbol::Duplicate,   vkui::VkSymbol::Image,        vkui::VkSymbol::Background,
-        vkui::VkSymbol::Templates,   vkui::VkSymbol::CanvasBackground,
-        vkui::VkSymbol::PhotoLibrary, vkui::VkSymbol::Focus,
-        vkui::VkSymbol::FocusTarget, vkui::VkSymbol::Rename,       vkui::VkSymbol::Projects,
-        vkui::VkSymbol::Remove,      vkui::VkSymbol::Reveal,       vkui::VkSymbol::Clear,
-        vkui::VkSymbol::DefaultTemplate, vkui::VkSymbol::UnsavedIndicator,
-        vkui::VkSymbol::BookmarkFilled, vkui::VkSymbol::InsertAbove,
-        vkui::VkSymbol::InsertBelow,
-    };
-    for (const vkui::VkSymbol symbol : symbols) {
+    for (int value = 0; value < static_cast<int>(vkui::VkSymbol::Count); ++value) {
+        const auto symbol = static_cast<vkui::VkSymbol>(value);
         const QIcon rendered = vkui::icon(symbol);
         QVERIFY2(!rendered.isNull(), "The icon engine was not created");
         const QImage image = rendered.pixmap(QSize(24, 24)).toImage();
@@ -157,6 +140,29 @@ void IconTest::everySymbolHasARenderableResource() {
             }
         }
         QVERIFY2(visiblePixels >= 12, "The SVG resource rendered no visible symbol");
+    }
+}
+
+void IconTest::sourceAndMetadataAreSharedPerSymbol() {
+    const auto first = vkui::VkSvgIconSourceCache::source(vkui::VkSymbol::Search);
+    const auto second = vkui::VkSvgIconSourceCache::source(vkui::VkSymbol::Search);
+    QVERIFY(first);
+    QCOMPARE(first.get(), second.get());
+    QVERIFY(!first->source.isEmpty());
+    QVERIFY(!first->intrinsicSize.isEmpty());
+    QVERIFY(!vkui::VkSvgIconSourceCache::source(vkui::VkSymbol::Count));
+}
+
+void IconTest::chosenSymbolsUseCanonicalCanvas() {
+    const QList<vkui::VkSymbol> chosen{
+        vkui::VkSymbol::GearFilled,       vkui::VkSymbol::FileFolderClosed,
+        vkui::VkSymbol::FileFolderOpen,   vkui::VkSymbol::FileGeneric,
+        vkui::VkSymbol::CloudFilled,      vkui::VkSymbol::CloseCircleFilled,
+    };
+    for (const vkui::VkSymbol symbol : chosen) {
+        const auto source = vkui::VkSvgIconSourceCache::source(symbol);
+        QVERIFY(source);
+        QCOMPARE(source->intrinsicSize, QSize(24, 24));
     }
 }
 
@@ -174,17 +180,31 @@ void IconTest::rendersModesStatesAndDevicePixelRatios() {
 }
 
 void IconTest::explicitSvgIconUsesCallerColors() {
-    const QIcon darkSurfaceIcon = vkui::icon(
-        vkui::VkSymbol::List, QColor(Qt::white));
-    const QColor lightInk = averageVisibleColor(
-        darkSurfaceIcon.pixmap(QSize(24, 24), 2.0).toImage());
+    const QIcon darkSurfaceIcon = vkui::icon(vkui::VkSymbol::List, QColor(Qt::white));
+    const QColor lightInk =
+        averageVisibleColor(darkSurfaceIcon.pixmap(QSize(24, 24), 2.0).toImage());
     QVERIFY(lightInk.lightnessF() > 0.8);
 
-    const QIcon lightSurfaceIcon = vkui::icon(
-        vkui::VkSymbol::Background, QColor(Qt::black));
-    const QColor darkInk = averageVisibleColor(
-        lightSurfaceIcon.pixmap(QSize(24, 24), 2.0).toImage());
+    const QIcon lightSurfaceIcon = vkui::icon(vkui::VkSymbol::Background, QColor(Qt::black));
+    const QColor darkInk =
+        averageVisibleColor(lightSurfaceIcon.pixmap(QSize(24, 24), 2.0).toImage());
     QVERIFY(darkInk.lightnessF() < 0.2);
+}
+
+void IconTest::explicitSvgIconPreservesCallerAlpha() {
+    const QIcon translucent =
+        vkui::icon(vkui::VkSymbol::GearFilled, QColor(255, 40, 20, 128));
+    const QImage image = translucent.pixmap(QSize(32, 32), 2.0).toImage();
+    QVERIFY(!image.isNull());
+
+    int maximumAlpha = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            maximumAlpha = std::max(maximumAlpha, image.pixelColor(x, y).alpha());
+        }
+    }
+    QVERIFY(maximumAlpha >= 126);
+    QVERIFY(maximumAlpha <= 128);
 }
 
 void IconTest::cacheKeyIncludesEveryRenderDimension() {
@@ -195,7 +215,7 @@ void IconTest::cacheKeyIncludesEveryRenderDimension() {
     base.devicePixelRatio = 1024;
     base.mode = QIcon::Normal;
     base.state = QIcon::Off;
-    base.themeGeneration = 9;
+    base.colorGeneration = 9;
 
     auto verifyDifference = [&base](auto mutation) {
         vkui::VkIconCacheKey changed = base;
@@ -209,16 +229,16 @@ void IconTest::cacheKeyIncludesEveryRenderDimension() {
     verifyDifference([](auto& key) { key.devicePixelRatio = 2048; });
     verifyDifference([](auto& key) { key.mode = QIcon::Disabled; });
     verifyDifference([](auto& key) { key.state = QIcon::On; });
-    verifyDifference([](auto& key) { key.themeGeneration = 10; });
+    verifyDifference([](auto& key) { key.colorGeneration = 10; });
     verifyDifference([](auto& key) { key.colorIdentity = 42; });
 }
 
-void IconTest::cacheInvalidatesAcrossThemeGenerations() {
+void IconTest::cacheInvalidatesAcrossColorGenerations() {
     vkui::VkIconCache& cache = vkui::VkIconCache::instance();
     cache.clear();
     vkui::VkIconCacheKey key;
     key.size = QSize(8, 8);
-    key.themeGeneration = 100;
+    key.colorGeneration = 100;
     QPixmap source(8, 8);
     source.fill(Qt::red);
     cache.insert(key, source);
@@ -226,14 +246,14 @@ void IconTest::cacheInvalidatesAcrossThemeGenerations() {
     QVERIFY(cache.lookup(key, &result));
 
     vkui::VkIconCacheKey newer = key;
-    newer.themeGeneration = 101;
+    newer.colorGeneration = 101;
     QVERIFY(!cache.lookup(newer, &result));
 
     // A bounded LRU can retain multiple valid theme/color generations. This
     // prevents semantic and explicit-palette icons from continuously flushing
     // one another when they are painted in the same frame.
     vkui::VkIconCacheKey explicitColor = key;
-    explicitColor.themeGeneration = 0;
+    explicitColor.colorGeneration = 0;
     explicitColor.colorIdentity = 0xffeeddcc;
     cache.insert(explicitColor, source);
     QVERIFY(cache.lookup(key, &result));
@@ -241,50 +261,25 @@ void IconTest::cacheInvalidatesAcrossThemeGenerations() {
     cache.clear();
 }
 
-void IconTest::fileIconFontRegistersIdempotently() {
-    QVERIFY(vkui::initializeFileIconFont());
-    const QString family = vkui::fileIconFontFamily();
-    QVERIFY(!family.isEmpty());
-    QVERIFY(QFontDatabase::families().contains(family));
-
-    const QStringList familiesAfterFirstRegistration = QFontDatabase::families();
-    QSignalSpy databaseChanges(qGuiApp, &QGuiApplication::fontDatabaseChanged);
-    for (int call = 0; call < 32; ++call) {
-        QVERIFY(vkui::initializeFileIconFont());
-    }
-    QCOMPARE(databaseChanges.count(), 0);
-    QCOMPARE(QFontDatabase::families(), familiesAfterFirstRegistration);
-
-    const QFont font = vkui::fileIconFont(19);
-    QCOMPARE(font.family(), family);
-    QCOMPARE(font.pixelSize(), 19);
-    QVERIFY(font.fixedPitch());
-}
-
-void IconTest::everyFileGlyphRendersWithoutClipping() {
-    const QList<vkui::VkFileGlyph> glyphs{
-        vkui::VkFileGlyph::FolderClosed,
-        vkui::VkFileGlyph::FolderOpen,
-        vkui::VkFileGlyph::File,
-        vkui::VkFileGlyph::TextFile,
-        vkui::VkFileGlyph::CodeFile,
-        vkui::VkFileGlyph::ImageFile,
-        vkui::VkFileGlyph::PdfFile,
-        vkui::VkFileGlyph::ArchiveFile,
-        vkui::VkFileGlyph::BookFile,
+void IconTest::everyFileSymbolRendersWithoutClipping() {
+    const QList<vkui::VkSymbol> symbols{
+        vkui::VkSymbol::FileFolderClosed, vkui::VkSymbol::FileFolderOpen,
+        vkui::VkSymbol::FileGeneric,      vkui::VkSymbol::FileText,
+        vkui::VkSymbol::FileMarkdown,     vkui::VkSymbol::FileCode,
+        vkui::VkSymbol::FileImage,        vkui::VkSymbol::FilePdf,
+        vkui::VkSymbol::FileArchive,      vkui::VkSymbol::FileBook,
     };
-    for (const vkui::VkFileGlyph glyph : glyphs) {
-        const QIcon rendered = vkui::fileIcon(glyph, QColor(31, 93, 220));
+    for (const vkui::VkSymbol symbol : symbols) {
+        const QIcon rendered = vkui::icon(symbol, QColor(31, 93, 220));
         QVERIFY(!rendered.isNull());
         const QImage image = rendered.pixmap(QSize(24, 24)).toImage();
         QVERIFY(hasVisiblePixels(image));
-        const QByteArray clippingMessage =
-            QByteArrayLiteral("Glyph ") + QByteArray::number(static_cast<int>(glyph)) +
-            QByteArrayLiteral(" touched its raster boundary");
+        const QByteArray clippingMessage = QByteArrayLiteral("Symbol ") +
+                                           QByteArray::number(static_cast<int>(symbol)) +
+                                           QByteArrayLiteral(" touched its raster boundary");
         QVERIFY2(!hasVisibleBorderPixels(image), clippingMessage.constData());
     }
-
-    QVERIFY(vkui::fileIcon(static_cast<vkui::VkFileGlyph>(-1)).isNull());
+    QVERIFY(vkui::icon(vkui::VkSymbol::Count).isNull());
 }
 
 void IconTest::fileIconTracksApplicationPaletteAndDevicePixelRatio() {
@@ -293,8 +288,7 @@ void IconTest::fileIconTracksApplicationPaletteAndDevicePixelRatio() {
     redPalette.setColor(QPalette::Active, QPalette::Text, QColor(220, 25, 35));
     QApplication::setPalette(redPalette);
 
-    const QIcon rendered =
-        vkui::fileIcon(vkui::VkFileGlyph::TextFile, QPalette::Text, QPalette::Active);
+    const QIcon rendered = vkui::icon(vkui::VkSymbol::FileText, QPalette::Text, QPalette::Active);
     for (const qreal dpr : {1.25, 1.5, 2.0}) {
         const QPixmap pixmap = rendered.pixmap(QSize(18, 18), dpr);
         QVERIFY(!pixmap.isNull());
@@ -312,14 +306,13 @@ void IconTest::fileIconTracksApplicationPaletteAndDevicePixelRatio() {
     QVERIFY(blue.blue() > blue.red() * 2);
 }
 
-void IconTest::fileIconTracksThemeGeneration() {
+void IconTest::fileIconTracksColorGeneration() {
     ThemeGuard restoreTheme;
     auto* manager = vkui::VkThemeManager::instance();
     manager->setAppearance(vkui::VkAppearance::Light);
     manager->setAccentColor(vkui::VkAccentColor::Blue);
 
-    const QIcon rendered =
-        vkui::fileIcon(vkui::VkFileGlyph::FolderClosed, vkui::VkIconRole::Accent);
+    const QIcon rendered = vkui::icon(vkui::VkSymbol::FileFolderClosed, vkui::VkIconRole::Accent);
     const QColor blue = averageVisibleColor(rendered.pixmap(QSize(24, 24)).toImage());
     QVERIFY(blue.blue() > blue.red());
 
@@ -330,39 +323,29 @@ void IconTest::fileIconTracksThemeGeneration() {
 }
 
 void IconTest::fileIconMetricsTrackFontAndDevicePixelRatio() {
-    QFont small = vkui::fileIconFont(12);
+    QFont small = QApplication::font();
+    small.setPixelSize(12);
     QFont large = small;
     large.setPixelSize(24);
 
-    const vkui::VkFileIconMetrics smallOneX = vkui::fileIconMetrics(small);
-    const vkui::VkFileIconMetrics smallTwoX = vkui::fileIconMetrics(small, 2.0);
-    const vkui::VkFileIconMetrics largeOneX = vkui::fileIconMetrics(large);
-    QVERIFY(smallOneX.glyphPixelSize > 0);
-    QVERIFY(smallOneX.glyphSlotSize.width() > 0);
-    QVERIFY(smallOneX.glyphSlotSize.height() > 0);
-    QVERIFY(smallOneX.textGap > 0);
-    QVERIFY(smallOneX.rowHeight >= smallOneX.glyphSlotSize.height());
-    QCOMPARE(smallTwoX.glyphSlotSize, smallOneX.glyphSlotSize);
-    QCOMPARE(smallTwoX.devicePixelGlyphSlotSize, smallOneX.glyphSlotSize * 2);
-    QCOMPARE(smallTwoX.devicePixelRatio, 2.0);
-    QVERIFY(largeOneX.glyphPixelSize > smallOneX.glyphPixelSize);
-    QVERIFY(largeOneX.glyphSlotSize.height() > smallOneX.glyphSlotSize.height());
-    QVERIFY(largeOneX.rowHeight > smallOneX.rowHeight);
-
-    const vkui::VkFileIconMetrics invalidDpr =
-        vkui::fileIconMetrics(small, std::numeric_limits<qreal>::quiet_NaN());
-    QCOMPARE(invalidDpr.devicePixelRatio, 1.0);
-    QCOMPARE(invalidDpr.devicePixelGlyphSlotSize, invalidDpr.glyphSlotSize);
+    const vkui::VkFileIconMetrics smallMetrics = vkui::fileIconMetrics(small);
+    const vkui::VkFileIconMetrics largeMetrics = vkui::fileIconMetrics(large);
+    QVERIFY(smallMetrics.iconSize.width() > 0);
+    QCOMPARE(smallMetrics.iconSize.width(), smallMetrics.iconSize.height());
+    QVERIFY(smallMetrics.textGap > 0);
+    QVERIFY(smallMetrics.rowHeight >= smallMetrics.iconSize.height());
+    QVERIFY(largeMetrics.iconSize.height() > smallMetrics.iconSize.height());
+    QVERIFY(largeMetrics.rowHeight > smallMetrics.rowHeight);
 }
 
-void IconTest::fileGlyphPainterUsesTheSuppliedPalette() {
+void IconTest::fileIconUsesTheSuppliedPalette() {
     QPalette palette;
     palette.setColor(QPalette::Active, QPalette::Highlight, QColor(40, 190, 75));
     QImage image(QSize(32, 32), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     QPainter painter(&image);
-    vkui::drawFileGlyph(painter, image.rect(), vkui::VkFileGlyph::FolderOpen, palette,
-                        QPalette::Highlight, QPalette::Active);
+    vkui::icon(vkui::VkSymbol::FileFolderOpen, palette.color(QPalette::Active, QPalette::Highlight))
+        .paint(&painter, image.rect());
     painter.end();
 
     QVERIFY(hasVisiblePixels(image));

@@ -11,10 +11,7 @@ namespace vkui::vk {
     for (std::size_t line = firstLine;
          line <= lastLine;
          ++line) {
-        text.append(
-            buffer.text(),
-            buffer.lineStarts[line],
-            lineLength(buffer, line));
+        text.append(buffer.text().substr(buffer.lineStarts[line], lineLength(buffer, line)));
         text.push_back(u'\n');
     }
     return text;
@@ -104,9 +101,7 @@ VkCore::Implementation::blockInsertionEdit(
                     insertionResolved = true;
                 }
                 edit.replacement.append(
-                    buffer.text(),
-                    lineStart + bufferStart,
-                    bufferEnd - bufferStart);
+                    buffer.text().substr(lineStart + bufferStart, bufferEnd - bufferStart));
                 return;
             }
 
@@ -121,23 +116,15 @@ VkCore::Implementation::blockInsertionEdit(
                 selectedEnd - selectedStart;
             const std::size_t suffix =
                 displayEnd - selectedEnd;
-            edit.replacement.append(
-                buffer.text(),
-                lineStart + bufferStart,
-                prefix);
+            edit.replacement.append(buffer.text().substr(lineStart + bufferStart, prefix));
             if (!insertionResolved) {
                 edit.insertionColumn =
                     edit.replacement.size();
                 insertionResolved = true;
             }
             edit.selected.append(
-                buffer.text(),
-                lineStart + bufferStart + prefix,
-                selectedWidth);
-            edit.replacement.append(
-                buffer.text(),
-                lineStart + bufferEnd - suffix,
-                suffix);
+                buffer.text().substr(lineStart + bufferStart + prefix, selectedWidth));
+            edit.replacement.append(buffer.text().substr(lineStart + bufferEnd - suffix, suffix));
             selectedCells += selectedWidth;
         };
 
@@ -149,10 +136,8 @@ VkCore::Implementation::blockInsertionEdit(
             nextBufferColumn,
             cell.bufferStart,
             nextDisplayColumn);
-        const std::u16string_view grapheme(
-            buffer.text().data()
-                + lineStart + cell.bufferStart,
-            cell.bufferEnd - cell.bufferStart);
+        const std::u16string grapheme =
+            buffer.text().substr(lineStart + cell.bufferStart, cell.bufferEnd - cell.bufferStart);
         if (cell.displayEnd <= firstDisplayColumn
             || cell.displayStart
                 >= lastDisplayColumnExclusive) {
@@ -708,10 +693,7 @@ VkCore::Implementation::blockRegisterRows(const std::u16string &text)
         const VisualBlockRow row = visualBlockRow(
             buffer, line, *range);
         std::u16string output;
-        output.append(
-            buffer.text(),
-            buffer.lineStarts[line],
-            row.selectedBufferStart);
+        output.append(buffer.text().substr(buffer.lineStarts[line], row.selectedBufferStart));
         std::size_t column = row.selectedBufferStart;
         while (column < row.selectedBufferEnd) {
             const std::size_t next = nextColumnAllowEnd(
@@ -727,11 +709,8 @@ VkCore::Implementation::blockRegisterRows(const std::u16string &text)
                           .toStdU16String();
             column = next;
         }
-        output.append(
-            buffer.text(),
-            buffer.lineStarts[line]
-                + row.selectedBufferEnd,
-            length - row.selectedBufferEnd);
+        output.append(buffer.text().substr(buffer.lineStarts[line] + row.selectedBufferEnd,
+                                           length - row.selectedBufferEnd));
         replacement += output;
         if (line != range->lastLine) {
             replacement.push_back(u'\n');
@@ -861,16 +840,10 @@ VkCore::Implementation::blockRegisterRows(const std::u16string &text)
                         true)
                         .value_or(BlockInsertionEdit{});
                 std::u16string output;
-                output.append(
-                    buffer.text(),
-                    buffer.lineStarts[line],
-                    insertion.bufferStart);
+                output.append(buffer.text().substr(buffer.lineStarts[line], insertion.bufferStart));
                 output += insertion.replacement;
-                output.append(
-                    buffer.text(),
-                    buffer.lineStarts[line]
-                        + insertion.bufferEnd,
-                    length - insertion.bufferEnd);
+                output.append(buffer.text().substr(buffer.lineStarts[line] + insertion.bufferEnd,
+                                                   length - insertion.bufferEnd));
                 const std::size_t at =
                     insertion.bufferStart
                     + insertion.insertionOffset;
@@ -940,10 +913,7 @@ VkCore::Implementation::blockRegisterRows(const std::u16string &text)
             const VisualBlockRow row = visualBlockRow(
                 buffer, line, *range);
             std::u16string output;
-            output.append(
-                buffer.text(),
-                buffer.lineStarts[line],
-                row.selectedBufferStart);
+            output.append(buffer.text().substr(buffer.lineStarts[line], row.selectedBufferStart));
             const QString selected = QString::fromStdU16String(
                 buffer.text().substr(
                     buffer.lineStarts[line]
@@ -954,11 +924,8 @@ VkCore::Implementation::blockRegisterRows(const std::u16string &text)
                            ? selected.toLower()
                            : selected.toUpper())
                           .toStdU16String();
-            output.append(
-                buffer.text(),
-                buffer.lineStarts[line]
-                    + row.selectedBufferEnd,
-                length - row.selectedBufferEnd);
+            output.append(buffer.text().substr(buffer.lineStarts[line] + row.selectedBufferEnd,
+                                               length - row.selectedBufferEnd));
             if (line == range->firstLine) {
                 firstColumn = row.selectedBufferStart;
             }
@@ -1000,9 +967,9 @@ VkCore::Implementation::blockRegisterRows(const std::u16string &text)
                 }
             }
         }
-        const QString selected = QString::fromUtf16(
-            buffer.text().data() + start,
-            static_cast<qsizetype>(end - start));
+        const std::u16string selectedText = buffer.text().substr(start, end - start);
+        const QString selected =
+            QString::fromUtf16(selectedText.data(), static_cast<qsizetype>(end - start));
         replacement =
             (operation == OperatorKind::Lowercase
                  ? selected.toLower()

@@ -38,8 +38,7 @@ BufferId VkCore::synchronizeBuffer(
                 std::move(text),
                 1,
                 std::numeric_limits<std::size_t>::max());
-        buffer.lineStarts =
-            lineStarts(buffer.text());
+        buffer.lineStarts = lineStarts(buffer.storage.ownedText()->text());
         m_impl->paths.emplace(
             buffer.path, id);
         m_impl->buffers.emplace(id, std::move(buffer));
@@ -56,8 +55,7 @@ BufferId VkCore::synchronizeBuffer(
                 syncSpan.fail(QStringLiteral("buffer storage rejected text"));
                 return 0;
             }
-            buffer.lineStarts =
-                lineStarts(buffer.text());
+            buffer.lineStarts = lineStarts(buffer.storage.ownedText()->text());
             buffer.displayLines.clear();
             m_impl->resetUndoHistory(buffer, id);
         }
@@ -141,6 +139,55 @@ BufferRegistrationResult VkCore::registerProviderBuffer(
         id, BufferRegistrationStatus::Created};
 }
 
+BufferRegistrationResult VkCore::registerExternalSessionBuffer(
+    std::string path, std::shared_ptr<vkui::buffer::IEditableTextSession> session,
+    const std::size_t maximumReadLength, const std::size_t scalarCacheCapacity) {
+    if (path.empty()) {
+        return BufferRegistrationResult{0, BufferRegistrationStatus::InvalidPath};
+    }
+    auto storage = vkui::buffer::BufferStorage::externalSession(
+        std::move(session), maximumReadLength, scalarCacheCapacity);
+    const auto descriptor = storage.describe();
+    if (!descriptor) {
+        return BufferRegistrationResult{0, BufferRegistrationStatus::InvalidProvider};
+    }
+    if (!descriptor->modalEditingLfOnly) {
+        return BufferRegistrationResult{0, BufferRegistrationStatus::UnsupportedLineEndings};
+    }
+    const auto existingPath = m_impl->paths.find(path);
+    if (existingPath != m_impl->paths.end()) {
+        const auto existingDescriptor = m_impl->buffers.at(existingPath->second).storage.describe();
+        return BufferRegistrationResult{existingPath->second,
+                                        existingDescriptor &&
+                                                existingDescriptor->identity == descriptor->identity
+                                            ? BufferRegistrationStatus::AlreadyRegistered
+                                            : BufferRegistrationStatus::PathConflict};
+    }
+    for (const auto& [id, buffer] : m_impl->buffers) {
+        const auto existingDescriptor = buffer.storage.describe();
+        if (existingDescriptor && existingDescriptor->identity == descriptor->identity) {
+            return BufferRegistrationResult{id, BufferRegistrationStatus::AlreadyRegistered};
+        }
+    }
+
+    const BufferId id = m_impl->nextBuffer++;
+    Implementation::Buffer buffer;
+    buffer.id = id;
+    buffer.path = std::move(path);
+    buffer.storage = std::move(storage);
+    buffer.readOnly = !descriptor->editable;
+    buffer.undo.reset();
+    m_impl->paths.emplace(buffer.path, id);
+    auto [inserted, created] = m_impl->buffers.emplace(id, std::move(buffer));
+    if (!created) {
+        m_impl->paths.erase(inserted->second.path);
+        return BufferRegistrationResult{0, BufferRegistrationStatus::InvalidProvider};
+    }
+    inserted->second.lineStarts.bindExternal(&inserted->second.storage);
+    m_impl->bufferOrder.push_back(id);
+    return BufferRegistrationResult{id, BufferRegistrationStatus::Created};
+}
+
 bool VkCore::attachBuffer(
     const WindowId window,
     const BufferId id,
@@ -181,12 +228,11 @@ BufferAttachStatus VkCore::attachBufferData(
             });
         return BufferAttachStatus::UnknownBuffer;
     }
-    if (!foundBuffer->second.storage.isOwned()) {
+    if (foundBuffer->second.storage.isProviderBacked()) {
         vkui::writeDiagnostic(
-            vkui::DiagnosticLevel::Debug,
-            QStringLiteral("vkcore.buffer"),
+            vkui::DiagnosticLevel::Debug, QStringLiteral("vkcore.buffer"),
             QStringLiteral("attach.requires-projection"),
-            QStringLiteral("Provider data requires a resident projection"),
+            QStringLiteral("Read-only provider data requires a resident projection"),
             QJsonObject{
                 {QStringLiteral("window"), static_cast<qint64>(window)},
                 {QStringLiteral("buffer"), static_cast<qint64>(id)},
@@ -272,8 +318,7 @@ bool VkCore::replaceBufferText(
         if (!buffer.replaceText(std::move(text))) {
             return false;
         }
-        buffer.lineStarts =
-            lineStarts(buffer.text());
+        buffer.lineStarts = lineStarts(buffer.storage.ownedText()->text());
         buffer.displayLines.clear();
         m_impl->resetUndoHistory(buffer, id);
     }
@@ -331,12 +376,10 @@ bool VkCore::applyExternalEdit(
         foundView->second.buffer;
     const auto foundBuffer =
         m_impl->buffers.find(bufferId);
-    if (foundBuffer == m_impl->buffers.end()
-        || editOffset
-            > foundBuffer->second.text().size()
-        || removed
-            > foundBuffer->second.text().size()
-                - editOffset) {
+    if (foundBuffer == m_impl->buffers.end() || foundBuffer->second.authorityDesynchronized ||
+        foundBuffer->second.storage.externalReadFaulted() ||
+        editOffset > foundBuffer->second.text().size() ||
+        removed > foundBuffer->second.text().size() - editOffset) {
         return false;
     }
     if (m_impl->baseMode == Mode::Insert
@@ -389,9 +432,10 @@ bool VkCore::applyExternalEditWithSelectionAtOffsets(
     }
     const BufferId bufferId = foundView->second.buffer;
     const auto foundBuffer = m_impl->buffers.find(bufferId);
-    if (foundBuffer == m_impl->buffers.end()
-        || editOffset > foundBuffer->second.text().size()
-        || removed > foundBuffer->second.text().size() - editOffset) {
+    if (foundBuffer == m_impl->buffers.end() || foundBuffer->second.authorityDesynchronized ||
+        foundBuffer->second.storage.externalReadFaulted() ||
+        editOffset > foundBuffer->second.text().size() ||
+        removed > foundBuffer->second.text().size() - editOffset) {
         return false;
     }
     if (m_impl->baseMode == Mode::Insert
@@ -415,6 +459,22 @@ bool VkCore::applyExternalEditWithSelectionAtOffsets(
             cursorOffset});
 }
 
+bool VkCore::applyExternalEditBatchWithSelectionAtOffsets(
+    const ViewId viewId, std::vector<vkui::buffer::TransactionEdit> edits,
+    const std::size_t selectionBeforeAnchor, const std::size_t selectionBeforeCursor,
+    const std::size_t selectionAfterAnchor, const std::size_t selectionAfterCursor,
+    const std::optional<std::uint64_t> group) {
+    const auto foundView = m_impl->views.find(viewId);
+    if (foundView == m_impl->views.end() || foundView->second.buffer == 0) {
+        return false;
+    }
+    return m_impl->mutateExternalBatch(
+        nullptr, foundView->second.buffer, std::move(edits),
+        vkui::buffer::TextSelection{selectionBeforeAnchor, selectionBeforeCursor},
+        vkui::buffer::TextSelection{selectionAfterAnchor, selectionAfterCursor}, viewId, group,
+        false);
+}
+
 std::optional<BufferHistorySnapshot> VkCore::bufferHistory(
     const BufferId id) const
 {
@@ -422,7 +482,15 @@ std::optional<BufferHistorySnapshot> VkCore::bufferHistory(
     if (found == m_impl->buffers.end()) {
         return std::nullopt;
     }
-    const Implementation::UndoHistory &history = found->second.undo;
+    if (found->second.storage.isExternalSession()) {
+        const auto history = found->second.storage.externalHistory();
+        if (!history) {
+            return std::nullopt;
+        }
+        return BufferHistorySnapshot{id, history->current, history->clean, history->canUndo,
+                                     history->canRedo};
+    }
+    const Implementation::UndoHistory& history = *found->second.undo;
     const Implementation::UndoNode &current = history.nodes[history.current];
     BufferHistorySnapshot snapshot;
     snapshot.id = id;
@@ -439,8 +507,13 @@ std::optional<BufferHistorySnapshot> VkCore::bufferHistory(
 bool VkCore::resetBufferHistory(const BufferId id)
 {
     const auto found = m_impl->buffers.find(id);
-    if (found == m_impl->buffers.end()
-        || !found->second.storage.isOwned()) {
+    if (found == m_impl->buffers.end()) {
+        return false;
+    }
+    if (found->second.storage.isExternalSession()) {
+        return found->second.storage.resetExternalHistory();
+    }
+    if (!found->second.storage.isOwned()) {
         return false;
     }
     m_impl->resetUndoHistory(found->second, id);
@@ -455,9 +528,11 @@ bool VkCore::setBufferModified(
     if (found == m_impl->buffers.end()) {
         return false;
     }
-    found->second.undo.clean = modified
-        ? std::nullopt
-        : std::optional<std::size_t>(found->second.undo.current);
+    if (found->second.storage.isExternalSession()) {
+        return found->second.storage.setExternalModified(modified);
+    }
+    found->second.undo->clean =
+        modified ? std::nullopt : std::optional<std::size_t>(found->second.undo->current);
     return true;
 }
 

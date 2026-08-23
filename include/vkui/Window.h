@@ -2,6 +2,6 @@
 
 #pragma once
 
-#include <vkui/window/VkFramelessDialog.h>
-#include <vkui/window/VkMessageDialog.h>
-#include <vkui/window/VkWindowAgent.h>
+#include <vkui/window/VMessageDialog.h>
+#include <vkui/window/VSystemButton.h>
+#include <vkui/window/VWindowAgent.h>

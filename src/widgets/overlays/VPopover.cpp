@@ -1,0 +1,1183 @@
+// SPDX-License-Identifier: MIT
+
+#include "private/VPopoverPath_p.h"
+#include "private/VPopover_p.h"
+
+#include <QtCore/QCoreApplication>
+#include <QtCore/QEvent>
+#include <QtCore/QHash>
+#include <QtCore/QPointer>
+#include <QtCore/QThread>
+#include <QtCore/QTimer>
+#include <QtGui/QCloseEvent>
+#include <QtGui/QCursor>
+#include <QtGui/QEnterEvent>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
+#include <QtGui/QPainter>
+#include <QtGui/QScreen>
+#include <QtGui/QTouchEvent>
+#include <QtGui/QWindow>
+#include <QtWidgets/QAbstractButton>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QSizePolicy>
+#include <algorithm>
+#include <cmath>
+#include <utility>
+#include <vkui/core/VkTheme.h>
+#include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/overlays/VPopover.h>
+
+namespace vkui {
+namespace {
+
+QHash<const VPopover*, VPopoverPrivate*>& livePopoverPrivates() {
+    static QHash<const VPopover*, VPopoverPrivate*> registry;
+    return registry;
+}
+
+bool validPlacement(VPopoverPlacement placement) noexcept {
+    switch (placement) {
+    case VPopoverPlacement::Automatic:
+    case VPopoverPlacement::Below:
+    case VPopoverPlacement::Above:
+    case VPopoverPlacement::Right:
+    case VPopoverPlacement::Left:
+        return true;
+    }
+    return false;
+}
+
+VPopoverGeometryMetrics popoverGeometryMetrics(const VkMetricTokens& metrics) {
+    return {
+        metrics.spacing12,           metrics.popoverCornerRadius,
+        metrics.popoverArrowWidth,   metrics.popoverArrowDepth,
+        metrics.popoverScreenMargin, metrics.popoverAnchorGap,
+        metrics.popoverShadowRadius, metrics.spacing2,
+    };
+}
+
+} // namespace
+
+VPopoverPrivate::VPopoverPrivate(VPopover* popover) : q(popover), animation(popover) {
+    contentViewport = new QWidget(q);
+    contentViewport->setObjectName(QStringLiteral("vkuiPopoverContentViewport"));
+    contentViewport->setAutoFillBackground(false);
+    contentViewport->setAttribute(Qt::WA_StyledBackground, false);
+    contentViewport->hide();
+
+    auto* manager = VkThemeManager::instance();
+    geometryMetrics = popoverGeometryMetrics(manager->theme().metrics());
+    themeChangedConnection = connect(
+        manager, &VkThemeManager::themeChanged, q, [this](quint64, const VkThemeChanges changes) {
+            if (changes.testFlag(VkThemeChange::Metrics)) {
+                const VPopoverGeometryMetrics nextMetrics =
+                    popoverGeometryMetrics(VkThemeManager::instance()->theme().metrics());
+                if (geometryMetrics != nextMetrics) {
+                    geometryMetrics = nextMetrics;
+                    queueReposition();
+                }
+            }
+            if (changes.testFlag(VkThemeChange::Colors) ||
+                changes.testFlag(VkThemeChange::Metrics)) {
+                // The shadow cache compares its actual color input, so accent-only
+                // changes keep the existing shadow image hot.
+                q->update();
+            }
+        });
+}
+
+VPopoverPrivate::~VPopoverPrivate() {
+    shutdown();
+}
+
+void VPopoverPrivate::setContentWidget(QWidget* newContent) {
+    if (content == newContent || newContent == q || (newContent && newContent->isAncestorOf(q))) {
+        return;
+    }
+
+    if (contentDestroyedConnection) {
+        disconnect(contentDestroyedConnection);
+        contentDestroyedConnection = {};
+    }
+    QWidget* oldContent = content.data();
+    if (oldContent && filtersAttached) {
+        oldContent->removeEventFilter(this);
+    }
+    content = nullptr;
+    delete oldContent;
+
+    if (!newContent) {
+        if (contentViewport) {
+            contentViewport->hide();
+        }
+        preferredContentSize = {};
+        if (state != State::Closed) {
+            closeAnimated();
+        }
+        return;
+    }
+
+    preferredContentSize = {};
+    newContent->setParent(contentViewport);
+    content = newContent;
+    contentDestroyedConnection = connect(newContent, &QObject::destroyed, q, [this] {
+        content = nullptr;
+        contentDestroyedConnection = {};
+        preferredContentSize = {};
+        if (contentViewport) {
+            contentViewport->hide();
+        }
+        if (state != State::Closed) {
+            closeAnimated();
+        }
+    });
+    if (filtersAttached) {
+        newContent->installEventFilter(this);
+    }
+    if (q->isVisible()) {
+        contentViewport->show();
+        newContent->show();
+    }
+    queueReposition();
+}
+
+QWidget* VPopoverPrivate::contentWidget() const noexcept {
+    return content.data();
+}
+
+void VPopoverPrivate::setPreferredContentSize(const QSize& size) {
+    const QSize normalized =
+        size.isValid() && !size.isEmpty() ? size.expandedTo(QSize(1, 1)) : QSize();
+    if (preferredContentSize == normalized) {
+        return;
+    }
+    preferredContentSize = normalized;
+    queueReposition();
+}
+
+QSize VPopoverPrivate::preferredContentSizeValue() const noexcept {
+    return preferredContentSize;
+}
+
+void VPopoverPrivate::setContentMargins(const QMargins& margins) {
+    if (contentMarginOverride == margins) {
+        return;
+    }
+    contentMarginOverride = margins;
+    queueReposition();
+}
+
+QMargins VPopoverPrivate::contentMargins() const noexcept {
+    return contentMarginOverride;
+}
+
+void VPopoverPrivate::refreshGeometry() {
+    if (state != State::Closed && anchor && content) {
+        (void)repositionNow();
+    }
+}
+
+void VPopoverPrivate::setPreferredPlacement(VPopoverPlacement placement) {
+    if (!validPlacement(placement) || preferredPlacement == placement) {
+        return;
+    }
+    preferredPlacement = placement;
+    queueReposition();
+}
+
+VPopoverPlacement VPopoverPrivate::resolvedPlacementValue() const noexcept {
+    return finalPlacement.isValid() ? finalPlacement.resolvedPlacement
+                                    : VPopoverPlacement::Automatic;
+}
+
+void VPopoverPrivate::setCrossAxisAlignment(const VPopoverCrossAxisAlignment alignment) {
+    if (crossAxisAlignment == alignment) {
+        return;
+    }
+    crossAxisAlignment = alignment;
+    queueReposition();
+}
+
+void VPopoverPrivate::setBoundaryWidget(QWidget* boundary) {
+    if (boundary == boundaryWidget || boundary == q) {
+        return;
+    }
+    if (boundary && boundary->thread() != q->thread()) {
+        return;
+    }
+    if (filtersAttached && boundaryWidget) {
+        boundaryWidget->removeEventFilter(this);
+    }
+    boundaryWidget = boundary;
+    if (filtersAttached && boundaryWidget && boundaryWidget != anchor &&
+        boundaryWidget != anchorWindow && boundaryWidget != content) {
+        boundaryWidget->installEventFilter(this);
+    }
+    queueReposition();
+}
+
+QWidget* VPopoverPrivate::boundaryWidgetValue() const noexcept {
+    return boundaryWidget;
+}
+
+void VPopoverPrivate::setBoundaryPlacements(const VPopoverBoundaryPlacements placements) {
+    if (boundaryPlacements == placements) {
+        return;
+    }
+    boundaryPlacements = placements;
+    queueReposition();
+}
+
+VPopoverBoundaryPlacements VPopoverPrivate::boundaryPlacementsValue() const noexcept {
+    return boundaryPlacements;
+}
+
+void VPopoverPrivate::setClosePolicy(VPopoverClosePolicy policy) noexcept {
+    closePolicy = policy;
+}
+
+void VPopoverPrivate::openFor(QWidget* newAnchor, const QRect& rectInAnchor) {
+    if (!newAnchor || !content || newAnchor == q || q->isAncestorOf(newAnchor) ||
+        newAnchor->thread() != q->thread()) {
+        return;
+    }
+    Q_ASSERT_X(QThread::currentThread() == q->thread(), "VPopover::openFor",
+               "VPopover must be used from its GUI thread");
+
+    const State previousState = state;
+    if (previousState == State::Closing) {
+        animation.stop();
+    }
+    setClosingInputTransparent(false);
+
+    if (filtersAttached) {
+        detachOpenFilters();
+    }
+    anchor = newAnchor;
+    anchorLocalRect = rectInAnchor;
+    attachOpenFilters();
+
+    if (!repositionNow()) {
+        detachOpenFilters();
+        if (previousState == State::Open || previousState == State::Opening ||
+            previousState == State::Closing) {
+            state = previousState;
+            closeImmediately();
+        }
+        return;
+    }
+
+    if (previousState == State::Open || previousState == State::Opening) {
+        if (!q->isVisible()) {
+            q->show();
+        }
+        q->raise();
+        return;
+    }
+
+    Q_EMIT q->aboutToOpen();
+    state = State::Opening;
+    const bool freshOpen = previousState == State::Closed;
+    if (freshOpen) {
+        currentOpacity = 0.0;
+    }
+    applyOpacityFrame(currentOpacity);
+
+    q->show();
+    if (content) {
+        content->show();
+    }
+    q->raise();
+    q->setFocus(Qt::PopupFocusReason);
+    startOpenAnimation();
+}
+
+bool VPopoverPrivate::toggleFor(QWidget* newAnchor, const QRect& rectInAnchor) {
+    if (newAnchor != nullptr && suppressedToggleAnchor == newAnchor) {
+        suppressedToggleAnchor = nullptr;
+        return false;
+    }
+    if (newAnchor != nullptr && anchor == newAnchor &&
+        (state == State::Open || state == State::Opening)) {
+        closeAnimated();
+        return false;
+    }
+    openFor(newAnchor, rectInAnchor);
+    return isOpen();
+}
+
+void VPopoverPrivate::closeAnimated() {
+    if (state == State::Closed || state == State::Closing) {
+        return;
+    }
+
+    Q_EMIT q->aboutToClose();
+    state = State::Closing;
+    setClosingInputTransparent(true);
+    const qreal startOpacity = currentOpacity;
+    animation.start(
+        0.0, 1.0, VkMotionRole::Exit,
+        [this, startOpacity](qreal progress) {
+            applyOpacityFrame(startOpacity * (1.0 - progress));
+        },
+        [this] { finishClosing(); });
+}
+
+void VPopoverPrivate::closeImmediately() {
+    if (state == State::Closed) {
+        return;
+    }
+    if (state != State::Closing) {
+        Q_EMIT q->aboutToClose();
+        state = State::Closing;
+    }
+    animation.stop();
+    applyOpacityFrame(0.0);
+    finishClosing();
+}
+
+void VPopoverPrivate::shutdown() {
+    animation.stop();
+    detachOpenFilters();
+    if (themeChangedConnection) {
+        disconnect(themeChangedConnection);
+        themeChangedConnection = {};
+    }
+    if (contentDestroyedConnection) {
+        disconnect(contentDestroyedConnection);
+        contentDestroyedConnection = {};
+    }
+    content = nullptr;
+    state = State::Closed;
+    q = nullptr;
+}
+
+bool VPopoverPrivate::isOpen() const noexcept {
+    return state == State::Opening || state == State::Open;
+}
+
+void VPopoverPrivate::attachOpenFilters() {
+    if (filtersAttached || !anchor) {
+        return;
+    }
+    filtersAttached = true;
+    anchor->installEventFilter(this);
+    anchorWindow = anchor->window();
+    if (anchorWindow && anchorWindow != anchor) {
+        anchorWindow->installEventFilter(this);
+    }
+    if (content) {
+        content->installEventFilter(this);
+    }
+    if (boundaryWidget && boundaryWidget != anchor && boundaryWidget != anchorWindow &&
+        boundaryWidget != content) {
+        boundaryWidget->installEventFilter(this);
+    }
+    if (qApp) {
+        qApp->installEventFilter(this);
+    }
+    anchorDestroyedConnection =
+        connect(anchor.data(), &QObject::destroyed, q, [this] { handleAnchorDestroyed(); });
+    reconnectWindowAndScreen();
+}
+
+void VPopoverPrivate::detachOpenFilters() {
+    if (!filtersAttached) {
+        anchor = nullptr;
+        anchorWindow = nullptr;
+        setObservedScreen(nullptr);
+        return;
+    }
+    if (anchor) {
+        anchor->removeEventFilter(this);
+    }
+    if (anchorWindow && anchorWindow != anchor) {
+        anchorWindow->removeEventFilter(this);
+    }
+    if (content) {
+        content->removeEventFilter(this);
+    }
+    if (boundaryWidget && boundaryWidget != anchor && boundaryWidget != anchorWindow &&
+        boundaryWidget != content) {
+        boundaryWidget->removeEventFilter(this);
+    }
+    if (qApp) {
+        qApp->removeEventFilter(this);
+    }
+    filtersAttached = false;
+    removeAnchorFilters();
+    setObservedScreen(nullptr);
+    repositionQueued = false;
+}
+
+void VPopoverPrivate::removeAnchorFilters() {
+    if (anchorDestroyedConnection) {
+        disconnect(anchorDestroyedConnection);
+        anchorDestroyedConnection = {};
+    }
+    if (windowScreenConnection) {
+        disconnect(windowScreenConnection);
+        windowScreenConnection = {};
+    }
+    anchor = nullptr;
+    anchorWindow = nullptr;
+}
+
+void VPopoverPrivate::reconnectWindowAndScreen() {
+    if (!anchor) {
+        return;
+    }
+
+    QWidget* newWindow = anchor->window();
+    if (newWindow != anchorWindow) {
+        if (filtersAttached && anchorWindow && anchorWindow != anchor) {
+            anchorWindow->removeEventFilter(this);
+        }
+        anchorWindow = newWindow;
+        if (filtersAttached && anchorWindow && anchorWindow != anchor) {
+            anchorWindow->installEventFilter(this);
+        }
+    }
+    if (windowScreenConnection) {
+        disconnect(windowScreenConnection);
+        windowScreenConnection = {};
+    }
+    if (anchorWindow && anchorWindow->windowHandle()) {
+        windowScreenConnection =
+            connect(anchorWindow->windowHandle(), &QWindow::screenChanged, q, [this](QScreen*) {
+                reconnectWindowAndScreen();
+                queueReposition();
+            });
+    }
+    if (anchorWindow && anchorWindow->windowHandle()) {
+        if (!q->windowHandle()) {
+            (void)q->winId();
+        }
+        if (QWindow* popupWindow = q->windowHandle();
+            popupWindow && popupWindow->transientParent() != anchorWindow->windowHandle()) {
+            popupWindow->setTransientParent(anchorWindow->windowHandle());
+        }
+    }
+    const QRectF globalAnchor = anchorGlobalRect();
+    setObservedScreen(screenForAnchor(globalAnchor));
+}
+
+void VPopoverPrivate::setObservedScreen(QScreen* screen) {
+    if (observedScreen == screen) {
+        return;
+    }
+    if (screenAvailableConnection) {
+        disconnect(screenAvailableConnection);
+        screenAvailableConnection = {};
+    }
+    if (screenGeometryConnection) {
+        disconnect(screenGeometryConnection);
+        screenGeometryConnection = {};
+    }
+    observedScreen = screen;
+    if (screen) {
+        screenAvailableConnection = connect(screen, &QScreen::availableGeometryChanged, q,
+                                            [this](const QRect&) { queueReposition(); });
+        screenGeometryConnection = connect(screen, &QScreen::geometryChanged, q,
+                                           [this](const QRect&) { queueReposition(); });
+    }
+}
+
+void VPopoverPrivate::queueReposition() {
+    if (repositionQueued || state == State::Closed || !anchor) {
+        return;
+    }
+    repositionQueued = true;
+    QMetaObject::invokeMethod(
+        q,
+        [this] {
+            repositionQueued = false;
+            if (state != State::Closed && anchor && !repositionNow()) {
+                closeImmediately();
+            }
+        },
+        Qt::QueuedConnection);
+}
+
+QRectF VPopoverPrivate::anchorGlobalRect() const {
+    if (!anchor) {
+        return {};
+    }
+    const QRect local = anchorLocalRect.isEmpty() ? anchor->rect() : anchorLocalRect.normalized();
+    const QPoint globalTopLeft = anchor->mapToGlobal(local.topLeft());
+    return QRectF(QPointF(globalTopLeft), QSizeF(local.size()));
+}
+
+QSizeF VPopoverPrivate::desiredContentSize() const {
+    if (!content) {
+        return {};
+    }
+    QSize desired = preferredContentSize;
+    if (!desired.isValid() || desired.isEmpty()) {
+        desired = content->sizeHint();
+    }
+    if (!desired.isValid() || desired.isEmpty()) {
+        desired = content->size();
+    }
+    const QSize minimumHint = content->minimumSizeHint();
+    if (minimumHint.isValid()) {
+        desired = desired.expandedTo(minimumHint);
+    }
+    desired = desired.expandedTo(content->minimumSize());
+    const QSize maximum = content->maximumSize();
+    desired.setWidth(std::min(desired.width(), maximum.width()));
+    desired.setHeight(std::min(desired.height(), maximum.height()));
+    desired.setWidth(std::max(1, desired.width()));
+    desired.setHeight(std::max(1, desired.height()));
+    return QSizeF(desired);
+}
+
+QScreen* VPopoverPrivate::screenForAnchor(const QRectF& globalAnchor) const {
+    if (QScreen* screen = QGuiApplication::screenAt(globalAnchor.center().toPoint())) {
+        return screen;
+    }
+    if (anchorWindow && anchorWindow->windowHandle() && anchorWindow->windowHandle()->screen()) {
+        return anchorWindow->windowHandle()->screen();
+    }
+    return QGuiApplication::primaryScreen();
+}
+
+QAbstractButton* buttonAtGlobalPoint(const QPoint& globalPoint, QWidget* expectedWindow) {
+    if (!expectedWindow) {
+        return nullptr;
+    }
+
+    const QPoint windowPoint = expectedWindow->mapFromGlobal(globalPoint);
+    if (!expectedWindow->rect().contains(windowPoint)) {
+        return nullptr;
+    }
+
+    // A translucent top-level popover still owns its rectangular native hit-test area. Looking
+    // through the anchor window explicitly finds controls covered only by transparent shadow or
+    // arrow padding; QApplication::widgetAt() would return the popover itself in that case.
+    QWidget* widget = expectedWindow->childAt(windowPoint);
+    if (!widget) {
+        widget = expectedWindow;
+    }
+    while (widget) {
+        if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
+            return button->isEnabled() && button->isVisible() &&
+                           (!expectedWindow || button->window() == expectedWindow)
+                       ? button
+                       : nullptr;
+        }
+        if (widget->isWindow()) {
+            return nullptr;
+        }
+        widget = widget->parentWidget();
+    }
+    return nullptr;
+}
+
+void synchronizeButtonHover(QWidget* window, QAbstractButton* target, const QPoint& globalPoint) {
+    if (!window) {
+        return;
+    }
+    const auto buttons = window->findChildren<QAbstractButton*>();
+    for (QAbstractButton* button : buttons) {
+        if (!button || !button->isVisible()) {
+            continue;
+        }
+        const bool shouldBeHovered = button == target;
+        if (button->underMouse() == shouldBeHovered) {
+            continue;
+        }
+        if (shouldBeHovered) {
+            const QPointF localPosition(button->mapFromGlobal(globalPoint));
+            const QPointF scenePosition(window->mapFromGlobal(globalPoint));
+            QEnterEvent enterEvent(localPosition, scenePosition, QPointF(globalPoint));
+            QCoreApplication::sendEvent(button, &enterEvent);
+        } else {
+            QEvent leaveEvent(QEvent::Leave);
+            QCoreApplication::sendEvent(button, &leaveEvent);
+        }
+    }
+}
+
+bool VPopoverPrivate::repositionNow() {
+    if (!anchor || !content) {
+        return false;
+    }
+    reconnectWindowAndScreen();
+    if (!observedScreen) {
+        return false;
+    }
+
+    const VkTheme& theme = VkThemeManager::instance()->theme();
+    const VkMetricTokens& metrics = theme.metrics();
+    const qreal shadowOffset = metrics.spacing2;
+
+    VPopoverPlacementInput input;
+    input.anchorRect = anchorGlobalRect();
+    input.contentSize = desiredContentSize();
+    input.preferredPlacement = preferredPlacement;
+    input.crossAxisAlignment = crossAxisAlignment;
+    QRect availableGeometry = observedScreen->availableGeometry();
+    if (boundaryWidget) {
+        input.boundaryGeometry =
+            QRectF(boundaryWidget->mapToGlobal(QPoint()), boundaryWidget->size());
+        input.boundaryPlacements = boundaryPlacements;
+    }
+    input.availableGeometry = QRectF(availableGeometry);
+    input.screenMargin = metrics.popoverScreenMargin;
+    input.anchorGap = metrics.popoverAnchorGap;
+    input.bodyCornerRadius = metrics.popoverCornerRadius;
+    input.arrowWidth = metrics.popoverArrowWidth;
+    input.arrowDepth = metrics.popoverArrowDepth;
+    input.layoutDirection = anchor->layoutDirection();
+    const auto margin = [&metrics](const int overrideValue) {
+        return overrideValue >= 0 ? static_cast<qreal>(overrideValue) : metrics.spacing12;
+    };
+    input.contentMargins =
+        QMarginsF(margin(contentMarginOverride.left()), margin(contentMarginOverride.top()),
+                  margin(contentMarginOverride.right()), margin(contentMarginOverride.bottom()));
+    input.outerMargin = std::ceil(metrics.popoverShadowRadius + shadowOffset);
+
+    const VPopoverPlacementResult result = VPopoverPlacementEngine::calculate(input);
+    if (!result.isValid()) {
+        return false;
+    }
+    finalPlacement = result;
+    finalPath = VPopoverPath::create(result.bodyRect, result.resolvedPlacement, result.arrowTip,
+                                      result.arrowBaseCenter, metrics.popoverArrowWidth,
+                                      metrics.popoverCornerRadius);
+    if (finalPath.isEmpty()) {
+        return false;
+    }
+    const QRect popupRect = finalPlacement.popupRect;
+    if (q->minimumSize() != popupRect.size() || q->maximumSize() != popupRect.size()) {
+        // Frameless is only decorative; it does not guarantee that a window
+        // manager will suppress native resize hit tests. Equal constraints
+        // make the anchor-calculated popup geometry authoritative.
+        q->setFixedSize(popupRect.size());
+    }
+    if (q->geometry() != popupRect) {
+        q->setGeometry(popupRect);
+    }
+    const QRect contentRect = finalPlacement.contentRect.toAlignedRect().intersected(q->rect());
+    if (contentViewport && contentViewport->geometry() != contentRect) {
+        contentViewport->setGeometry(contentRect);
+    }
+    if (contentViewport && !contentViewport->isVisible()) {
+        contentViewport->show();
+    }
+    const QRect localContentRect(QPoint(), contentRect.size());
+    if (content && content->geometry() != localContentRect) {
+        content->setGeometry(localContentRect);
+    }
+    return true;
+}
+
+void VPopoverPrivate::applyOpacityFrame(qreal opacity) {
+    if (!q) {
+        return;
+    }
+    currentOpacity = std::clamp(opacity, 0.0, 1.0);
+    if (!qFuzzyCompare(q->windowOpacity() + 1.0, currentOpacity + 1.0)) {
+        q->setWindowOpacity(currentOpacity);
+    }
+}
+
+void VPopoverPrivate::setClosingInputTransparent(const bool transparent) {
+    if (!q) {
+        return;
+    }
+
+    q->setAttribute(Qt::WA_TransparentForMouseEvents, transparent);
+    if (QWindow* popupWindow = q->windowHandle()) {
+        popupWindow->setFlag(Qt::WindowTransparentForInput, transparent);
+    }
+
+    if (!transparent) {
+        return;
+    }
+
+    // Qt::Popup owns an implicit mouse and keyboard grab while visible. The visual exit animation
+    // may continue, but chrome and controls below it must receive pointer movement immediately.
+    if (QWidget* mouseGrabber = QWidget::mouseGrabber();
+        mouseGrabber && mouseGrabber->window() == q) {
+        mouseGrabber->releaseMouse();
+    }
+    if (QWidget* keyboardGrabber = QWidget::keyboardGrabber();
+        keyboardGrabber && keyboardGrabber->window() == q) {
+        keyboardGrabber->releaseKeyboard();
+    }
+}
+
+void VPopoverPrivate::startOpenAnimation() {
+    animation.start(
+        currentOpacity, 1.0, VkMotionRole::EmphasizedEnter,
+        [this](qreal opacity) { applyOpacityFrame(opacity); }, [this] { finishOpening(); });
+}
+
+void VPopoverPrivate::finishOpening() {
+    if (state != State::Opening) {
+        return;
+    }
+    applyOpacityFrame(1.0);
+    state = State::Open;
+    Q_EMIT q->opened();
+}
+
+void VPopoverPrivate::finishClosing() {
+    if (state != State::Closing) {
+        return;
+    }
+    animation.stop();
+    const bool restorePointerAfterAnimatedClose =
+        q->testAttribute(Qt::WA_TransparentForMouseEvents);
+    QPointer<QWidget> pointerWindow = anchorWindow;
+    const QPoint pointerPosition = QCursor::pos();
+    internalHide = true;
+    q->hide();
+    internalHide = false;
+    detachOpenFilters();
+    state = State::Closed;
+    setClosingInputTransparent(false);
+    currentOpacity = 1.0;
+    q->setWindowOpacity(1.0);
+    if (finalPlacement.isValid()) {
+        q->setGeometry(finalPlacement.popupRect);
+    }
+    if (restorePointerAfterAnimatedClose && pointerWindow) {
+        QTimer::singleShot(0, pointerWindow, [pointerWindow, pointerPosition] {
+            if (pointerWindow) {
+                synchronizeButtonHover(pointerWindow,
+                                       buttonAtGlobalPoint(pointerPosition, pointerWindow),
+                                       pointerPosition);
+            }
+        });
+    }
+    Q_EMIT q->closed();
+}
+
+void VPopoverPrivate::handleAnchorDestroyed() {
+    anchor = nullptr;
+    if (closePolicy.testFlag(VPopoverClosePolicyFlag::AnchorDestroyed)) {
+        closeAnimated();
+        return;
+    }
+
+    // Without the dismissal flag the last valid geometry remains usable. Stop
+    // observing the dead anchor while retaining application dismissal filters.
+    if (anchorWindow) {
+        anchorWindow->removeEventFilter(this);
+    }
+    if (anchorDestroyedConnection) {
+        disconnect(anchorDestroyedConnection);
+        anchorDestroyedConnection = {};
+    }
+    if (windowScreenConnection) {
+        disconnect(windowScreenConnection);
+        windowScreenConnection = {};
+    }
+    anchorWindow = nullptr;
+}
+
+bool VPopoverPrivate::eventFilter(QObject* watched, QEvent* event) {
+    if (!event || state == State::Closed) {
+        return QObject::eventFilter(watched, event);
+    }
+
+    if (event->type() == QEvent::KeyPress &&
+        closePolicy.testFlag(VPopoverClosePolicyFlag::EscapeKey)) {
+        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Escape) {
+            keyEvent->accept();
+            closeAnimated();
+            return true;
+        }
+    }
+
+    if (closePolicy.testFlag(VPopoverClosePolicyFlag::OutsideClick)) {
+        QPointF globalPosition;
+        bool pointerPress = false;
+        if (event->type() == QEvent::MouseButtonPress ||
+            event->type() == QEvent::NonClientAreaMouseButtonPress) {
+            globalPosition = static_cast<QMouseEvent*>(event)->globalPosition();
+            pointerPress = true;
+        } else if (event->type() == QEvent::TouchBegin) {
+            const auto* touchEvent = static_cast<QTouchEvent*>(event);
+            if (!touchEvent->points().isEmpty()) {
+                globalPosition = touchEvent->points().constFirst().globalPosition();
+                pointerPress = true;
+            }
+        }
+        const QPoint globalPoint = globalPosition.toPoint();
+        const QPoint popoverPoint = q->mapFromGlobal(globalPoint);
+        const bool insidePopover = finalPath.contains(QPointF(popoverPoint));
+        // The arrow tip can overlap the anchor's native hit rectangle. The anchor owns that
+        // intersection so clicking the active button still toggles its popover.
+        const bool insideAnchor = anchor && anchorGlobalRect().contains(globalPosition);
+        if (pointerPress && (!insidePopover || insideAnchor)) {
+            QPointer<QAbstractButton> forwardedButton =
+                buttonAtGlobalPoint(globalPoint, anchorWindow);
+            if (forwardedButton) {
+                QPointer<QWidget> forwardedWindow = anchorWindow;
+                const bool activatesCurrentAnchor = forwardedButton == anchor.data();
+                if (activatesCurrentAnchor) {
+                    const bool reversingClose = state == State::Closing;
+                    suppressedToggleAnchor = reversingClose ? nullptr : forwardedButton;
+                    if (!reversingClose) {
+                        closeAnimated();
+                    }
+                    synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                    QPointer<VPopoverPrivate> self(this);
+                    QTimer::singleShot(0, forwardedButton,
+                                       [self, forwardedButton, forwardedWindow, globalPoint] {
+                                           if (forwardedButton && forwardedButton->isEnabled() &&
+                                               forwardedButton->isVisible()) {
+                                               forwardedButton->click();
+                                               synchronizeButtonHover(forwardedWindow,
+                                                                      forwardedButton, globalPoint);
+                                           }
+                                           if (self) {
+                                               self->suppressedToggleAnchor = nullptr;
+                                           }
+                                       });
+                    return true;
+                }
+                // Finish the old native window before invoking the next anchor. Keeping a fading
+                // popover above the new one leaves Qt's underMouse state attached to both anchors.
+                closeImmediately();
+                synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                // Bind the queued replay to the destination, not this popover. Closing a modal-like
+                // popover can unwind a nested event loop and destroy `q` before the next turn.
+                QTimer::singleShot(
+                    0, forwardedButton, [forwardedButton, forwardedWindow, globalPoint] {
+                        if (forwardedButton && forwardedButton->isEnabled() &&
+                            forwardedButton->isVisible()) {
+                            forwardedButton->click();
+                            synchronizeButtonHover(forwardedWindow, forwardedButton, globalPoint);
+                        }
+                    });
+                return true;
+            }
+            closeAnimated();
+        }
+    }
+
+    if (event->type() == QEvent::ApplicationDeactivate &&
+        closePolicy.testFlag(VPopoverClosePolicyFlag::WindowDeactivated)) {
+        closeAnimated();
+    }
+    if (event->type() == QEvent::LayoutDirectionChange) {
+        queueReposition();
+    }
+
+    if (watched == anchor) {
+        switch (event->type()) {
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::ParentChange:
+        case QEvent::LayoutDirectionChange:
+        case QEvent::Show:
+            reconnectWindowAndScreen();
+            queueReposition();
+            break;
+        case QEvent::Hide:
+        case QEvent::Close:
+            closeAnimated();
+            break;
+        default:
+            break;
+        }
+    } else if (watched == anchorWindow) {
+        switch (event->type()) {
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::WindowStateChange:
+        case QEvent::LayoutDirectionChange:
+        case QEvent::ScreenChangeInternal:
+            reconnectWindowAndScreen();
+            queueReposition();
+            break;
+        case QEvent::Hide:
+        case QEvent::Close:
+            closeAnimated();
+            break;
+        default:
+            break;
+        }
+    } else if (watched == content) {
+        switch (event->type()) {
+        case QEvent::LayoutRequest:
+        case QEvent::FontChange:
+        case QEvent::StyleChange:
+        case QEvent::PolishRequest:
+            queueReposition();
+            break;
+        default:
+            break;
+        }
+    } else if (watched == boundaryWidget) {
+        switch (event->type()) {
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::ParentChange:
+        case QEvent::LayoutRequest:
+        case QEvent::Show:
+            queueReposition();
+            break;
+        case QEvent::Hide:
+        case QEvent::Close:
+            closeAnimated();
+            break;
+        default:
+            break;
+        }
+    } else if (anchor) {
+        // Moving an intermediate parent changes the anchor's global position
+        // without necessarily delivering a move event to the anchor itself.
+        // The application filter lets scrolling containers and nested panels
+        // participate without installing long-lived filters on the hierarchy.
+        auto* ancestor = qobject_cast<QWidget*>(watched);
+        if (ancestor && ancestor->isAncestorOf(anchor)) {
+            switch (event->type()) {
+            case QEvent::Move:
+            case QEvent::Resize:
+            case QEvent::ParentChange:
+            case QEvent::LayoutRequest:
+            case QEvent::LayoutDirectionChange:
+                reconnectWindowAndScreen();
+                queueReposition();
+                break;
+            case QEvent::Hide:
+            case QEvent::Close:
+                closeAnimated();
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
+
+bool VPopoverPrivate::handleEvent(QEvent* event) {
+    if (!event) {
+        return false;
+    }
+    switch (event->type()) {
+    case QEvent::Close:
+        if (state != State::Closed) {
+            // The private policy and animation path own dismissal, so keep the
+            // native window alive until that path has completed.
+            static_cast<QCloseEvent*>(event)->ignore();
+            return true;
+        }
+        break;
+    case QEvent::WindowDeactivate:
+        if (closePolicy.testFlag(VPopoverClosePolicyFlag::WindowDeactivated)) {
+            closeAnimated();
+        }
+        break;
+    case QEvent::Hide:
+        if (!internalHide && state != State::Closed) {
+            closeImmediately();
+        }
+        break;
+    case QEvent::LayoutDirectionChange:
+    case QEvent::ScreenChangeInternal:
+        queueReposition();
+        break;
+    case QEvent::DevicePixelRatioChange:
+        shadowCache.invalidate();
+        q->update();
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+bool VPopoverPrivate::handleKeyPress(QKeyEvent* event) {
+    if (event && event->key() == Qt::Key_Escape &&
+        closePolicy.testFlag(VPopoverClosePolicyFlag::EscapeKey)) {
+        event->accept();
+        closeAnimated();
+        return true;
+    }
+    return false;
+}
+
+void VPopoverPrivate::paint(QPaintEvent* event) {
+    Q_UNUSED(event)
+    if (finalPath.isEmpty()) {
+        return;
+    }
+
+    const VkTheme& theme = VkThemeManager::instance()->theme();
+    const VkColorTokens& colors = theme.colors();
+    const VkMetricTokens& metrics = theme.metrics();
+    QPainter painter(q);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const QPixmap& shadow = shadowCache.shadow(
+        finalPath, finalPlacement.popupRect.size(), q->devicePixelRatioF(), colors.shadow,
+        metrics.popoverShadowRadius, QPointF(0.0, metrics.spacing2));
+    if (!shadow.isNull()) {
+        // The point overload lets QPainter apply the pixmap DPR exactly once.
+        painter.drawPixmap(QPointF(0.0, 0.0), shadow);
+    }
+
+    painter.fillPath(finalPath, colors.popoverBackground);
+    QPen borderPen(colors.border);
+    borderPen.setWidthF(std::max<qreal>(0.5, metrics.borderWidth));
+    borderPen.setJoinStyle(Qt::RoundJoin);
+    painter.setPen(borderPen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(finalPath);
+}
+
+VPopover::VPopover(QWidget* parent)
+    : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
+      d(std::make_unique<VPopoverPrivate>(this)) {
+    livePopoverPrivates().insert(this, d.get());
+    Q_ASSERT_X(QThread::currentThread() == thread(), "VPopover::VPopover",
+               "VPopover must be created on the GUI thread");
+    setAttribute(Qt::WA_TranslucentBackground, true);
+    setAttribute(Qt::WA_NoSystemBackground, true);
+    setAttribute(Qt::WA_DeleteOnClose, false);
+    setAutoFillBackground(false);
+    setFocusPolicy(Qt::StrongFocus);
+    setCursor(Qt::ArrowCursor);
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    setWindowModality(Qt::NonModal);
+    hide();
+}
+
+VPopover::~VPopover() {
+    // QWidget can deliver native events before/after ordinary derived members
+    // exist. event() therefore resolves the implementation through this
+    // construction-lifetime registry rather than reading d outside its life.
+    livePopoverPrivates().remove(this);
+}
+
+void VPopover::setContentWidget(QWidget* content) {
+    d->setContentWidget(content);
+}
+
+QWidget* VPopover::contentWidget() const noexcept {
+    return d->contentWidget();
+}
+
+void VPopover::setPreferredContentSize(const QSize& size) {
+    d->setPreferredContentSize(size);
+}
+
+QSize VPopover::preferredContentSize() const noexcept {
+    return d->preferredContentSizeValue();
+}
+
+void VPopover::setContentMargins(const QMargins& margins) {
+    d->setContentMargins(margins);
+}
+
+QMargins VPopover::contentMargins() const noexcept {
+    return d->contentMargins();
+}
+
+void VPopover::refreshGeometry() {
+    d->refreshGeometry();
+}
+
+void VPopover::setPreferredPlacement(VPopoverPlacement placement) {
+    d->setPreferredPlacement(placement);
+}
+
+VPopoverPlacement VPopover::preferredPlacement() const noexcept {
+    return d->preferredPlacement;
+}
+
+VPopoverPlacement VPopover::resolvedPlacement() const noexcept {
+    return d->resolvedPlacementValue();
+}
+
+void VPopover::setCrossAxisAlignment(const VPopoverCrossAxisAlignment alignment) {
+    d->setCrossAxisAlignment(alignment);
+}
+
+VPopoverCrossAxisAlignment VPopover::crossAxisAlignment() const noexcept {
+    return d->crossAxisAlignment;
+}
+
+void VPopover::setBoundaryWidget(QWidget* boundary) {
+    d->setBoundaryWidget(boundary);
+}
+
+QWidget* VPopover::boundaryWidget() const noexcept {
+    return d->boundaryWidgetValue();
+}
+
+void VPopover::setBoundaryPlacements(const VPopoverBoundaryPlacements placements) {
+    d->setBoundaryPlacements(placements);
+}
+
+VPopoverBoundaryPlacements VPopover::boundaryPlacements() const noexcept {
+    return d->boundaryPlacementsValue();
+}
+
+void VPopover::setClosePolicy(VPopoverClosePolicy policy) {
+    d->setClosePolicy(policy);
+}
+
+VPopoverClosePolicy VPopover::closePolicy() const noexcept {
+    return d->closePolicy;
+}
+
+bool VPopover::isOpen() const noexcept {
+    return d->isOpen();
+}
+
+void VPopover::openFor(QWidget* anchor) {
+    openFor(anchor, {});
+}
+
+void VPopover::openFor(QWidget* anchor, const QRect& anchorRectInAnchor) {
+    d->openFor(anchor, anchorRectInAnchor);
+}
+
+bool VPopover::toggleFor(QWidget* anchor) {
+    return toggleFor(anchor, {});
+}
+
+bool VPopover::toggleFor(QWidget* anchor, const QRect& anchorRectInAnchor) {
+    return d->toggleFor(anchor, anchorRectInAnchor);
+}
+
+void VPopover::closeAnimated() {
+    d->closeAnimated();
+}
+
+void VPopover::closeImmediately() {
+    d->closeImmediately();
+}
+
+void VPopover::paintEvent(QPaintEvent* event) {
+    d->paint(event);
+}
+
+void VPopover::keyPressEvent(QKeyEvent* event) {
+    if (!d->handleKeyPress(event)) {
+        QWidget::keyPressEvent(event);
+    }
+}
+
+bool VPopover::event(QEvent* event) {
+    if (VPopoverPrivate* const eventPrivate = livePopoverPrivates().value(this, nullptr);
+        eventPrivate && eventPrivate->handleEvent(event)) {
+        return true;
+    }
+    return QWidget::event(event);
+}
+
+} // namespace vkui

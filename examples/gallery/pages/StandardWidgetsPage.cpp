@@ -2,10 +2,7 @@
 
 #include "StandardWidgetsPage.h"
 
-#include "../GalleryFileTreeView.h"
-
 #include <QCheckBox>
-#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QFrame>
@@ -18,7 +15,6 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRadioButton>
-#include <QScrollArea>
 #include <QScrollBar>
 #include <QSlider>
 #include <QSpinBox>
@@ -26,11 +22,12 @@
 #include <QTabBar>
 #include <QTableView>
 #include <QToolButton>
-#include <QTreeView>
 #include <QVBoxLayout>
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkIcon.h>
-#include <vkui/widgets/VkControlSize.h>
+#include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VControlSize.h>
+#include <vkui/widgets/views/VFileTreeView.h>
 
 namespace {
 
@@ -43,11 +40,11 @@ QLabel* makeIntroduction(const QString& text, QWidget* parent) {
 
 QStandardItemModel* makeListModel(QObject* parent) {
     auto* model = new QStandardItemModel(parent);
-    model->appendRow(new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::TextFile),
+    model->appendRow(new QStandardItem(vkui::icon(vkui::VkSymbol::FileText),
                                        StandardWidgetsPage::tr("Quarterly report")));
-    model->appendRow(new QStandardItem(
-        vkui::fileIcon(vkui::VkFileGlyph::FolderClosed, vkui::VkIconRole::Accent),
-        StandardWidgetsPage::tr("Design resources")));
+    model->appendRow(
+        new QStandardItem(vkui::icon(vkui::VkSymbol::FileFolderClosed, vkui::VkIconRole::Accent),
+                          StandardWidgetsPage::tr("Design resources")));
     model->appendRow(new QStandardItem(vkui::icon(vkui::VkSymbol::Share),
                                        StandardWidgetsPage::tr("Shared with me")));
     return model;
@@ -56,13 +53,7 @@ QStandardItemModel* makeListModel(QObject* parent) {
 } // namespace
 
 StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
-    auto* outer = new QVBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    auto* canvas = new QWidget(scrollArea);
+    auto* canvas = this;
     auto* layout = new QVBoxLayout(canvas);
     layout->setContentsMargins(4, 4, 14, 14);
     layout->setSpacing(14);
@@ -74,7 +65,7 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     title->setFont(titleFont);
     layout->addWidget(title);
     layout->addWidget(makeIntroduction(
-        tr("vkui keeps Qt's interaction, keyboard, and accessibility semantics while VkStyle "
+        tr("vkui keeps Qt's interaction, keyboard, and accessibility semantics while VStyle "
            "provides a unified visual language."),
         canvas));
 
@@ -106,14 +97,14 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     auto* choiceRow = new QHBoxLayout;
     auto* check = new QCheckBox(tr("Keep me signed in"), buttons);
     check->setChecked(true);
-    vkui::setControlSize(*check, vkui::VkControlSize::Small);
+    vkui::setControlSize(*check, vkui::VControlSize::Small);
     choiceRow->addWidget(check);
     auto* radioOne = new QRadioButton(tr("Balanced"), buttons);
     radioOne->setChecked(true);
-    vkui::setControlSize(*radioOne, vkui::VkControlSize::Regular);
+    vkui::setControlSize(*radioOne, vkui::VControlSize::Regular);
     choiceRow->addWidget(radioOne);
     auto* largeRadio = new QRadioButton(tr("High quality"), buttons);
-    vkui::setControlSize(*largeRadio, vkui::VkControlSize::Large);
+    vkui::setControlSize(*largeRadio, vkui::VControlSize::Large);
     choiceRow->addWidget(largeRadio);
     choiceRow->addStretch();
     buttonLayout->addLayout(choiceRow);
@@ -127,8 +118,9 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     search->addAction(vkui::icon(vkui::VkSymbol::Search, vkui::VkIconRole::Secondary),
                       QLineEdit::LeadingPosition);
     form->addRow(tr("Search"), search);
-    auto* combo = new QComboBox(inputs);
-    combo->addItems({tr("Personal"), tr("Team"), tr("Public")});
+    auto* combo = new vkui::VCombobox(inputs);
+    combo->addItems({tr("Personal"), tr("Team"), tr("Public"),
+                     tr("A workspace name that demonstrates screen-aware popup expansion")});
     form->addRow(tr("Workspace"), combo);
     auto* spinRow = new QHBoxLayout;
     auto* spin = new QSpinBox(inputs);
@@ -163,48 +155,31 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     list->setCurrentIndex(list->model()->index(0, 0));
     views->addWidget(list);
 
-    auto* tree = new GalleryFileTreeView(navigation);
+    auto* tree = new vkui::VFileTreeView(navigation);
+    tree->setSelectionMode(QAbstractItemView::NoSelection);
+    tree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto* treeModel = new QStandardItemModel(tree);
     auto makeFolder = [](const QString& text) {
-        auto* item =
-            new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::FolderClosed,
-                                             vkui::VkIconRole::Accent),
-                              text);
-        item->setData(true, Qt::UserRole + 1);
+        auto* item = new QStandardItem(text);
+        item->setData(true, vkui::VFileTreeDirectoryRole);
+        return item;
+    };
+    auto makeFile = [](const QString& text, const QString& path) {
+        auto* item = new QStandardItem(text);
+        item->setData(false, vkui::VFileTreeDirectoryRole);
+        item->setData(path, vkui::VFileTreePathRole);
         return item;
     };
     auto* rootItem = makeFolder(tr("vkui"));
     auto* sourceItem = makeFolder(tr("Source"));
-    sourceItem->appendRow(
-        new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::CodeFile), tr("VkStyle.cpp")));
-    sourceItem->appendRow(
-        new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::CodeFile), tr("VkSwitch.cpp")));
+    sourceItem->appendRow(makeFile(tr("VStyle.cpp"), QStringLiteral("src/VStyle.cpp")));
+    sourceItem->appendRow(makeFile(tr("VSwitch.cpp"), QStringLiteral("src/VSwitch.cpp")));
     rootItem->appendRow(sourceItem);
     rootItem->appendRow(makeFolder(tr("Empty folder")));
-    rootItem->appendRow(
-        new QStandardItem(vkui::fileIcon(vkui::VkFileGlyph::TextFile), tr("README.md")));
+    rootItem->appendRow(makeFile(tr("README.md"), QStringLiteral("README.md")));
     treeModel->appendRow(rootItem);
     tree->setModel(treeModel);
-    tree->setIconSize(QSize(18, 18));
     tree->setMinimumHeight(150);
-
-    auto updateFolderIcon = [treeModel](const QModelIndex& index, bool open) {
-        QStandardItem* item = treeModel->itemFromIndex(index);
-        if (item && item->data(Qt::UserRole + 1).toBool()) {
-            item->setIcon(vkui::fileIcon(open ? vkui::VkFileGlyph::FolderOpen
-                                              : vkui::VkFileGlyph::FolderClosed,
-                                         vkui::VkIconRole::Accent));
-        }
-    };
-    connect(tree, &QTreeView::expanded, tree,
-            [updateFolderIcon](const QModelIndex& index) { updateFolderIcon(index, true); });
-    connect(tree, &QTreeView::collapsed, tree,
-            [updateFolderIcon](const QModelIndex& index) { updateFolderIcon(index, false); });
-    connect(tree, &QTreeView::clicked, tree, [tree](const QModelIndex& index) {
-        if (tree->model()->hasChildren(index)) {
-            tree->setExpanded(index, !tree->isExpanded(index));
-        }
-    });
     tree->expand(rootItem->index());
     tree->expand(sourceItem->index());
     views->addWidget(tree);
@@ -240,7 +215,4 @@ StandardWidgetsPage::StandardWidgetsPage(QWidget* parent) : QWidget(parent) {
     frameLayout->addWidget(frame);
     layout->addWidget(frameGroup);
     layout->addStretch();
-
-    scrollArea->setWidget(canvas);
-    outer->addWidget(scrollArea);
 }

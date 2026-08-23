@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 
 #include "VkIconCache_p.h"
+#include "VkIconMaskCache_p.h"
 #include "VkSvgIconEngine_p.h"
+#include "VkSvgIconSourceCache_p.h"
 
-#include <QtCore/QFile>
 #include <QtCore/QtMath>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtSvg/QSvgRenderer>
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <utility>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
@@ -17,130 +20,12 @@
 namespace vkui {
 namespace {
 
-QString symbolName(const VkSymbol symbol) {
-    switch (symbol) {
-    case VkSymbol::ChevronLeft:
-        return QStringLiteral("chevron-left");
-    case VkSymbol::ChevronRight:
-        return QStringLiteral("chevron-right");
-    case VkSymbol::ChevronUp:
-        return QStringLiteral("chevron-up");
-    case VkSymbol::ChevronDown:
-        return QStringLiteral("chevron-down");
-    case VkSymbol::Plus:
-        return QStringLiteral("plus");
-    case VkSymbol::Minus:
-        return QStringLiteral("minus");
-    case VkSymbol::Close:
-        return QStringLiteral("close");
-    case VkSymbol::Checkmark:
-        return QStringLiteral("checkmark");
-    case VkSymbol::Information:
-        return QStringLiteral("information");
-    case VkSymbol::Warning:
-        return QStringLiteral("warning");
-    case VkSymbol::Settings:
-        return QStringLiteral("settings");
-    case VkSymbol::Search:
-        return QStringLiteral("search");
-    case VkSymbol::Folder:
-        return QStringLiteral("folder");
-    case VkSymbol::Document:
-        return QStringLiteral("document");
-    case VkSymbol::Share:
-        return QStringLiteral("share");
-    case VkSymbol::More:
-        return QStringLiteral("more");
-    case VkSymbol::ToggleOff:
-        return QStringLiteral("toggle-off");
-    case VkSymbol::ToggleOn:
-        return QStringLiteral("toggle-on");
-    case VkSymbol::Power:
-        return QStringLiteral("power");
-    case VkSymbol::Sidebar:
-        return QStringLiteral("sidebar");
-    case VkSymbol::Grid:
-        return QStringLiteral("grid");
-    case VkSymbol::List:
-        return QStringLiteral("list");
-    case VkSymbol::Edit:
-        return QStringLiteral("edit");
-    case VkSymbol::Bookmark:
-        return QStringLiteral("bookmark");
-    case VkSymbol::BookmarkFilled:
-        return QStringLiteral("bookmark-filled");
-    case VkSymbol::InsertAbove:
-        return QStringLiteral("insert-above");
-    case VkSymbol::InsertBelow:
-        return QStringLiteral("insert-below");
-    case VkSymbol::Trash:
-        return QStringLiteral("trash");
-    case VkSymbol::Download:
-        return QStringLiteral("download");
-    case VkSymbol::Install:
-        return QStringLiteral("install");
-    case VkSymbol::Upload:
-        return QStringLiteral("upload");
-    case VkSymbol::Lock:
-        return QStringLiteral("lock");
-    case VkSymbol::Eye:
-        return QStringLiteral("eye");
-    case VkSymbol::Save:
-        return QStringLiteral("save");
-    case VkSymbol::Reset:
-        return QStringLiteral("reset");
-    case VkSymbol::Duplicate:
-        return QStringLiteral("duplicate");
-    case VkSymbol::Templates:
-        return QStringLiteral("templates");
-    case VkSymbol::Image:
-        return QStringLiteral("image");
-    case VkSymbol::Background:
-        return QStringLiteral("background");
-    case VkSymbol::CanvasBackground:
-        return QStringLiteral("canvas-background");
-    case VkSymbol::PhotoLibrary:
-        return QStringLiteral("photo-library");
-    case VkSymbol::Focus:
-        return QStringLiteral("focus");
-    case VkSymbol::FocusTarget:
-        return QStringLiteral("focus-target");
-    case VkSymbol::Rename:
-        return QStringLiteral("rename");
-    case VkSymbol::Projects:
-        return QStringLiteral("projects");
-    case VkSymbol::Remove:
-        return QStringLiteral("remove");
-    case VkSymbol::Reveal:
-        return QStringLiteral("reveal");
-    case VkSymbol::Clear:
-        return QStringLiteral("clear");
-    case VkSymbol::DefaultTemplate:
-        return QStringLiteral("default-template");
-    case VkSymbol::UnsavedIndicator:
-        return QStringLiteral("unsaved-indicator");
-    }
-    return {};
-}
-
-QByteArray loadSource(const VkSymbol symbol) {
-    const QString name = symbolName(symbol);
-    if (name.isEmpty()) {
-        return {};
-    }
-
-    QFile file(QStringLiteral(":/vkui/icons/%1.svg").arg(name));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return file.readAll();
-}
-
 QColor blend(const QColor& foreground, const QColor& background, const qreal backgroundAmount) {
     const qreal amount = std::clamp(backgroundAmount, 0.0, 1.0);
     return QColor(qRound(foreground.red() * (1.0 - amount) + background.red() * amount),
                   qRound(foreground.green() * (1.0 - amount) + background.green() * amount),
-                  qRound(foreground.blue() * (1.0 - amount) + background.blue() * amount));
+                  qRound(foreground.blue() * (1.0 - amount) + background.blue() * amount),
+                  qRound(foreground.alpha() * (1.0 - amount) + background.alpha() * amount));
 }
 
 QColor contrastingColor(const QColor& background) {
@@ -207,13 +92,85 @@ ChannelColors channelColors(const VkColorTokens& tokens, const VkIconRole role,
     return colors;
 }
 
-QByteArray coloredSource(QByteArray source, const ChannelColors& colors) {
-    // The source assets use two deliberately impossible near-black literals.
-    // Replacing the complete six-digit tokens works for both fill and stroke
-    // attributes without imposing a particular SVG element structure.
-    source.replace("#000001", colors.primary.toRgb().name(QColor::HexRgb).toUtf8());
-    source.replace("#000002", colors.secondary.toRgb().name(QColor::HexRgb).toUtf8());
-    return source;
+ChannelColors applicationPaletteColors(const QPalette& palette, const QPalette::ColorRole role,
+                                       const QPalette::ColorGroup requestedGroup,
+                                       const QIcon::Mode mode) {
+    QPalette::ColorGroup group = requestedGroup;
+    if (mode == QIcon::Disabled) {
+        group = QPalette::Disabled;
+    }
+
+    QPalette::ColorRole resolvedRole = role;
+    if (mode == QIcon::Selected) {
+        switch (role) {
+        case QPalette::WindowText:
+        case QPalette::Text:
+        case QPalette::ButtonText:
+        case QPalette::ToolTipText:
+        case QPalette::PlaceholderText:
+            resolvedRole = QPalette::HighlightedText;
+            break;
+        default:
+            break;
+        }
+    }
+
+    const QColor primary = palette.color(group, resolvedRole);
+    return {primary, blend(primary, palette.color(group, QPalette::Window), 0.42)};
+}
+
+QImage renderSemanticMask(QByteArray source, const QSize& physicalSize) {
+    // Red and green encode the two semantic channels in one renderer pass. The premultiplied
+    // result preserves antialias coverage and SVG paint order while remaining color-independent.
+    source.replace("#000001", "#ff0000");
+    source.replace("#000002", "#00ff00");
+    QSvgRenderer renderer(source);
+    if (!renderer.isValid()) {
+        return {};
+    }
+
+    QImage mask(physicalSize, QImage::Format_ARGB32_Premultiplied);
+    mask.fill(Qt::transparent);
+    QPainter painter(&mask);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    renderer.render(&painter, QRectF(QPointF(0.0, 0.0), QSizeF(physicalSize)));
+    painter.end();
+    return mask;
+}
+
+int multiplyChannel(const int first, const int second) {
+    return (first * second + 127) / 255;
+}
+
+QImage colorizeSemanticMask(const QImage& mask, const ChannelColors& colors) {
+    if (mask.isNull()) {
+        return {};
+    }
+
+    QImage image(mask.size(), QImage::Format_ARGB32_Premultiplied);
+    const QColor primary = colors.primary.toRgb();
+    const QColor secondary = colors.secondary.toRgb();
+    for (int y = 0; y < mask.height(); ++y) {
+        const auto* source = reinterpret_cast<const QRgb*>(mask.constScanLine(y));
+        auto* destination = reinterpret_cast<QRgb*>(image.scanLine(y));
+        for (int x = 0; x < mask.width(); ++x) {
+            const int primaryCoverage = qRed(source[x]);
+            const int secondaryCoverage = qGreen(source[x]);
+            const int primaryWeight = multiplyChannel(primaryCoverage, primary.alpha());
+            const int secondaryWeight = multiplyChannel(secondaryCoverage, secondary.alpha());
+            const int alpha = std::min(255, primaryWeight + secondaryWeight);
+            const int red = multiplyChannel(primary.red(), primaryWeight) +
+                            multiplyChannel(secondary.red(), secondaryWeight);
+            const int green = multiplyChannel(primary.green(), primaryWeight) +
+                              multiplyChannel(secondary.green(), secondaryWeight);
+            const int blue = multiplyChannel(primary.blue(), primaryWeight) +
+                             multiplyChannel(secondary.blue(), secondaryWeight);
+            destination[x] = qRgba(std::min(255, red), std::min(255, green),
+                                   std::min(255, blue), alpha);
+        }
+    }
+    return image;
 }
 
 qreal normalizedDevicePixelRatio(const qreal value) {
@@ -230,49 +187,26 @@ qint64 encodedDevicePixelRatio(const qreal value) {
 } // namespace
 
 VkSvgIconEngine::VkSvgIconEngine(const VkSymbol symbol, const VkIconRole role)
-    : symbol_(symbol), role_(role), source_(loadSource(symbol)) {
-    if (!source_.isEmpty()) {
-        const QSvgRenderer renderer(source_);
-        if (renderer.isValid()) {
-            intrinsicSize_ = renderer.defaultSize();
-        }
-    }
-    if (intrinsicSize_.isEmpty()) {
-        intrinsicSize_ = QSize(24, 24);
-    }
-}
+    : symbol_(symbol), role_(role), source_(VkSvgIconSourceCache::source(symbol)) {}
 
-VkSvgIconEngine::VkSvgIconEngine(
-    const VkSymbol symbol,
-    QColor primary,
-    QColor secondary)
-    : symbol_(symbol),
-      role_(VkIconRole::Primary),
-      explicitPrimary_(std::move(primary)),
-      explicitSecondary_(std::move(secondary)),
-      usesExplicitColors_(true),
-      source_(loadSource(symbol)) {
+VkSvgIconEngine::VkSvgIconEngine(const VkSymbol symbol, const QPalette::ColorRole role,
+                                 const QPalette::ColorGroup group)
+    : symbol_(symbol), role_(VkIconRole::Primary), paletteRole_(role), paletteGroup_(group),
+      usesApplicationPalette_(true), source_(VkSvgIconSourceCache::source(symbol)) {}
+
+VkSvgIconEngine::VkSvgIconEngine(const VkSymbol symbol, QColor primary, QColor secondary)
+    : symbol_(symbol), role_(VkIconRole::Primary), explicitPrimary_(std::move(primary)),
+      explicitSecondary_(std::move(secondary)), usesExplicitColors_(true),
+      source_(VkSvgIconSourceCache::source(symbol)) {
     if (!explicitSecondary_.isValid()) {
-        const QColor presumedSurface = explicitPrimary_.lightnessF() > 0.5
-            ? QColor(Qt::black) : QColor(Qt::white);
-        explicitSecondary_ = blend(
-            explicitPrimary_, presumedSurface, 0.42);
-    }
-    if (!source_.isEmpty()) {
-        const QSvgRenderer renderer(source_);
-        if (renderer.isValid()) {
-            intrinsicSize_ = renderer.defaultSize();
-        }
-    }
-    if (intrinsicSize_.isEmpty()) {
-        intrinsicSize_ = QSize(24, 24);
+        const QColor presumedSurface =
+            explicitPrimary_.lightnessF() > 0.5 ? QColor(Qt::black) : QColor(Qt::white);
+        explicitSecondary_ = blend(explicitPrimary_, presumedSurface, 0.42);
     }
 }
 
 QIconEngine* VkSvgIconEngine::clone() const {
-    return usesExplicitColors_
-        ? new VkSvgIconEngine(symbol_, explicitPrimary_, explicitSecondary_)
-        : new VkSvgIconEngine(symbol_, role_);
+    return new VkSvgIconEngine(*this);
 }
 
 QString VkSvgIconEngine::key() const {
@@ -280,10 +214,10 @@ QString VkSvgIconEngine::key() const {
 }
 
 QSize VkSvgIconEngine::actualSize(const QSize& size, QIcon::Mode, QIcon::State) {
-    if (size.isEmpty() || intrinsicSize_.isEmpty()) {
+    if (size.isEmpty() || !source_ || source_->intrinsicSize.isEmpty()) {
         return {};
     }
-    return intrinsicSize_.scaled(size, Qt::KeepAspectRatio);
+    return source_->intrinsicSize.scaled(size, Qt::KeepAspectRatio);
 }
 
 QPixmap VkSvgIconEngine::pixmap(const QSize& size, const QIcon::Mode mode,
@@ -307,7 +241,7 @@ QPixmap VkSvgIconEngine::scaledPixmap(const QSize& size, const QIcon::Mode mode,
 
 void VkSvgIconEngine::paint(QPainter* painter, const QRect& rect, const QIcon::Mode mode,
                             const QIcon::State state) {
-    if (painter == nullptr || rect.isEmpty() || source_.isEmpty()) {
+    if (painter == nullptr || rect.isEmpty() || !source_) {
         return;
     }
 
@@ -334,16 +268,23 @@ void VkSvgIconEngine::paint(QPainter* painter, const QRect& rect, const QIcon::M
 QPixmap VkSvgIconEngine::renderPixmap(const QSize& requestedSize,
                                       const qreal requestedDevicePixelRatio, const QIcon::Mode mode,
                                       const QIcon::State state) const {
-    if (source_.isEmpty() || requestedSize.isEmpty()) {
+    if (!source_ || requestedSize.isEmpty()) {
         return {};
     }
 
-    const QSize logicalSize = intrinsicSize_.scaled(requestedSize, Qt::KeepAspectRatio);
+    const QSize logicalSize = source_->intrinsicSize.scaled(requestedSize, Qt::KeepAspectRatio);
     if (logicalSize.isEmpty()) {
         return {};
     }
 
-    const VkTheme& theme = VkThemeManager::instance()->theme();
+    const VkTheme* theme = nullptr;
+    std::optional<QPalette> applicationPalette;
+    if (usesApplicationPalette_) {
+        applicationPalette.emplace(QGuiApplication::palette());
+    } else if (!usesExplicitColors_) {
+        theme = &VkThemeManager::instance()->theme();
+    }
+
     VkIconCacheKey cacheKey;
     cacheKey.symbol = symbol_;
     cacheKey.role = role_;
@@ -351,11 +292,17 @@ QPixmap VkSvgIconEngine::renderPixmap(const QSize& requestedSize,
     cacheKey.devicePixelRatio = encodedDevicePixelRatio(requestedDevicePixelRatio);
     cacheKey.mode = mode;
     cacheKey.state = state;
-    cacheKey.themeGeneration = usesExplicitColors_ ? 0 : theme.generation();
+    cacheKey.colorGeneration =
+        usesExplicitColors_
+            ? 0
+            : (usesApplicationPalette_ ? static_cast<quint64>(applicationPalette->cacheKey())
+                                       : theme->colorGeneration());
     if (usesExplicitColors_) {
+        cacheKey.colorIdentity = (static_cast<quint64>(explicitPrimary_.rgba()) << 32U) |
+                                 static_cast<quint64>(explicitSecondary_.rgba());
+    } else if (usesApplicationPalette_) {
         cacheKey.colorIdentity =
-            (static_cast<quint64>(explicitPrimary_.rgba()) << 32U)
-            | static_cast<quint64>(explicitSecondary_.rgba());
+            (static_cast<quint64>(paletteGroup_) << 32U) | static_cast<quint64>(paletteRole_);
     }
 
     QPixmap cached;
@@ -366,26 +313,26 @@ QPixmap VkSvgIconEngine::renderPixmap(const QSize& requestedSize,
     const qreal devicePixelRatio = static_cast<qreal>(cacheKey.devicePixelRatio) / 1024.0;
     const QSize physicalSize(std::max(1, qCeil(logicalSize.width() * devicePixelRatio)),
                              std::max(1, qCeil(logicalSize.height() * devicePixelRatio)));
-    QImage image(physicalSize, QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-
-    ChannelColors colors = usesExplicitColors_
-        ? ChannelColors{explicitPrimary_, explicitSecondary_}
-        : channelColors(theme.colors(), role_, mode, state);
+    ChannelColors colors =
+        usesExplicitColors_
+            ? ChannelColors{explicitPrimary_, explicitSecondary_}
+            : (usesApplicationPalette_
+                   ? applicationPaletteColors(*applicationPalette, paletteRole_, paletteGroup_, mode)
+                   : channelColors(theme->colors(), role_, mode, state));
     if (usesExplicitColors_ && mode == QIcon::Disabled) {
         colors.primary = colors.secondary;
     }
-    const QByteArray svg = coloredSource(source_, colors);
-    QSvgRenderer renderer(svg);
-    if (!renderer.isValid()) {
+
+    const VkIconMaskCacheKey maskKey{symbol_, physicalSize};
+    QImage mask;
+    if (!VkIconMaskCache::instance().lookup(maskKey, &mask)) {
+        mask = renderSemanticMask(source_->source, physicalSize);
+        VkIconMaskCache::instance().insert(maskKey, mask);
+    }
+    QImage image = colorizeSemanticMask(mask, colors);
+    if (image.isNull()) {
         return {};
     }
-
-    QPainter imagePainter(&image);
-    imagePainter.setRenderHint(QPainter::Antialiasing, true);
-    imagePainter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-    renderer.render(&imagePainter, QRectF(QPointF(0.0, 0.0), QSizeF(physicalSize)));
-    imagePainter.end();
 
     QPixmap result = QPixmap::fromImage(std::move(image));
     result.setDevicePixelRatio(devicePixelRatio);

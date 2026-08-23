@@ -60,10 +60,14 @@ VkCore::Implementation::Implementation()
         line + 1 < buffer.lineStarts.size()
         ? buffer.lineStarts[line + 1]
         : buffer.text().size();
-    return rawEnd > start
-               && buffer.text()[rawEnd - 1] == u'\n'
-        ? rawEnd - start - 1
-        : rawEnd - start;
+    std::size_t contentEnd = rawEnd;
+    if (contentEnd > start && buffer.text()[contentEnd - 1] == u'\n') {
+        --contentEnd;
+    }
+    if (contentEnd > start && buffer.text()[contentEnd - 1] == u'\r') {
+        --contentEnd;
+    }
+    return contentEnd - start;
 }
 
 [[nodiscard]] std::size_t VkCore::Implementation::graphemeCellWidth(
@@ -201,10 +205,8 @@ VkCore::Implementation::Implementation()
             .first->second;
     }
 
-    const QString text = QString::fromRawData(
-        reinterpret_cast<const QChar *>(
-            buffer.text().data() + start),
-        static_cast<qsizetype>(length));
+    const std::u16string lineText = buffer.text().substr(start, length);
+    const QString text = QString::fromUtf16(lineText.data(), static_cast<qsizetype>(length));
     QTextBoundaryFinder boundaries(
         QTextBoundaryFinder::Grapheme, text);
     std::size_t bufferColumn = 0;
@@ -234,14 +236,10 @@ VkCore::Implementation::Implementation()
         const bool tab = bufferEnd == bufferColumn + 1
             && buffer.text()[start + bufferColumn]
                 == u'\t';
-        const std::size_t cellWidth = tab
-            ? buffer.tabStop
-                - (displayColumn % buffer.tabStop)
-            : graphemeCellWidth(
-                  std::u16string_view(
-                      buffer.text().data()
-                          + start + bufferColumn,
-                      bufferEnd - bufferColumn));
+        const std::size_t cellWidth =
+            tab ? buffer.tabStop - (displayColumn % buffer.tabStop)
+                : graphemeCellWidth(std::u16string_view(lineText.data() + bufferColumn,
+                                                        bufferEnd - bufferColumn));
         if (tab
             || bufferEnd - bufferColumn != 1
             || cellWidth != 1) {

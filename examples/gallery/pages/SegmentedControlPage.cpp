@@ -7,7 +7,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <vkui/core/VkIcon.h>
-#include <vkui/widgets/controls/VkSegmentedControl.h>
+#include <vkui/widgets/controls/VSegmentedControl.h>
 
 SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -29,7 +29,7 @@ SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
 
     auto* variants = new QGroupBox(tr("Content variants"), this);
     auto* variantLayout = new QVBoxLayout(variants);
-    auto* textSegments = new vkui::VkSegmentedControl(variants);
+    auto* textSegments = new vkui::VSegmentedControl(variants);
     textSegments->addSegment(tr("Day"));
     textSegments->addSegment(tr("Week"));
     textSegments->addSegment(tr("Month"));
@@ -37,7 +37,7 @@ SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
     textSegments->setAccessibleName(tr("Time range"));
     variantLayout->addWidget(textSegments);
 
-    auto* iconSegments = new vkui::VkSegmentedControl(variants);
+    auto* iconSegments = new vkui::VSegmentedControl(variants);
     iconSegments->addSegment(vkui::icon(vkui::VkSymbol::Document));
     iconSegments->addSegment(vkui::icon(vkui::VkSymbol::Folder));
     iconSegments->addSegment(vkui::icon(vkui::VkSymbol::Share));
@@ -48,7 +48,7 @@ SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
     iconSegments->setAccessibleName(tr("Content type: document, folder, or shared"));
     variantLayout->addWidget(iconSegments);
 
-    auto* mixedSegments = new vkui::VkSegmentedControl(variants);
+    auto* mixedSegments = new vkui::VSegmentedControl(variants);
     mixedSegments->addSegment(vkui::icon(vkui::VkSymbol::Information), tr("Summary"));
     mixedSegments->addSegment(vkui::icon(vkui::VkSymbol::Settings), tr("Options"));
     mixedSegments->addSegment(vkui::icon(vkui::VkSymbol::Share), tr("Sharing"));
@@ -60,7 +60,7 @@ SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
 
     auto* dynamicGroup = new QGroupBox(tr("Dynamic segments"), this);
     auto* dynamicLayout = new QVBoxLayout(dynamicGroup);
-    auto* dynamic = new vkui::VkSegmentedControl(dynamicGroup);
+    auto* dynamic = new vkui::VSegmentedControl(dynamicGroup);
     dynamic->addSegment(tr("Alpha"));
     dynamic->addSegment(tr("Beta"));
     dynamic->addSegment(tr("Gamma"));
@@ -90,7 +90,7 @@ SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
 
     auto* rtlGroup = new QGroupBox(tr("Right-to-left keyboard order"), this);
     auto* rtlLayout = new QVBoxLayout(rtlGroup);
-    auto* rtl = new vkui::VkSegmentedControl(rtlGroup);
+    auto* rtl = new vkui::VSegmentedControl(rtlGroup);
     rtl->setLayoutDirection(Qt::RightToLeft);
     rtl->addSegment(QStringLiteral("الأول"));
     rtl->addSegment(QStringLiteral("الثاني"));

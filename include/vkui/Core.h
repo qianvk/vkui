@@ -12,5 +12,6 @@
 #include <vkui/core/VkMetricTokens.h>
 #include <vkui/core/VkMotion.h>
 #include <vkui/core/VkTheme.h>
+#include <vkui/core/VkThemeChange.h>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/core/VkTypographyTokens.h>

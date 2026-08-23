@@ -2,6 +2,8 @@
 
 #include "GalleryWindow.h"
 
+#include "GalleryContentView.h"
+
 #include "pages/IconsPage.h"
 #include "pages/LocalizationPage.h"
 #include "pages/MotionPage.h"
@@ -10,31 +12,40 @@
 #include "pages/StandardWidgetsPage.h"
 #include "pages/SwitchPage.h"
 #include "pages/ThemePage.h"
+#include "pages/WindowPage.h"
 
 #include <QApplication>
-#include <QComboBox>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
+#include <QItemSelectionModel>
 #include <QLabel>
-#include <QListView>
 #include <QLocale>
-#include <QStackedWidget>
-#include <QStringListModel>
-#include <QToolButton>
+#include <QStandardItem>
+#include <QStandardItemModel>
 #include <QVBoxLayout>
-#include <vkui/core/VkIcon.h>
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkThemeManager.h>
-#include <vkui/window/VkWindowAgent.h>
+#include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/controls/VSplitter.h>
+#include <vkui/widgets/views/VTreeView.h>
 
-GalleryWindow::GalleryWindow(QWidget* parent) : QMainWindow(parent) {
-    setAttribute(Qt::WA_DontCreateNativeAncestors);
-    windowAgent_ = new vkui::VkWindowAgent(this);
-    if (windowAgent_->setup(this)) {
-        nativeSystemButtonsAvailable_ = windowAgent_->installSystemButtons();
-        windowAgent_->setSystemButtonVisibility(
-            vkui::VkWindowAgent::SystemButtonVisibility::AlwaysVisible);
-    }
+namespace {
+
+constexpr int PageIndexRole = Qt::UserRole + 1;
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+constexpr QPoint GalleryTrafficLightOrigin{15, 15};
+#endif
+
+} // namespace
+
+GalleryWindow::GalleryWindow(QWidget* parent) : QWidget(parent, Qt::Window), windowAgent_(*this) {
+    auto* windowLayout = new QVBoxLayout(this);
+    windowLayout->setContentsMargins(0, 0, 0, 0);
+    windowLayout->setSpacing(0);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    windowAgent_.setTrafficLightOrigin(GalleryTrafficLightOrigin);
+#endif
     language_ = Language::System;
     applyLanguage(language_);
     setMinimumSize(880, 620);
@@ -59,140 +70,161 @@ void GalleryWindow::rebuildCentralWidget() {
     if (pages_ != nullptr) {
         currentPage_ = pages_->currentIndex();
     }
-
-    if (windowAgent_ != nullptr) {
-        windowAgent_->clearTitleBars();
+    if (splitter_ != nullptr && !splitter_->sizes().isEmpty()) {
+        navigationWidth_ = splitter_->sizes().constFirst();
     }
 
-    auto* central = new QWidget(this);
-    central->setObjectName(QStringLiteral("galleryRoot"));
-    auto* rootLayout = new QVBoxLayout(central);
-    rootLayout->setContentsMargins(0, 0, 0, 20);
+    windowAgent_.clearTitleBars();
+    delete central_;
+    central_ = nullptr;
+
+    central_ = new QWidget(this);
+    central_->setObjectName(QStringLiteral("galleryRoot"));
+    auto* rootLayout = new QVBoxLayout(central_);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    auto* titleBarRow = new QHBoxLayout;
-    titleBarRow->setContentsMargins(0, 0, 0, 0);
-    titleBarRow->setSpacing(0);
+    splitter_ = new vkui::VSplitter(Qt::Horizontal, central_);
+    splitter_->setObjectName(QStringLiteral("galleryPanelSplitter"));
+    splitter_->setChildrenCollapsible(false);
+    splitter_->setOpaqueResize(true);
+    rootLayout->addWidget(splitter_);
 
-    auto* navigationTitleBar = new QWidget(central);
+    auto* navigationPanel = new QWidget(splitter_);
+    navigationPanel->setObjectName(QStringLiteral("galleryNavigationPanel"));
+    navigationPanel->setBackgroundRole(QPalette::Window);
+    navigationPanel->setAutoFillBackground(true);
+    navigationPanel->setMinimumWidth(176);
+    auto* navigationPanelLayout = new QGridLayout(navigationPanel);
+    navigationPanelLayout->setContentsMargins(0, 0, 0, 0);
+    navigationPanelLayout->setSpacing(0);
+
+    auto* navigationTitleBar = new QWidget(navigationPanel);
     navigationTitleBar->setObjectName(QStringLiteral("galleryNavigationTitleBar"));
-    navigationTitleBar->setAttribute(Qt::WA_StyledBackground, true);
-    navigationTitleBar->setFixedHeight(56);
-    navigationTitleBar->setMinimumWidth(215);
-    navigationTitleBar->setMaximumWidth(245);
-    auto* navigationTitleLayout = new QHBoxLayout(navigationTitleBar);
-#ifdef Q_OS_MAC
-    navigationTitleLayout->setContentsMargins(86, 0, 12, 0);
-#else
-    navigationTitleLayout->setContentsMargins(20, 0, 12, 0);
-#endif
-    auto* brand = new QLabel(tr("vkui Gallery"), navigationTitleBar);
-    QFont brandFont = brand->font();
-    brandFont.setPointSizeF(brandFont.pointSizeF() + 4.0);
-    brandFont.setWeight(QFont::DemiBold);
-    brand->setFont(brandFont);
-    navigationTitleLayout->addWidget(brand);
-    titleBarRow->addWidget(navigationTitleBar);
+    navigationTitleBar->setFixedHeight(GalleryContentView::TitleBarHeight);
+    navigationTitleBar->setAutoFillBackground(false);
+    navigationTitleBar->setAttribute(Qt::WA_StyledBackground, false);
 
-    auto* contentTitleBar = new QWidget(central);
-    contentTitleBar->setObjectName(QStringLiteral("galleryContentTitleBar"));
-    contentTitleBar->setAttribute(Qt::WA_StyledBackground, true);
-    contentTitleBar->setFixedHeight(56);
-    auto* contentTitleLayout = new QHBoxLayout(contentTitleBar);
+    auto* navigationBody = new QWidget(navigationPanel);
+    auto* navigationBodyLayout = new QVBoxLayout(navigationBody);
+    navigationBodyLayout->setContentsMargins(
+        12, GalleryContentView::TitleBarHeight, 8, 12);
+    navigationBodyLayout->setSpacing(0);
+    navigation_ = new vkui::VTreeView(navigationBody);
+    navigation_->setObjectName(QStringLiteral("galleryNavigation"));
+    navigation_->setBackgroundRole(QPalette::Window);
+    navigation_->viewport()->setBackgroundRole(QPalette::Window);
+    navigation_->setAccessibleName(tr("Component pages"));
+    navigation_->setHeaderHidden(true);
+    navigation_->setFrameShape(QFrame::NoFrame);
+    navigation_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    navigation_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    navigation_->setSelectionMode(QAbstractItemView::SingleSelection);
+    navigation_->setUniformRowHeights(true);
+    navigation_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    navigation_->setIndentation(18);
+
+    navigationModel_ = new QStandardItemModel(navigation_);
+    const auto addGroup = [this](const QString& text) {
+        auto* group = new QStandardItem(text);
+        group->setFlags(Qt::ItemIsEnabled);
+        navigationModel_->appendRow(group);
+        return group;
+    };
+    const auto addPage = [](QStandardItem* group, const QString& text, const int pageIndex) {
+        auto* page = new QStandardItem(text);
+        page->setData(pageIndex, PageIndexRole);
+        page->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        group->appendRow(page);
+    };
+
+    QStandardItem* controls = addGroup(tr("Controls"));
+    addPage(controls, tr("Standard Widgets"), 0);
+    addPage(controls, tr("Switch"), 1);
+    addPage(controls, tr("Segmented Control"), 2);
+    addPage(controls, tr("Popover"), 3);
+    QStandardItem* foundation = addGroup(tr("Foundation"));
+    addPage(foundation, tr("Theme"), 4);
+    addPage(foundation, tr("Icons"), 5);
+    addPage(foundation, tr("Motion"), 6);
+    addPage(foundation, tr("Localization"), 7);
+    addPage(foundation, tr("Window"), 8);
+
+    navigation_->setModel(navigationModel_);
+    navigation_->expandAll();
+    navigationBodyLayout->addWidget(navigation_);
+    navigationPanelLayout->addWidget(navigationTitleBar, 0, 0, Qt::AlignTop);
+    navigationPanelLayout->addWidget(navigationBody, 0, 0);
+    navigationTitleBar->lower();
+    splitter_->addWidget(navigationPanel);
+
+    auto* contentPanel = new QWidget(splitter_);
+    contentPanel->setObjectName(QStringLiteral("galleryContentPanel"));
+    contentPanel->setBackgroundRole(QPalette::Base);
+    contentPanel->setAutoFillBackground(true);
+    contentPanel->setMinimumWidth(520);
+    auto* contentPanelLayout = new QVBoxLayout(contentPanel);
+    contentPanelLayout->setContentsMargins(0, 0, 0, 0);
+    contentPanelLayout->setSpacing(0);
+
+    pages_ = new GalleryContentView(contentPanel);
+    contentPanelLayout->addWidget(pages_);
+    auto* contentTitleBar = pages_->titleBar();
+    auto* contentTitleLayout = pages_->titleBarLayout();
     contentTitleLayout->setContentsMargins(18, 0, 14, 0);
     contentTitleLayout->addStretch();
 
-    contentTitleLayout->addWidget(new QLabel(tr("Appearance"), contentTitleBar));
-    appearanceBox_ = new QComboBox(contentTitleBar);
+    contentTitleLayout->addWidget(new QLabel(tr("Appearance"), pages_));
+    appearanceBox_ = new vkui::VCombobox(pages_);
     appearanceBox_->addItem(tr("System"), static_cast<int>(vkui::VkAppearance::Auto));
     appearanceBox_->addItem(tr("Light"), static_cast<int>(vkui::VkAppearance::Light));
     appearanceBox_->addItem(tr("Dark"), static_cast<int>(vkui::VkAppearance::Dark));
+    appearanceBox_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     const int appearanceIndex =
         appearanceBox_->findData(static_cast<int>(vkui::VkThemeManager::instance()->appearance()));
     appearanceBox_->setCurrentIndex(qMax(0, appearanceIndex));
     contentTitleLayout->addWidget(appearanceBox_);
 
     contentTitleLayout->addSpacing(10);
-    contentTitleLayout->addWidget(new QLabel(tr("Language"), contentTitleBar));
-    languageBox_ = new QComboBox(contentTitleBar);
+    contentTitleLayout->addWidget(new QLabel(tr("Language"), pages_));
+    languageBox_ = new vkui::VCombobox(pages_);
     languageBox_->addItem(tr("System"), static_cast<int>(Language::System));
     languageBox_->addItem(QStringLiteral("English"), static_cast<int>(Language::English));
     languageBox_->addItem(QStringLiteral("简体中文"),
                           static_cast<int>(Language::SimplifiedChinese));
+    languageBox_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     languageBox_->setCurrentIndex(qMax(0, languageBox_->findData(static_cast<int>(language_))));
     contentTitleLayout->addWidget(languageBox_);
 
     QList<QWidget*> interactiveWidgets{appearanceBox_, languageBox_};
-    if (nativeSystemButtonsAvailable_) {
 #ifndef Q_OS_MAC
-        contentTitleLayout->addSpacing(132);
+    // DWM owns the right-aligned caption controls and their hit testing.
+    constexpr int kCaptionButtonReserve = 144;
+    contentTitleLayout->addSpacing(kCaptionButtonReserve);
 #endif
-    } else {
-        auto makeCaptionButton = [contentTitleBar](const QIcon& icon, const QString& tooltip) {
-            auto* button = new QToolButton(contentTitleBar);
-            button->setAutoRaise(true);
-            button->setFocusPolicy(Qt::NoFocus);
-            button->setIcon(icon);
-            button->setIconSize(QSize(14, 14));
-            button->setToolTip(tooltip);
-            button->setFixedSize(36, 32);
-            return button;
-        };
-        auto* minimizeButton =
-            makeCaptionButton(vkui::icon(vkui::VkSymbol::Minus), tr("Minimize"));
-        auto* maximizeButton =
-            makeCaptionButton(vkui::icon(vkui::VkSymbol::Plus), tr("Maximize"));
-        auto* closeButton =
-            makeCaptionButton(vkui::icon(vkui::VkSymbol::Close), tr("Close"));
-        connect(minimizeButton, &QToolButton::clicked, this, &QWidget::showMinimized);
-        connect(maximizeButton, &QToolButton::clicked, this, [this] {
-            isMaximized() ? showNormal() : showMaximized();
-        });
-        connect(closeButton, &QToolButton::clicked, this, &QWidget::close);
-        contentTitleLayout->addWidget(minimizeButton);
-        contentTitleLayout->addWidget(maximizeButton);
-        contentTitleLayout->addWidget(closeButton);
-        interactiveWidgets.append({minimizeButton, maximizeButton, closeButton});
-    }
-    titleBarRow->addWidget(contentTitleBar, 1);
-    rootLayout->addLayout(titleBarRow);
-
-    auto* separator = new QFrame(central);
-    separator->setFrameShape(QFrame::HLine);
-    rootLayout->addWidget(separator);
-
-    auto* contentLayout = new QHBoxLayout;
-    contentLayout->setContentsMargins(20, 14, 20, 0);
-    contentLayout->setSpacing(18);
-    navigation_ = new QListView(central);
-    navigation_->setObjectName(QStringLiteral("galleryNavigation"));
-    navigation_->setAccessibleName(tr("Component pages"));
-    navigation_->setMaximumWidth(205);
-    navigation_->setMinimumWidth(175);
-    navigation_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    navigationModel_ = new QStringListModel({tr("Standard Widgets"), tr("Switch"),
-                                             tr("Segmented Control"), tr("Popover"), tr("Theme"),
-                                             tr("Icons"), tr("Motion"), tr("Localization")},
-                                            navigation_);
-    navigation_->setModel(navigationModel_);
-    contentLayout->addWidget(navigation_);
-
-    pages_ = new QStackedWidget(central);
-    pages_->addWidget(new StandardWidgetsPage(pages_));
-    pages_->addWidget(new SwitchPage(pages_));
-    pages_->addWidget(new SegmentedControlPage(pages_));
-    pages_->addWidget(new PopoverPage(pages_));
-    pages_->addWidget(new ThemePage(pages_));
-    pages_->addWidget(new IconsPage(pages_));
-    pages_->addWidget(new MotionPage(pages_));
-    pages_->addWidget(new LocalizationPage(pages_));
-    contentLayout->addWidget(pages_, 1);
-    rootLayout->addLayout(contentLayout, 1);
+    pages_->addPage(new StandardWidgetsPage(pages_));
+    pages_->addPage(new SwitchPage(pages_));
+    pages_->addPage(new SegmentedControlPage(pages_));
+    pages_->addPage(new PopoverPage(pages_));
+    pages_->addPage(new ThemePage(pages_));
+    pages_->addPage(new IconsPage(pages_));
+    pages_->addPage(new MotionPage(pages_));
+    pages_->addPage(new LocalizationPage(pages_));
+    auto* windowPage = new WindowPage(windowAgent_, pages_);
+    connect(windowPage, &WindowPage::preferencesRequested, this,
+            &GalleryWindow::preferencesRequested);
+    pages_->addPage(windowPage);
+    splitter_->addWidget(contentPanel);
+    splitter_->setStretchFactor(0, 0);
+    splitter_->setStretchFactor(1, 1);
+    splitter_->setSizes({navigationWidth_, qMax(520, width() - navigationWidth_)});
 
     connect(navigation_->selectionModel(), &QItemSelectionModel::currentChanged, this,
             [this](const QModelIndex& current) {
-                if (current.isValid()) {
-                    currentPage_ = current.row();
+                bool validPage = false;
+                const int pageIndex = current.data(PageIndexRole).toInt(&validPage);
+                if (validPage && pageIndex >= 0 && pageIndex < pages_->count()) {
+                    currentPage_ = pageIndex;
                     pages_->setCurrentIndex(currentPage_);
                 }
             });
@@ -205,26 +237,42 @@ void GalleryWindow::rebuildCentralWidget() {
     });
 
     currentPage_ = qBound(0, currentPage_, pages_->count() - 1);
-    navigation_->setCurrentIndex(navigationModel_->index(currentPage_));
+    QModelIndex currentNavigationIndex;
+    for (int groupRow = 0; groupRow < navigationModel_->rowCount(); ++groupRow) {
+        const QModelIndex groupIndex = navigationModel_->index(groupRow, 0);
+        for (int pageRow = 0; pageRow < navigationModel_->rowCount(groupIndex); ++pageRow) {
+            const QModelIndex pageIndex = navigationModel_->index(pageRow, 0, groupIndex);
+            if (pageIndex.data(PageIndexRole).toInt() == currentPage_) {
+                currentNavigationIndex = pageIndex;
+                break;
+            }
+        }
+        if (currentNavigationIndex.isValid()) {
+            break;
+        }
+    }
+    navigation_->setCurrentIndex(currentNavigationIndex);
     pages_->setCurrentIndex(currentPage_);
-    setCentralWidget(central);
+    layout()->addWidget(central_);
 
+    interactiveWidgets.append(splitter_->handle(1));
     registerWindowChrome(navigationTitleBar, contentTitleBar, interactiveWidgets);
 }
 
-void GalleryWindow::registerWindowChrome(
-    QWidget* navigationTitleBar, QWidget* contentTitleBar,
-    const QList<QWidget*>& interactiveWidgets) {
-    if (windowAgent_ == nullptr) {
-        return;
-    }
-
-    const bool navigationAdded = windowAgent_->addTitleBar(navigationTitleBar);
-    const bool contentAdded = windowAgent_->addTitleBar(contentTitleBar);
+void GalleryWindow::registerWindowChrome(QWidget* navigationTitleBar, QWidget* contentTitleBar,
+                                         const QList<QWidget*>& interactiveWidgets) {
+    const bool navigationAdded = windowAgent_.addTitleBar(navigationTitleBar);
+    const bool contentAdded = windowAgent_.addTitleBar(contentTitleBar);
     Q_ASSERT(navigationAdded);
     Q_ASSERT(contentAdded);
     for (QWidget* widget : interactiveWidgets) {
-        windowAgent_->setHitTestVisible(widget, true);
+        if (widget == nullptr) {
+            continue;
+        }
+        // Hit-test exclusions are window-scoped. This keeps full-height
+        // splitter handles interactive across every registered title bar.
+        const bool registered = windowAgent_.setHitTestVisible(widget, true);
+        Q_ASSERT(registered);
     }
 }
 

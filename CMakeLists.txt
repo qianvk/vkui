@@ -13,38 +13,29 @@ project(
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+if(APPLE OR WIN32)
+    set(_vkui_native_window_default ON)
+else()
+    set(_vkui_native_window_default OFF)
+endif()
+
 option(VKUI_BUILD_SHARED "Build VkUI as shared libraries" ON)
-option(VKUI_BUILD_EXAMPLES "Build the component gallery" ON)
+option(VKUI_BUILD_EXAMPLES "Build the component gallery"
+       ${_vkui_native_window_default})
+option(VKUI_BUILD_ICON_CHOSEN "Build the temporary SVG icon selection tool"
+       ${VKUI_BUILD_EXAMPLES})
 option(VKUI_BUILD_TESTS "Build unit tests" ON)
 option(VKUI_INSTALL "Generate installation rules" ON)
-option(VKUI_BUILD_WINDOW "Build the integrated native window module" ON)
+option(VKUI_BUILD_WINDOW "Build the macOS/Windows native window module"
+       ${_vkui_native_window_default})
 option(VKUI_BUILD_INTERACTION
        "Build the modal interaction, buffer, panel, and widget adapters" ON)
-option(VKUI_BUILD_WINDOW_QUICK
-       "Build the internal Qt Quick migration validation target" OFF)
-option(VKUI_WINDOW_FORCE_QT_CONTEXT
-       "Use the portable Qt frameless context instead of native contexts" OFF)
-option(VKUI_WINDOW_ENABLE_STYLE_AGENT "Build native window style integration" ON)
-option(VKUI_WINDOW_ENABLE_WINDOWS_SYSTEM_BORDERS
-       "Preserve Windows system resize borders" ON)
 option(VKUI_ENABLE_WARNINGS "Enable additional compiler warnings" ON)
 option(VKUI_ENABLE_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
 option(VKUI_EXPORT_COMPILE_COMMANDS "Generate a clangd compilation database" ON)
 option(VKUI_SYNC_COMPILE_COMMANDS
        "Refresh compile_commands.json in the source root for clangd and Neovim"
        ON)
-
-if(VKUI_BUILD_WINDOW_QUICK AND NOT VKUI_BUILD_WINDOW)
-    message(FATAL_ERROR
-        "VKUI_BUILD_WINDOW_QUICK requires VKUI_BUILD_WINDOW because the Quick "
-        "module shares the integrated native window implementation.")
-endif()
-
-if(VKUI_BUILD_WINDOW_QUICK AND VKUI_INSTALL)
-    message(FATAL_ERROR
-        "VKUI_BUILD_WINDOW_QUICK is an internal validation target and is not "
-        "installable. Configure with VKUI_INSTALL=OFF to build it.")
-endif()
 
 if(VKUI_BUILD_EXAMPLES AND NOT VKUI_BUILD_WINDOW)
     message(FATAL_ERROR
@@ -78,14 +69,24 @@ if(VKUI_BUILD_INTERACTION)
             endif()
         endforeach()
     endif()
-    find_package(ICU 70 REQUIRED COMPONENTS uc)
+    find_package(ICU 70 REQUIRED COMPONENTS uc i18n)
 endif()
 if(VKUI_BUILD_EXAMPLES)
-    find_package(Qt6 6.6 REQUIRED COMPONENTS LinguistTools)
+    find_package(Qt6LinguistTools 6.6 QUIET)
+    if(NOT Qt6LinguistTools_FOUND)
+        message(STATUS "Qt LinguistTools unavailable; Gallery translations will not be compiled")
+    endif()
 endif()
 
 include(cmake/VkUICompilerWarnings.cmake)
 include(cmake/VkUISanitizers.cmake)
+include(cmake/VkUIIcons.cmake)
+
+vkui_generate_icon_catalog(
+    MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/manifest.json"
+    ICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons"
+    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/icons"
+)
 
 if(VKUI_BUILD_SHARED)
     set(_vkui_library_type SHARED)
@@ -103,6 +104,7 @@ target_sources(vkui_core
         include/vkui/core/VkAccentColor.h
         include/vkui/core/VkAppearance.h
         include/vkui/core/VkTheme.h
+        include/vkui/core/VkThemeChange.h
         include/vkui/core/VkThemeManager.h
         include/vkui/core/VkColorTokens.h
         include/vkui/core/VkDiagnostics.h
@@ -110,6 +112,7 @@ target_sources(vkui_core
         include/vkui/core/VkTypographyTokens.h
         include/vkui/core/VkMotion.h
         include/vkui/core/VkIcon.h
+        ${VKUI_SYMBOL_HEADER}
         include/vkui/core/VkFileIcon.h
         src/core/theme/VkTheme.cpp
         src/core/diagnostics/VkDiagnostics.cpp
@@ -120,19 +123,26 @@ target_sources(vkui_core
         src/core/icons/private/VkResourceInitializer_p.h
         src/core/icons/private/VkSvgIconEngine_p.h
         src/core/icons/private/VkSvgIconEngine.cpp
+        src/core/icons/private/VkSvgIconSourceCache_p.h
+        src/core/icons/private/VkSvgIconSourceCache.cpp
+        ${VKUI_SYMBOL_REGISTRY_HEADER}
         src/core/icons/private/VkIconCache_p.h
         src/core/icons/private/VkIconCache.cpp
+        src/core/icons/private/VkIconMaskCache_p.h
+        src/core/icons/private/VkIconMaskCache.cpp
         src/core/motion/VkMotion.cpp
-        resources/vkui.qrc
+        ${VKUI_ICON_QRC}
 )
 
 target_compile_definitions(vkui_core PRIVATE VKUI_BUILDING_CORE)
 target_include_directories(vkui_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${VKUI_GENERATED_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${VKUI_GENERATED_PRIVATE_DIR}
 )
 target_link_libraries(vkui_core PUBLIC Qt6::Core Qt6::Gui Qt6::Svg)
 set_target_properties(vkui_core PROPERTIES
@@ -148,40 +158,46 @@ add_library(VkUI::Widgets ALIAS vkui_widgets)
 target_sources(vkui_widgets
     PRIVATE
         include/vkui/Widgets.h
-        include/vkui/widgets/VkComboBox.h
-        include/vkui/widgets/VkControlSize.h
-        include/vkui/widgets/style/VkStyle.h
-        include/vkui/widgets/style/VkStyleSheet.h
-        include/vkui/widgets/controls/VkSlider.h
-        include/vkui/widgets/controls/VkSwitch.h
-        include/vkui/widgets/controls/VkSegmentedControl.h
-        include/vkui/widgets/overlays/VkPopover.h
-        include/vkui/widgets/views/VkDisclosureTreeView.h
-        include/vkui/widgets/views/VkFileTreeView.h
-        src/widgets/style/VkStyle.cpp
-        src/widgets/style/VkStyleSheet.cpp
-        src/widgets/VkComboBox.cpp
-        src/widgets/style/VkControlSize.cpp
+        include/vkui/widgets/VCombobox.h
+        include/vkui/widgets/VControlSize.h
+        include/vkui/widgets/style/VStyle.h
+        include/vkui/widgets/controls/VSplitter.h
+        include/vkui/widgets/controls/VSlider.h
+        include/vkui/widgets/controls/VSwitch.h
+        include/vkui/widgets/controls/VSegmentedControl.h
+        include/vkui/widgets/overlays/VPopover.h
+        include/vkui/widgets/views/VTreeItemDelegate.h
+        include/vkui/widgets/views/VTreeView.h
+        include/vkui/widgets/views/VFileTreeView.h
+        src/widgets/style/VStyle.cpp
+        src/widgets/VCombobox.cpp
+        src/widgets/style/VControlSize.cpp
         src/widgets/animation/private/VkWidgetAnimation_p.h
         src/widgets/animation/private/VkWidgetAnimation.cpp
-        src/widgets/style/private/VkStyle_p.h
-        src/widgets/style/private/VkStylePainter_p.h
-        src/widgets/style/private/VkStylePainter.cpp
-        src/widgets/controls/VkSlider.cpp
-        src/widgets/controls/VkSwitch.cpp
-        src/widgets/controls/VkSegmentedControl.cpp
-        src/widgets/controls/private/VkSwitch_p.h
-        src/widgets/controls/private/VkSegmentedControl_p.h
-        src/widgets/overlays/VkPopover.cpp
-        src/widgets/overlays/private/VkPopover_p.h
-        src/widgets/overlays/private/VkPopoverPlacementEngine_p.h
-        src/widgets/overlays/private/VkPopoverPlacementEngine.cpp
-        src/widgets/overlays/private/VkPopoverPath_p.h
-        src/widgets/overlays/private/VkPopoverPath.cpp
-        src/widgets/overlays/private/VkPopoverShadowCache_p.h
-        src/widgets/overlays/private/VkPopoverShadowCache.cpp
-        src/widgets/views/VkDisclosureTreeView.cpp
-        src/widgets/views/VkFileTreeView.cpp
+        src/widgets/style/private/VStyle_p.h
+        src/widgets/style/private/VkPopupSurfaceStyler_p.h
+        src/widgets/style/private/VkPopupSurfaceStyler.cpp
+        src/widgets/style/private/VkThemeRefreshCoordinator_p.h
+        src/widgets/style/private/VkThemeRefreshCoordinator.cpp
+        src/widgets/style/private/VStylePainter_p.h
+        src/widgets/style/private/VStylePainter.cpp
+        src/widgets/controls/VSplitter.cpp
+        src/widgets/controls/VSlider.cpp
+        src/widgets/controls/VSwitch.cpp
+        src/widgets/controls/VSegmentedControl.cpp
+        src/widgets/controls/private/VSwitch_p.h
+        src/widgets/controls/private/VSegmentedControl_p.h
+        src/widgets/overlays/VPopover.cpp
+        src/widgets/overlays/private/VPopover_p.h
+        src/widgets/overlays/private/VPopoverPlacementEngine_p.h
+        src/widgets/overlays/private/VPopoverPlacementEngine.cpp
+        src/widgets/overlays/private/VPopoverPath_p.h
+        src/widgets/overlays/private/VPopoverPath.cpp
+        src/widgets/overlays/private/VPopoverShadowCache_p.h
+        src/widgets/overlays/private/VPopoverShadowCache.cpp
+        src/widgets/views/VTreeItemDelegate.cpp
+        src/widgets/views/VTreeView.cpp
+        src/widgets/views/VFileTreeView.cpp
 )
 
 target_compile_definitions(vkui_widgets PRIVATE VKUI_BUILDING_WIDGETS)
@@ -266,7 +282,7 @@ if(VKUI_BUILD_INTERACTION)
             ${CMAKE_CURRENT_SOURCE_DIR}/include/vkui/vk
             ${CMAKE_CURRENT_SOURCE_DIR}/src/vk/private)
     target_link_libraries(vkui_interaction
-        PUBLIC Qt6::Gui ICU::uc VkUI::Buffer VkUI::Core)
+        PUBLIC Qt6::Gui ICU::uc ICU::i18n VkUI::Buffer VkUI::Core)
     target_compile_definitions(vkui_interaction PRIVATE
         QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
     set_target_properties(vkui_interaction PROPERTIES
@@ -333,9 +349,6 @@ if(NOT VKUI_BUILD_SHARED)
     if(TARGET vkui_window)
         target_compile_definitions(vkui_window PUBLIC VKUI_STATIC)
     endif()
-    if(TARGET vkui_window_quick)
-        target_compile_definitions(vkui_window_quick PUBLIC VKUI_STATIC)
-    endif()
 endif()
 
 if(VKUI_ENABLE_WARNINGS)
@@ -349,9 +362,6 @@ if(VKUI_ENABLE_WARNINGS)
     endif()
     if(TARGET vkui_window)
         vkui_enable_compiler_warnings(vkui_window)
-    endif()
-    if(TARGET vkui_window_quick)
-        vkui_enable_compiler_warnings(vkui_window_quick)
     endif()
 endif()
 
@@ -367,13 +377,13 @@ if(VKUI_ENABLE_SANITIZERS)
     if(TARGET vkui_window)
         vkui_enable_sanitizers(vkui_window)
     endif()
-    if(TARGET vkui_window_quick)
-        vkui_enable_sanitizers(vkui_window_quick)
-    endif()
 endif()
 
 if(VKUI_BUILD_EXAMPLES)
     add_subdirectory(examples/gallery)
+endif()
+if(VKUI_BUILD_ICON_CHOSEN)
+    add_subdirectory(tools/icon-chosen)
 endif()
 
 if(VKUI_BUILD_TESTS)
@@ -442,6 +452,9 @@ if(VKUI_INSTALL)
         PATTERN "Window.h" EXCLUDE
         PATTERN "window" EXCLUDE
     )
+    install(FILES ${VKUI_SYMBOL_HEADER}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vkui/core
+    )
     if(TARGET vkui_window)
         install(FILES include/vkui/Window.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vkui
@@ -482,14 +495,8 @@ if(VKUI_INSTALL)
     )
     install(FILES resources/fonts/LICENSE-FIRACODE-NERD-FONT.txt
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui/licenses
-        RENAME FiraCodeNerdFont-LICENSE.txt
+        RENAME NerdFontDerivedSVG-LICENSE.txt
     )
-    if(TARGET vkui_window)
-        install(FILES src/window/qwindowkit/LICENSE
-            DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui/licenses
-            RENAME QWindowKit-LICENSE.txt
-        )
-    endif()
     install(DIRECTORY resources/translations/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vkui/translations
         FILES_MATCHING PATTERN "*.ts"

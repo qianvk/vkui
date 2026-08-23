@@ -4,7 +4,6 @@
 
 #include <QApplication>
 #include <QCheckBox>
-#include <QComboBox>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
@@ -17,13 +16,14 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <vkui/core/VkIcon.h>
-#include <vkui/widgets/overlays/VkPopover.h>
+#include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/overlays/VPopover.h>
 
-PopoverPage::PopoverPage(QWidget* parent) : QWidget(parent), popover_(new vkui::VkPopover(this)) {
-    popover_->setClosePolicy(vkui::VkPopoverClosePolicyFlag::OutsideClick |
-                             vkui::VkPopoverClosePolicyFlag::EscapeKey |
-                             vkui::VkPopoverClosePolicyFlag::AnchorDestroyed |
-                             vkui::VkPopoverClosePolicyFlag::WindowDeactivated);
+PopoverPage::PopoverPage(QWidget* parent) : QWidget(parent), popover_(new vkui::VPopover(this)) {
+    popover_->setClosePolicy(vkui::VPopoverClosePolicyFlag::OutsideClick |
+                             vkui::VPopoverClosePolicyFlag::EscapeKey |
+                             vkui::VPopoverClosePolicyFlag::AnchorDestroyed |
+                             vkui::VPopoverClosePolicyFlag::WindowDeactivated);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 14, 14);
@@ -36,7 +36,7 @@ PopoverPage::PopoverPage(QWidget* parent) : QWidget(parent), popover_(new vkui::
     title->setFont(titleFont);
     layout->addWidget(title);
     auto* introduction = new QLabel(
-        tr("VkPopover is an anchor-aware top-level overlay. Move or resize the gallery while it is "
+        tr("VPopover is an anchor-aware top-level overlay. Move or resize the gallery while it is "
            "open to see placement and arrow geometry update without recreation."),
         this);
     introduction->setWordWrap(true);
@@ -44,12 +44,13 @@ PopoverPage::PopoverPage(QWidget* parent) : QWidget(parent), popover_(new vkui::
 
     auto* options = new QHBoxLayout;
     options->addWidget(new QLabel(tr("Preferred placement"), this));
-    placementBox_ = new QComboBox(this);
-    placementBox_->addItem(tr("Automatic"), static_cast<int>(vkui::VkPopoverPlacement::Automatic));
-    placementBox_->addItem(tr("Below"), static_cast<int>(vkui::VkPopoverPlacement::Below));
-    placementBox_->addItem(tr("Above"), static_cast<int>(vkui::VkPopoverPlacement::Above));
-    placementBox_->addItem(tr("Right"), static_cast<int>(vkui::VkPopoverPlacement::Right));
-    placementBox_->addItem(tr("Left"), static_cast<int>(vkui::VkPopoverPlacement::Left));
+    placementBox_ = new vkui::VCombobox(this);
+    placementBox_->addItem(tr("Automatic"), static_cast<int>(vkui::VPopoverPlacement::Automatic));
+    placementBox_->addItem(tr("Below"), static_cast<int>(vkui::VPopoverPlacement::Below));
+    placementBox_->addItem(tr("Above"), static_cast<int>(vkui::VPopoverPlacement::Above));
+    placementBox_->addItem(tr("Right"), static_cast<int>(vkui::VPopoverPlacement::Right));
+    placementBox_->addItem(tr("Left"), static_cast<int>(vkui::VPopoverPlacement::Left));
+    placementBox_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     options->addWidget(placementBox_);
     largeContent_ = new QCheckBox(tr("Large content"), this);
     options->addWidget(largeContent_);
@@ -168,14 +169,14 @@ QWidget* PopoverPage::makePopoverContent() {
         layout->addSpacing(30);
     }
     auto* closeButton = new QPushButton(tr("Done"), content);
-    connect(closeButton, &QPushButton::clicked, popover_, &vkui::VkPopover::closeAnimated);
+    connect(closeButton, &QPushButton::clicked, popover_, &vkui::VPopover::closeAnimated);
     layout->addWidget(closeButton, 0, Qt::AlignRight);
     return content;
 }
 
 void PopoverPage::openForAnchor(QWidget* anchor, const QRect& subRect) {
     popover_->setPreferredPlacement(
-        static_cast<vkui::VkPopoverPlacement>(placementBox_->currentData().toInt()));
+        static_cast<vkui::VPopoverPlacement>(placementBox_->currentData().toInt()));
     popover_->setContentWidget(makePopoverContent());
     if (subRect.isEmpty()) {
         popover_->openFor(anchor);

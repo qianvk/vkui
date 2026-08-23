@@ -67,7 +67,6 @@ void ThemeTest::resolvedThemeIsComplete() {
     QCOMPARE(metrics.switchTrackHeight, 18.0);
     QCOMPARE(metrics.switchThumbDiameter, 14.0);
     QVERIFY(metrics.popoverArrowWidth > metrics.popoverArrowDepth);
-    QVERIFY(metrics.popoverCornerRadius > 0.0);
     QVERIFY(metrics.popoverScreenMargin > 0.0);
     QVERIFY(metrics.popoverShadowRadius > 0.0);
 #if defined(Q_OS_MACOS)
@@ -75,14 +74,26 @@ void ThemeTest::resolvedThemeIsComplete() {
     const qreal expectedRadius =
         version.majorVersion() >= 27 ? 16.0 : (version.majorVersion() >= 26 ? 14.0 : 12.0);
     QCOMPARE(metrics.cornerRadiusLarge, expectedRadius);
+    QCOMPARE(metrics.popoverCornerRadius, expectedRadius);
+    QCOMPARE(metrics.menuCornerRadius, 16.0);
+    QCOMPARE(metrics.comboBoxPopupCornerRadius, 16.0);
+    QCOMPARE(metrics.comboBoxCornerRadius, 6.0);
 #elif defined(Q_OS_WIN)
     const QOperatingSystemVersion version = QOperatingSystemVersion::current();
     const bool windows11OrGreater =
         version.majorVersion() > 10 ||
         (version.majorVersion() == 10 && version.microVersion() >= 22000);
     QCOMPARE(metrics.cornerRadiusLarge, windows11OrGreater ? 8.0 : 0.0);
+    QCOMPARE(metrics.popoverCornerRadius, metrics.cornerRadiusLarge);
+    QCOMPARE(metrics.menuCornerRadius, 10.0);
+    QCOMPARE(metrics.comboBoxPopupCornerRadius, 10.0);
+    QCOMPARE(metrics.comboBoxCornerRadius, 6.0);
 #else
     QCOMPARE(metrics.cornerRadiusLarge, 10.0);
+    QCOMPARE(metrics.popoverCornerRadius, metrics.cornerRadiusLarge);
+    QCOMPARE(metrics.menuCornerRadius, 10.0);
+    QCOMPARE(metrics.comboBoxPopupCornerRadius, 10.0);
+    QCOMPARE(metrics.comboBoxCornerRadius, 6.0);
 #endif
 
     const auto& type = theme.typography();
@@ -91,6 +102,7 @@ void ThemeTest::resolvedThemeIsComplete() {
     QVERIFY(type.bodyEmphasized.weight() >= type.body.weight());
     QVERIFY(type.largeTitle.pointSizeF() > type.body.pointSizeF());
     QVERIFY(theme.generation() > 0);
+    QVERIFY(theme.colorGeneration() > 0);
     QVERIFY(theme.effectiveAppearance() != vkui::VkAppearance::Auto);
 }
 
@@ -106,6 +118,7 @@ void ThemeTest::accentColorsAreDistinctAndGenerationSafe() {
     QSet<QRgb> resolvedColors;
     resolvedColors.insert(manager->theme().colors().accent.rgba());
     quint64 generation = manager->theme().generation();
+    quint64 colorGeneration = manager->theme().colorGeneration();
 
     const QList<vkui::VkAccentColor> accents{
         vkui::VkAccentColor::Purple,   vkui::VkAccentColor::Pink,   vkui::VkAccentColor::Red,
@@ -117,6 +130,11 @@ void ThemeTest::accentColorsAreDistinctAndGenerationSafe() {
         QCOMPARE(manager->accentColor(), accent);
         QVERIFY(manager->theme().generation() > generation);
         generation = manager->theme().generation();
+        QVERIFY(manager->theme().colorGeneration() > colorGeneration);
+        colorGeneration = manager->theme().colorGeneration();
+        const vkui::VkThemeChanges changes =
+            themeSpy.constLast().at(1).value<vkui::VkThemeChanges>();
+        QCOMPARE(changes, vkui::VkThemeChanges(vkui::VkThemeChange::Colors));
         resolvedColors.insert(manager->theme().colors().accent.rgba());
         const QColor selection = qApp->palette().color(QPalette::Highlight);
         const QColor accentColor = manager->theme().colors().accent;
@@ -159,6 +177,9 @@ void ThemeTest::appearanceSignalsArePrecise() {
     QCOMPARE(appearanceSpy.count(), 1);
     QCOMPARE(effectiveSpy.count(), 1);
     QCOMPARE(themeSpy.count(), 1);
+    QCOMPARE(themeSpy.constLast().at(0).toULongLong(), manager->theme().generation());
+    QCOMPARE(themeSpy.constLast().at(1).value<vkui::VkThemeChanges>(),
+             vkui::VkThemeChanges(vkui::VkThemeChange::Colors));
     manager->setAppearance(vkui::VkAppearance::Dark);
     QCOMPARE(appearanceSpy.count(), 1);
     QCOMPARE(themeSpy.count(), 1);
