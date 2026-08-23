@@ -8,6 +8,7 @@
 #include <QLocale>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <vkui/widgets/VTextStyle.h>
 
 LocalizationPage::LocalizationPage(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -15,10 +16,7 @@ LocalizationPage::LocalizationPage(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Localization"), this);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     auto* introduction = new QLabel(
         tr("The gallery can switch between the system language, English, and Simplified Chinese at "

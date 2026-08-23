@@ -65,9 +65,16 @@ void VkThemeRefreshCoordinator::refreshWidgets() {
         return;
     }
 
-    const bool geometryChanged =
-        changes.testFlag(VkThemeChange::Metrics) || changes.testFlag(VkThemeChange::Typography);
-    if (!geometryChanged) {
+    if (changes.testFlag(VkThemeChange::Typography)) {
+        // VkThemeManager applies the resolved body font through QGuiApplication. Qt then owns
+        // inherited-font resolution, FontChange delivery, size-hint invalidation, and layout
+        // activation. Repeating that work through QApplication::allWidgets() would be both
+        // redundant and observably slower while a text-size slider is moving.
+        updateVisibleWindows();
+        return;
+    }
+
+    if (!changes.testFlag(VkThemeChange::Metrics)) {
         // QApplication::setPalette already propagates palette changes. One update per visible
         // top-level surface also covers tokens that are consumed directly by custom painters.
         updateVisibleWindows();

@@ -38,6 +38,15 @@ namespace {
     return option.state.testFlag(QStyle::State_MouseOver) ? QIcon::Active : QIcon::Normal;
 }
 
+[[nodiscard]] QSize resolvedIconSize(const VTreeView* view) {
+    if (view != nullptr && view->iconSize().isValid()) {
+        return view->iconSize();
+    }
+    const int extent = qRound(
+        VkThemeManager::instance()->theme().metrics().fixedControlExtentRegular);
+    return {extent, extent};
+}
+
 } // namespace
 
 VTreeItemDelegate::VTreeItemDelegate(VTreeView* view, QObject* parent)
@@ -84,7 +93,9 @@ VTreeItemLayout VTreeItemDelegate::layoutTreeItem(
         option.rect.adjusted(HorizontalInset, 2, -HorizontalInset, -2);
     const QRect contentRect = backgroundRect.adjusted(ContentHorizontalPadding, 0,
                                                       -ContentHorizontalPadding, 0);
-    const QRect leadingRect = logicalLeadingRect(contentRect, LeadingSlotSize, option.direction);
+    const int leadingSlotWidth = resolvedIconSize(view_).width();
+    const QRect leadingRect =
+        logicalLeadingRect(contentRect, leadingSlotWidth, option.direction);
     const QFontMetrics metrics(option.font);
     const int trailingWidth = presentation.trailingText.isEmpty()
                                   ? 0
@@ -100,7 +111,7 @@ VTreeItemLayout VTreeItemDelegate::layoutTreeItem(
                                                     : trailingRect.right() + ContentGap + 1;
         int textRight = leadingRect.left() - ContentGap - 1;
         if (presentation.checkable) {
-            checkRect = {textRight - LeadingSlotSize + 1, contentRect.top(), LeadingSlotSize,
+            checkRect = {textRight - leadingSlotWidth + 1, contentRect.top(), leadingSlotWidth,
                          contentRect.height()};
             textRight = checkRect.left() - ContentGap - 1;
         }
@@ -111,7 +122,7 @@ VTreeItemLayout VTreeItemDelegate::layoutTreeItem(
         trailingRect = {trailingLeft, contentRect.top(), trailingWidth, contentRect.height()};
         int textLeft = leadingRect.right() + ContentGap + 1;
         if (presentation.checkable) {
-            checkRect = {textLeft, contentRect.top(), LeadingSlotSize, contentRect.height()};
+            checkRect = {textLeft, contentRect.top(), leadingSlotWidth, contentRect.height()};
             textLeft = checkRect.right() + ContentGap + 1;
         }
         const int textRight = trailingRect.isEmpty() ? contentRect.right()
@@ -194,8 +205,7 @@ void VTreeItemDelegate::paintTreeItem(QPainter* painter, const QStyleOptionViewI
 
     painter->save();
     if (!presentation.leadingIcon.isNull()) {
-        const QSize iconSize = view_ == nullptr ? QSize(LeadingSlotSize, LeadingSlotSize)
-                                               : view_->iconSize();
+        const QSize iconSize = resolvedIconSize(view_);
         const QSize bounded = iconSize.boundedTo(layout.leadingRect.size());
         const QRect iconRect(QPoint(layout.leadingRect.center().x() - bounded.width() / 2,
                                     layout.leadingRect.center().y() - bounded.height() / 2),
@@ -251,8 +261,8 @@ void VTreeItemDelegate::paintTreeItem(QPainter* painter, const QStyleOptionViewI
 QSize VTreeItemDelegate::treeItemSizeHint(const QStyleOptionViewItem& option,
                                           const QModelIndex& index) const {
     const QSize explicitHint = qvariant_cast<QSize>(index.data(Qt::SizeHintRole));
-    const int contentHeight =
-        std::max({option.fontMetrics.height(), LeadingSlotSize, explicitHint.height()});
+    const int contentHeight = std::max(
+        {option.fontMetrics.height(), resolvedIconSize(view_).height(), explicitHint.height()});
     return {explicitHint.width(), std::max(MinimumRowHeight, contentHeight + 8)};
 }
 

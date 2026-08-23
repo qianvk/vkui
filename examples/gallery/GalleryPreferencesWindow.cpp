@@ -19,6 +19,7 @@
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VTextStyle.h>
 
 namespace {
 
@@ -84,9 +85,7 @@ void GalleryPreferencesWindow::buildUi() {
 
     titleLabel_ = new QLabel(titleBar_);
     titleLabel_->setObjectName(QStringLiteral("GalleryPreferencesTitleLabel"));
-    QFont titleFont = titleLabel_->font();
-    titleFont.setWeight(QFont::DemiBold);
-    titleLabel_->setFont(titleFont);
+    vkui::setTextStyle(*titleLabel_, vkui::VTextStyle::BodyEmphasized);
     titleLayout->addWidget(titleLabel_, 1, Qt::AlignVCenter);
 
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)

@@ -160,6 +160,7 @@ target_sources(vkui_widgets
         include/vkui/Widgets.h
         include/vkui/widgets/VCombobox.h
         include/vkui/widgets/VControlSize.h
+        include/vkui/widgets/VTextStyle.h
         include/vkui/widgets/style/VStyle.h
         include/vkui/widgets/controls/VSplitter.h
         include/vkui/widgets/controls/VSlider.h
@@ -172,6 +173,7 @@ target_sources(vkui_widgets
         src/widgets/style/VStyle.cpp
         src/widgets/VCombobox.cpp
         src/widgets/style/VControlSize.cpp
+        src/widgets/style/VTextStyle.cpp
         src/widgets/animation/private/VkWidgetAnimation_p.h
         src/widgets/animation/private/VkWidgetAnimation.cpp
         src/widgets/style/private/VStyle_p.h

@@ -21,11 +21,11 @@ style implementation. Applications should use semantic palette roles and theme t
 compositions.
 
 Runtime theme refresh is change-aware. Color-only changes update the application palette and
-visible top-level surfaces without traversing or repolishing every widget. Metric or typography
-changes are coalesced and perform a deterministic structural repolish; motion changes are consumed
-by animation drivers without rebuilding widget geometry. Popup-surface setup and refresh
-coordination live in separate private components so `VStyle` remains focused on Qt style
-contracts.
+visible top-level surfaces without traversing or repolishing every widget. Application typography
+uses Qt's native font propagation and size-hint invalidation; metrics-only changes use a coalesced
+structural refresh. Motion changes are consumed by animation drivers without rebuilding widget
+geometry. Popup-surface setup and refresh coordination live in separate private components so
+`VStyle` remains focused on Qt style contracts.
 
 Keyboard focus remains visible through a restrained neutral border; mouse activation does not add a
 blue focus box. `VCombobox` is the opt-in macOS-style combo box and uses the macOS up/down chevron
@@ -57,7 +57,10 @@ menu-delegate icon padding is not added again on top of VkUI's explicit column g
 
 Checked checkbox and radio indicators use device-pixel-aligned outlines, accent-colored selected
 edges, and white marks. `vkui::setControlSize()` gives these standard widgets Small, Regular, and
-Large indicator metrics while preserving Qt's built-in semantics.
+Large indicator metrics while preserving Qt's built-in semantics. Named sizes follow the global
+interface-text scale; `setControlExtent()` is the deliberate absolute-size escape hatch. Standard
+button/combo icons and automatic tree icons use responsive semantic metrics, but explicit Qt icon
+sizes remain unchanged.
 
 Combo-box width follows Qt's mature `QComboBox::SizeAdjustPolicy`: use `AdjustToContents` for small,
 stable models and `AdjustToMinimumContentsLengthWithIcon` for large or frequently changing models.

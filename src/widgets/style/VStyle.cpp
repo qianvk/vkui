@@ -579,7 +579,10 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
         painter->save();
         painter->setClipRect(textRect);
         if (!combo->currentIcon.isNull()) {
-            const QSize requested = combo->iconSize.isValid() ? combo->iconSize : QSize(16, 16);
+            const int defaultIconExtent = qRound(metrics.controlHeightSmall * 0.67);
+            const QSize requested = combo->iconSize.isValid()
+                                        ? combo->iconSize
+                                        : QSize(defaultIconExtent, defaultIconExtent);
             const QSize actual = combo->currentIcon.actualSize(requested);
             const QRect iconRect = alignedRect(
                 option->direction, Qt::AlignLeading | Qt::AlignVCenter, actual, textRect);

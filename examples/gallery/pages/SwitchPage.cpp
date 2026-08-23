@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/controls/VSwitch.h>
 
 namespace {
@@ -35,10 +36,7 @@ SwitchPage::SwitchPage(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Switch"), canvas);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     auto* introduction = new QLabel(
         tr("VSwitch adds the one common binary control Qt Widgets does not provide. It keeps "

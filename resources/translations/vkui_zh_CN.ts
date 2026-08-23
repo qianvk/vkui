@@ -1427,6 +1427,58 @@
         <translation>强调色</translation>
     </message>
     <message>
+        <source>Interface text size</source>
+        <translation>界面文字大小</translation>
+    </message>
+    <message>
+        <source>Text follows the platform system font. Controls, meaningful icons, spacing, and semantic text styles respond without uniformly zooming window chrome.</source>
+        <translation>文字使用平台系统字体。控件、语义图标、间距和语义文字样式会协调响应，但不会等比缩放窗口框架。</translation>
+    </message>
+    <message>
+        <source>80%</source>
+        <translation>80%</translation>
+    </message>
+    <message>
+        <source>160%</source>
+        <translation>160%</translation>
+    </message>
+    <message>
+        <source>Reset to 100%</source>
+        <translation>重置为 100%</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>设置</translation>
+    </message>
+    <message>
+        <source>Option</source>
+        <translation>选项</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>自动</translation>
+    </message>
+    <message>
+        <source>Preview switch</source>
+        <translation>预览开关</translation>
+    </message>
+    <message>
+        <source>Responsive metrics</source>
+        <translation>响应式尺寸</translation>
+    </message>
+    <message>
+        <source>%1% · %2 pt body</source>
+        <translation>%1% · 正文 %2 pt</translation>
+    </message>
+    <message>
+        <source>%1% · %2 px body</source>
+        <translation>%1% · 正文 %2 px</translation>
+    </message>
+    <message>
+        <source>%1 px control · %2 px icon</source>
+        <translation>控件 %1 px · 图标 %2 px</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="117"/>
         <source>Motion policy</source>
         <translation>动效策略</translation>

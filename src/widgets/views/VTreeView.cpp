@@ -383,8 +383,6 @@ VTreeView::VTreeView(QWidget* parent) : QTreeView(parent) {
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     setIndentation(20);
-    setIconSize(QSize(VTreeItemDelegate::LeadingSlotSize,
-                      VTreeItemDelegate::LeadingSlotSize));
     setMouseTracking(true);
     viewport()->setMouseTracking(true);
     viewport()->setAttribute(Qt::WA_Hover, true);

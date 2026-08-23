@@ -205,6 +205,7 @@ class TreeViewTest final : public QObject {
 
   private slots:
     void installsUnifiedStyleAndSharesDelegateGeometry();
+    void defaultIconGeometryTracksTextScaleAndExplicitSizesRemainAbsolute();
     void iconSingleClickIsTheOnlyPointerDisclosureAction();
     void rapidSecondClickReversesTheCurrentAnimationFrame();
     void standardCheckStateUsesItsOwnDelegateGeometry();
@@ -219,6 +220,38 @@ class TreeViewTest final : public QObject {
     void contiguousRowMoveUsesOneFrameClockAndBoundedCache();
     void ownedModelCanOutliveAnimationChildrenDuringViewTeardown();
 };
+
+void TreeViewTest::defaultIconGeometryTracksTextScaleAndExplicitSizesRemainAbsolute() {
+    auto* theme = vkui::VkThemeManager::instance();
+    const qreal originalScale = theme->textScale();
+    theme->resetTextScale();
+
+    QStandardItemModel model;
+    auto* folder = new QStandardItem(QStringLiteral("Folder"));
+    folder->appendRow(new QStandardItem(QStringLiteral("Child")));
+    model.appendRow(folder);
+
+    vkui::VTreeView tree;
+    tree.setModel(&model);
+    tree.resize(320, 120);
+    tree.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&tree));
+    const QModelIndex folderIndex = model.index(0, 0);
+    const int defaultExtent = tree.itemLayout(folderIndex).leadingRect.width();
+
+    theme->setTextScale(vkui::VkMaximumTextScale);
+    QCoreApplication::processEvents();
+    tree.doItemsLayout();
+    QVERIFY(tree.itemLayout(folderIndex).leadingRect.width() > defaultExtent);
+
+    tree.setIconSize(QSize(23, 23));
+    theme->resetTextScale();
+    QCoreApplication::processEvents();
+    tree.doItemsLayout();
+    QCOMPARE(tree.itemLayout(folderIndex).leadingRect.width(), 23);
+
+    theme->setTextScale(originalScale);
+}
 
 void TreeViewTest::installsUnifiedStyleAndSharesDelegateGeometry() {
     QStandardItemModel model;

@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <vkui/core/VkIcon.h>
+#include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/controls/VSegmentedControl.h>
 
 SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
@@ -15,10 +16,7 @@ SegmentedControlPage::SegmentedControlPage(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(14);
 
     auto* title = new QLabel(tr("Segmented Control"), this);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
     auto* introduction = new QLabel(
         tr("A compact, single-selection control composed from standard checkable-button behavior. "

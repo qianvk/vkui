@@ -13,9 +13,11 @@
 #include <QFrame>
 #include <QImage>
 #include <QLineEdit>
+#include <QLabel>
 #include <QMenu>
 #include <QPainter>
 #include <QProxyStyle>
+#include <QPushButton>
 #include <QQueue>
 #include <QRadioButton>
 #include <QSpinBox>
@@ -31,6 +33,7 @@
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/VControlSize.h>
+#include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/controls/VSegmentedControl.h>
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
@@ -169,6 +172,7 @@ class StyleTest final : public QObject {
     void embeddedEditorsDoNotPaintASecondFrame();
     void comboBoxSizingAndElisionProtectTheChevronColumn();
     void fixedControlsHonorSizeClasses();
+    void textScaleResizesTypographyControlsAndIcons();
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
@@ -181,6 +185,7 @@ class StyleTest final : public QObject {
     bool animationsEnabled_ = true;
     vkui::VkAccentColor accentColor_ = vkui::VkAccentColor::Blue;
     vkui::VkAppearance appearance_ = vkui::VkAppearance::Auto;
+    qreal textScale_ = vkui::VkDefaultTextScale;
 };
 
 void StyleTest::initTestCase() {
@@ -189,6 +194,7 @@ void StyleTest::initTestCase() {
     animationsEnabled_ = manager->animationsEnabled();
     accentColor_ = manager->accentColor();
     appearance_ = manager->appearance();
+    textScale_ = manager->textScale();
     manager->setAnimationsEnabled(false);
 }
 
@@ -196,6 +202,7 @@ void StyleTest::cleanupTestCase() {
     auto* manager = vkui::VkThemeManager::instance();
     manager->setAccentColor(accentColor_);
     manager->setAppearance(appearance_);
+    manager->setTextScale(textScale_);
     manager->setAnimationsEnabled(animationsEnabled_);
 }
 
@@ -656,6 +663,49 @@ void StyleTest::fixedControlsHonorSizeClasses() {
     vkui::resetControlExtent(checkBox);
     QCOMPARE(checkBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &checkBox),
              vkui::controlExtent(vkui::VControlSize::Large));
+}
+
+void StyleTest::textScaleResizesTypographyControlsAndIcons() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const qreal originalScale = manager->textScale();
+    manager->resetTextScale();
+
+    QPushButton button(QStringLiteral("Settings"));
+    QCheckBox checkBox(QStringLiteral("Option"));
+    vkui::VSwitch control;
+    QLabel title(QStringLiteral("Title"));
+    vkui::setTextStyle(title, vkui::VTextStyle::Title);
+
+    QCheckBox exactCheckBox(QStringLiteral("Exact"));
+    vkui::setControlExtent(exactCheckBox, 27);
+    const int defaultFontHeight = button.fontMetrics().height();
+    const int defaultButtonHeight = button.sizeHint().height();
+    const int defaultIndicator =
+        checkBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &checkBox);
+    const QSize defaultSwitchSize = control.sizeHint();
+    const int defaultIconExtent =
+        button.style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, &button);
+    const qreal defaultTitleSize = title.font().pointSizeF();
+
+    manager->setTextScale(vkui::VkMaximumTextScale);
+    QCoreApplication::processEvents();
+
+    QVERIFY(button.fontMetrics().height() > defaultFontHeight);
+    QVERIFY(button.sizeHint().height() > defaultButtonHeight);
+    QVERIFY(checkBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &checkBox) >
+            defaultIndicator);
+    QVERIFY(control.sizeHint().height() > defaultSwitchSize.height());
+    QVERIFY(button.style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, &button) >
+            defaultIconExtent);
+    QVERIFY(title.font().pointSizeF() > defaultTitleSize);
+    QCOMPARE(title.font(), vkui::textStyleFont(vkui::VTextStyle::Title));
+    QCOMPARE(exactCheckBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr,
+                                                 &exactCheckBox),
+             27);
+
+    vkui::resetTextStyle(title);
+    QVERIFY(!vkui::textStyle(title));
+    manager->setTextScale(originalScale);
 }
 
 void StyleTest::selectedIndicatorsUseWhiteMarks() {

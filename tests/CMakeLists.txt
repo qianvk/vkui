@@ -58,6 +58,13 @@ vkui_add_test(tst_popoverplacement tst_popoverplacement.cpp)
 vkui_add_test(tst_popoverpath tst_popoverpath.cpp)
 vkui_add_test(tst_popoverinteraction tst_popoverinteraction.cpp)
 vkui_add_test(tst_style tst_style.cpp)
+vkui_add_test(tst_themepage tst_themepage.cpp)
+target_sources(tst_themepage PRIVATE
+    ${PROJECT_SOURCE_DIR}/examples/gallery/pages/ThemePage.cpp
+)
+target_include_directories(tst_themepage PRIVATE
+    ${PROJECT_SOURCE_DIR}/examples/gallery/pages
+)
 vkui_add_test(tst_gallerycontentview tst_gallerycontentview.cpp)
 target_sources(tst_gallerycontentview PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/gallery/GalleryContentView.cpp
