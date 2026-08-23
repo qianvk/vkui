@@ -29,11 +29,15 @@ class VKUI_CORE_EXPORT VkTheme final {
     [[nodiscard]] const VkMotionTokens& motion() const noexcept;
 
     [[nodiscard]] VkAppearance effectiveAppearance() const noexcept;
+    /** Increments whenever any resolved token group changes. */
     [[nodiscard]] quint64 generation() const noexcept;
+    /** Increments only when resolved colors change. Suitable for raster cache keys. */
+    [[nodiscard]] quint64 colorGeneration() const noexcept;
 
   private:
     VkTheme(VkColorTokens colors, VkMetricTokens metrics, VkTypographyTokens typography,
-            VkMotionTokens motion, VkAppearance effectiveAppearance, quint64 generation);
+            VkMotionTokens motion, VkAppearance effectiveAppearance, quint64 generation,
+            quint64 colorGeneration);
 
     VkColorTokens colors_;
     VkMetricTokens metrics_;
@@ -41,6 +45,7 @@ class VKUI_CORE_EXPORT VkTheme final {
     VkMotionTokens motion_;
     VkAppearance effectiveAppearance_ = VkAppearance::Light;
     quint64 generation_ = 0;
+    quint64 colorGeneration_ = 0;
 
     friend class VkThemeManagerPrivate;
 };

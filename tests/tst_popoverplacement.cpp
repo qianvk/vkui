@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-#include "widgets/overlays/private/VkPopoverPlacementEngine_p.h"
+#include "widgets/overlays/private/VPopoverPlacementEngine_p.h"
 
 #include <QApplication>
 #include <QHBoxLayout>
@@ -10,12 +10,12 @@
 #include <QScreen>
 #include <QtTest>
 #include <vkui/core/VkThemeManager.h>
-#include <vkui/widgets/overlays/VkPopover.h>
+#include <vkui/widgets/overlays/VPopover.h>
 
 namespace {
 
-vkui::VkPopoverPlacementInput baseInput() {
-    vkui::VkPopoverPlacementInput input;
+vkui::VPopoverPlacementInput baseInput() {
+    vkui::VPopoverPlacementInput input;
     input.anchorRect = QRectF(480.0, 320.0, 40.0, 28.0);
     input.contentSize = QSizeF(180.0, 96.0);
     input.availableGeometry = QRectF(0.0, 0.0, 1000.0, 700.0);
@@ -29,8 +29,8 @@ vkui::VkPopoverPlacementInput baseInput() {
     return input;
 }
 
-void verifyInsideAvailableGeometry(const vkui::VkPopoverPlacementInput& input,
-                                   const vkui::VkPopoverPlacementResult& result) {
+void verifyInsideAvailableGeometry(const vkui::VPopoverPlacementInput& input,
+                                   const vkui::VPopoverPlacementResult& result) {
     const QRectF usable = input.availableGeometry.adjusted(
         input.screenMargin, input.screenMargin, -input.screenMargin, -input.screenMargin);
     QVERIFY(usable.adjusted(-1.0, -1.0, 1.0, 1.0).contains(QRectF(result.popupRect)));
@@ -73,8 +73,8 @@ class PopoverPlacementTest final : public QObject {
 
 void PopoverPlacementTest::preferredPlacementsWhenTheyFit_data() {
     QTest::addColumn<int>("placement");
-    for (const auto placement : {vkui::VkPopoverPlacement::Below, vkui::VkPopoverPlacement::Above,
-                                 vkui::VkPopoverPlacement::Right, vkui::VkPopoverPlacement::Left}) {
+    for (const auto placement : {vkui::VPopoverPlacement::Below, vkui::VPopoverPlacement::Above,
+                                 vkui::VPopoverPlacement::Right, vkui::VPopoverPlacement::Left}) {
         QTest::newRow(qPrintable(QString::number(static_cast<int>(placement))))
             << static_cast<int>(placement);
     }
@@ -83,8 +83,8 @@ void PopoverPlacementTest::preferredPlacementsWhenTheyFit_data() {
 void PopoverPlacementTest::preferredPlacementsWhenTheyFit() {
     QFETCH(int, placement);
     auto input = baseInput();
-    input.preferredPlacement = static_cast<vkui::VkPopoverPlacement>(placement);
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    input.preferredPlacement = static_cast<vkui::VPopoverPlacement>(placement);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
     QCOMPARE(result.resolvedPlacement, input.preferredPlacement);
     verifyInsideAvailableGeometry(input, result);
@@ -95,17 +95,17 @@ void PopoverPlacementTest::preferredPlacementFlipsBeforeShrinking_data() {
     QTest::addColumn<int>("preferred");
     QTest::addColumn<int>("expected");
     QTest::newRow("above-to-below")
-        << QRectF(380.0, 14.0, 40.0, 24.0) << static_cast<int>(vkui::VkPopoverPlacement::Above)
-        << static_cast<int>(vkui::VkPopoverPlacement::Below);
+        << QRectF(380.0, 14.0, 40.0, 24.0) << static_cast<int>(vkui::VPopoverPlacement::Above)
+        << static_cast<int>(vkui::VPopoverPlacement::Below);
     QTest::newRow("below-to-above")
-        << QRectF(380.0, 562.0, 40.0, 24.0) << static_cast<int>(vkui::VkPopoverPlacement::Below)
-        << static_cast<int>(vkui::VkPopoverPlacement::Above);
+        << QRectF(380.0, 562.0, 40.0, 24.0) << static_cast<int>(vkui::VPopoverPlacement::Below)
+        << static_cast<int>(vkui::VPopoverPlacement::Above);
     QTest::newRow("left-to-right")
-        << QRectF(14.0, 288.0, 40.0, 24.0) << static_cast<int>(vkui::VkPopoverPlacement::Left)
-        << static_cast<int>(vkui::VkPopoverPlacement::Right);
+        << QRectF(14.0, 288.0, 40.0, 24.0) << static_cast<int>(vkui::VPopoverPlacement::Left)
+        << static_cast<int>(vkui::VPopoverPlacement::Right);
     QTest::newRow("right-to-left")
-        << QRectF(746.0, 288.0, 40.0, 24.0) << static_cast<int>(vkui::VkPopoverPlacement::Right)
-        << static_cast<int>(vkui::VkPopoverPlacement::Left);
+        << QRectF(746.0, 288.0, 40.0, 24.0) << static_cast<int>(vkui::VPopoverPlacement::Right)
+        << static_cast<int>(vkui::VPopoverPlacement::Left);
 }
 
 void PopoverPlacementTest::preferredPlacementFlipsBeforeShrinking() {
@@ -116,10 +116,10 @@ void PopoverPlacementTest::preferredPlacementFlipsBeforeShrinking() {
     input.anchorRect = anchor;
     input.contentSize = QSizeF(320.0, 240.0);
     input.availableGeometry = QRectF(0.0, 0.0, 800.0, 600.0);
-    input.preferredPlacement = static_cast<vkui::VkPopoverPlacement>(preferred);
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    input.preferredPlacement = static_cast<vkui::VPopoverPlacement>(preferred);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
-    QCOMPARE(result.resolvedPlacement, static_cast<vkui::VkPopoverPlacement>(expected));
+    QCOMPARE(result.resolvedPlacement, static_cast<vkui::VPopoverPlacement>(expected));
     QVERIFY(result.contentRect.width() >= input.contentSize.width() - 1.0);
     QVERIFY(result.contentRect.height() >= input.contentSize.height() - 1.0);
     verifyInsideAvailableGeometry(input, result);
@@ -129,13 +129,13 @@ void PopoverPlacementTest::automaticPlacementAtEveryEdge_data() {
     QTest::addColumn<QRectF>("anchor");
     QTest::addColumn<int>("expected");
     QTest::newRow("top") << QRectF(480.0, 12.0, 40.0, 20.0)
-                         << static_cast<int>(vkui::VkPopoverPlacement::Below);
+                         << static_cast<int>(vkui::VPopoverPlacement::Below);
     QTest::newRow("bottom") << QRectF(480.0, 668.0, 40.0, 20.0)
-                            << static_cast<int>(vkui::VkPopoverPlacement::Above);
+                            << static_cast<int>(vkui::VPopoverPlacement::Above);
     QTest::newRow("left") << QRectF(12.0, 330.0, 20.0, 28.0)
-                          << static_cast<int>(vkui::VkPopoverPlacement::Right);
+                          << static_cast<int>(vkui::VPopoverPlacement::Right);
     QTest::newRow("right") << QRectF(968.0, 330.0, 20.0, 28.0)
-                           << static_cast<int>(vkui::VkPopoverPlacement::Left);
+                           << static_cast<int>(vkui::VPopoverPlacement::Left);
 }
 
 void PopoverPlacementTest::automaticPlacementAtEveryEdge() {
@@ -143,9 +143,9 @@ void PopoverPlacementTest::automaticPlacementAtEveryEdge() {
     QFETCH(int, expected);
     auto input = baseInput();
     input.anchorRect = anchor;
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
-    QCOMPARE(result.resolvedPlacement, static_cast<vkui::VkPopoverPlacement>(expected));
+    QCOMPARE(result.resolvedPlacement, static_cast<vkui::VPopoverPlacement>(expected));
     verifyInsideAvailableGeometry(input, result);
 }
 
@@ -161,7 +161,7 @@ void PopoverPlacementTest::cornersRemainValid() {
     QFETCH(QRectF, anchor);
     auto input = baseInput();
     input.anchorRect = anchor;
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
     verifyInsideAvailableGeometry(input, result);
 }
@@ -170,7 +170,7 @@ void PopoverPlacementTest::supportsNegativeGlobalCoordinates() {
     auto input = baseInput();
     input.availableGeometry = QRectF(-1920.0, -300.0, 1920.0, 1080.0);
     input.anchorRect = QRectF(-1850.0, 120.0, 30.0, 28.0);
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
     QVERIFY(result.popupRect.left() < 0);
     verifyInsideAvailableGeometry(input, result);
@@ -181,7 +181,7 @@ void PopoverPlacementTest::oversizedContentIsClamped() {
     input.anchorRect = QRectF(390.0, 270.0, 20.0, 20.0);
     input.availableGeometry = QRectF(100.0, 100.0, 600.0, 400.0);
     input.contentSize = QSizeF(2400.0, 1800.0);
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
     verifyInsideAvailableGeometry(input, result);
     QVERIFY(result.contentRect.width() < input.contentSize.width());
@@ -190,9 +190,9 @@ void PopoverPlacementTest::oversizedContentIsClamped() {
 
 void PopoverPlacementTest::arrowIsRecalculatedAfterBodyClamping() {
     auto input = baseInput();
-    input.preferredPlacement = vkui::VkPopoverPlacement::Below;
+    input.preferredPlacement = vkui::VPopoverPlacement::Below;
     input.anchorRect = QRectF(3.0, 180.0, 10.0, 20.0);
-    const auto result = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto result = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(result.isValid());
     const qreal globalTipX = result.popupRect.left() + result.arrowTip.x();
     QVERIFY(globalTipX < input.anchorRect.right() + input.arrowWidth + 1.0);
@@ -202,12 +202,12 @@ void PopoverPlacementTest::arrowIsRecalculatedAfterBodyClamping() {
 
 void PopoverPlacementTest::suppliedAnchorSubRectangleChangesAim() {
     auto leftInput = baseInput();
-    leftInput.preferredPlacement = vkui::VkPopoverPlacement::Below;
+    leftInput.preferredPlacement = vkui::VPopoverPlacement::Below;
     leftInput.anchorRect = QRectF(430.0, 300.0, 16.0, 16.0);
     auto rightInput = leftInput;
     rightInput.anchorRect.moveLeft(550.0);
-    const auto left = vkui::VkPopoverPlacementEngine::calculate(leftInput);
-    const auto right = vkui::VkPopoverPlacementEngine::calculate(rightInput);
+    const auto left = vkui::VPopoverPlacementEngine::calculate(leftInput);
+    const auto right = vkui::VPopoverPlacementEngine::calculate(rightInput);
     QVERIFY(left.isValid());
     QVERIFY(right.isValid());
     const qreal leftTip = left.popupRect.left() + left.arrowTip.x();
@@ -229,12 +229,12 @@ void PopoverPlacementTest::rightToLeftChangesHorizontalFallbackPriority() {
     leftToRight.layoutDirection = Qt::LeftToRight;
     auto rightToLeft = leftToRight;
     rightToLeft.layoutDirection = Qt::RightToLeft;
-    const auto ltr = vkui::VkPopoverPlacementEngine::calculate(leftToRight);
-    const auto rtl = vkui::VkPopoverPlacementEngine::calculate(rightToLeft);
+    const auto ltr = vkui::VPopoverPlacementEngine::calculate(leftToRight);
+    const auto rtl = vkui::VPopoverPlacementEngine::calculate(rightToLeft);
     QVERIFY(ltr.isValid());
     QVERIFY(rtl.isValid());
-    QCOMPARE(ltr.resolvedPlacement, vkui::VkPopoverPlacement::Right);
-    QCOMPARE(rtl.resolvedPlacement, vkui::VkPopoverPlacement::Left);
+    QCOMPARE(ltr.resolvedPlacement, vkui::VPopoverPlacement::Right);
+    QCOMPARE(rtl.resolvedPlacement, vkui::VPopoverPlacement::Left);
 }
 
 void PopoverPlacementTest::rejectsGeometryWithoutRoomForAnArrow() {
@@ -242,7 +242,7 @@ void PopoverPlacementTest::rejectsGeometryWithoutRoomForAnArrow() {
     input.availableGeometry = QRectF(0.0, 0.0, 30.0, 30.0);
     input.screenMargin = 12.0;
     input.anchorRect = QRectF(12.0, 12.0, 4.0, 4.0);
-    QVERIFY(!vkui::VkPopoverPlacementEngine::calculate(input).isValid());
+    QVERIFY(!vkui::VPopoverPlacementEngine::calculate(input).isValid());
 }
 
 void PopoverPlacementTest::anchorDestructionClosesAnOpenPopover() {
@@ -252,7 +252,7 @@ void PopoverPlacementTest::anchorDestructionClosesAnOpenPopover() {
     auto* anchor = new QWidget;
     anchor->resize(80, 30);
     anchor->show();
-    vkui::VkPopover popover;
+    vkui::VPopover popover;
     popover.setContentWidget(new QLabel(QStringLiteral("Content")));
     popover.openFor(anchor);
     QTRY_VERIFY(popover.isOpen());
@@ -268,7 +268,7 @@ void PopoverPlacementTest::anchorMovementRepositionsWithoutRecreation() {
     QWidget anchor;
     anchor.setGeometry(100, 100, 80, 30);
     anchor.show();
-    vkui::VkPopover popover;
+    vkui::VPopover popover;
     popover.setContentWidget(new QLabel(QStringLiteral("Content")));
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
@@ -287,14 +287,14 @@ void PopoverPlacementTest::customMarginsAndRefreshResizeOpenPopover() {
     QWidget anchor;
     anchor.setGeometry(200, 120, 80, 30);
     anchor.show();
-    vkui::VkPopover popover;
+    vkui::VPopover popover;
     auto* content = new QWidget;
     content->setFixedSize(120, 80);
     popover.setContentWidget(content);
     popover.setContentMargins(QMargins(5, 4, 5, 4));
-    popover.setCrossAxisAlignment(vkui::VkPopoverCrossAxisAlignment::Start);
+    popover.setCrossAxisAlignment(vkui::VPopoverCrossAxisAlignment::Start);
     QCOMPARE(popover.contentMargins(), QMargins(5, 4, 5, 4));
-    QCOMPARE(popover.crossAxisAlignment(), vkui::VkPopoverCrossAxisAlignment::Start);
+    QCOMPARE(popover.crossAxisAlignment(), vkui::VPopoverCrossAxisAlignment::Start);
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
     const int originalWidth = popover.width();
@@ -321,7 +321,7 @@ void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
     anchor.setGeometry(18, 12, 90, 30);
     window.show();
 
-    vkui::VkPopover popover(&window);
+    vkui::VPopover popover(&window);
     auto* content = new QWidget;
     content->setMinimumSize(1, 1);
     popover.setContentWidget(content);
@@ -330,7 +330,7 @@ void PopoverPlacementTest::boundaryWidgetConstrainsAndTracksPopover() {
     QCOMPARE(popover.preferredContentSize(), QSize(360, 520));
     QCOMPARE(popover.boundaryWidget(), &boundary);
     QCOMPARE(popover.boundaryPlacements(),
-             vkui::VkPopoverBoundaryPlacements(vkui::VkPopoverBoundaryPlacementFlag::All));
+             vkui::VPopoverBoundaryPlacements(vkui::VPopoverBoundaryPlacementFlag::All));
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
 
@@ -362,14 +362,14 @@ void PopoverPlacementTest::directionalBoundaryConstrainsAfterScreenSelection() {
     auto input = baseInput();
     input.availableGeometry = QRectF(0.0, 0.0, 800.0, 600.0);
     input.boundaryGeometry = QRectF(250.0, 280.0, 300.0, 120.0);
-    input.boundaryPlacements = vkui::VkPopoverBoundaryPlacementFlag::Below;
+    input.boundaryPlacements = vkui::VPopoverBoundaryPlacementFlag::Below;
     input.anchorRect = QRectF(380.0, 288.0, 40.0, 24.0);
     input.contentSize = QSizeF(260.0, 180.0);
-    input.preferredPlacement = vkui::VkPopoverPlacement::Below;
+    input.preferredPlacement = vkui::VPopoverPlacement::Below;
 
-    const auto below = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto below = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(below.isValid());
-    QCOMPARE(below.resolvedPlacement, vkui::VkPopoverPlacement::Below);
+    QCOMPARE(below.resolvedPlacement, vkui::VPopoverPlacement::Below);
     QVERIFY(input.boundaryGeometry.contains(QRectF(below.popupRect)));
     QVERIFY(below.contentRect.height() < input.contentSize.height());
     verifyInsideAvailableGeometry(input, below);
@@ -378,9 +378,9 @@ void PopoverPlacementTest::directionalBoundaryConstrainsAfterScreenSelection() {
     // requested popup cross the screen, so the preferred direction flips.
     input.anchorRect = QRectF(380.0, 548.0, 40.0, 24.0);
     input.boundaryGeometry = QRectF(250.0, 520.0, 300.0, 80.0);
-    const auto above = vkui::VkPopoverPlacementEngine::calculate(input);
+    const auto above = vkui::VPopoverPlacementEngine::calculate(input);
     QVERIFY(above.isValid());
-    QCOMPARE(above.resolvedPlacement, vkui::VkPopoverPlacement::Above);
+    QCOMPARE(above.resolvedPlacement, vkui::VPopoverPlacement::Above);
     QVERIFY(above.contentRect.height() >= input.contentSize.height() - 1.0);
     verifyInsideAvailableGeometry(input, above);
 }
@@ -396,7 +396,7 @@ void PopoverPlacementTest::popupWindowUsesFixedTransientSemantics() {
     anchor.setGeometry(24, 18, 90, 30);
     window.show();
 
-    vkui::VkPopover popover(&window);
+    vkui::VPopover popover(&window);
     auto* content = new QWidget;
     content->setFixedSize(280, 180);
     popover.setContentWidget(content);
@@ -431,14 +431,14 @@ void PopoverPlacementTest::widgetFlipsPreferredPlacementAtScreenEdge() {
     anchor.setGeometry(available.left() + 120, available.top() + 1, 90, 30);
     anchor.show();
 
-    vkui::VkPopover popover(&anchor);
+    vkui::VPopover popover(&anchor);
     auto* content = new QWidget;
     content->setFixedSize(260, 160);
     popover.setContentWidget(content);
-    popover.setPreferredPlacement(vkui::VkPopoverPlacement::Above);
+    popover.setPreferredPlacement(vkui::VPopoverPlacement::Above);
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
-    QCOMPARE(popover.resolvedPlacement(), vkui::VkPopoverPlacement::Below);
+    QCOMPARE(popover.resolvedPlacement(), vkui::VPopoverPlacement::Below);
     QVERIFY(available.contains(popover.geometry()));
 
     popover.closeImmediately();
@@ -447,14 +447,14 @@ void PopoverPlacementTest::widgetFlipsPreferredPlacementAtScreenEdge() {
 
 void PopoverPlacementTest::startAlignedResizeKeepsLeadingEdgeAndArrowAim() {
     auto narrowInput = baseInput();
-    narrowInput.preferredPlacement = vkui::VkPopoverPlacement::Below;
-    narrowInput.crossAxisAlignment = vkui::VkPopoverCrossAxisAlignment::Start;
+    narrowInput.preferredPlacement = vkui::VPopoverPlacement::Below;
+    narrowInput.crossAxisAlignment = vkui::VPopoverCrossAxisAlignment::Start;
     narrowInput.contentSize.setWidth(120.0);
     auto wideInput = narrowInput;
     wideInput.contentSize.setWidth(320.0);
 
-    const auto narrow = vkui::VkPopoverPlacementEngine::calculate(narrowInput);
-    const auto wide = vkui::VkPopoverPlacementEngine::calculate(wideInput);
+    const auto narrow = vkui::VPopoverPlacementEngine::calculate(narrowInput);
+    const auto wide = vkui::VPopoverPlacementEngine::calculate(wideInput);
     QVERIFY(narrow.isValid());
     QVERIFY(wide.isValid());
     QCOMPARE(wide.popupRect.left(), narrow.popupRect.left());
@@ -481,11 +481,11 @@ void PopoverPlacementTest::outsideButtonClickClosesAndForwardsOnce() {
     layout->addWidget(adjacent);
     window.show();
 
-    vkui::VkPopover popover(&window);
+    vkui::VPopover popover(&window);
     auto* content = new QLabel(QStringLiteral("Popover content"));
     content->setMinimumSize(280, 140);
     popover.setContentWidget(content);
-    popover.setPreferredPlacement(vkui::VkPopoverPlacement::Below);
+    popover.setPreferredPlacement(vkui::VPopoverPlacement::Below);
     popover.openFor(anchor);
     QTRY_VERIFY(popover.isOpen());
 
@@ -506,10 +506,10 @@ void PopoverPlacementTest::interruptedAnimationRetargetsCleanly() {
     QWidget anchor;
     anchor.setGeometry(180, 140, 80, 30);
     anchor.show();
-    vkui::VkPopover popover;
+    vkui::VPopover popover;
     popover.setContentWidget(new QLabel(QStringLiteral("Content")));
-    QSignalSpy openedSpy(&popover, &vkui::VkPopover::opened);
-    QSignalSpy closedSpy(&popover, &vkui::VkPopover::closed);
+    QSignalSpy openedSpy(&popover, &vkui::VPopover::opened);
+    QSignalSpy closedSpy(&popover, &vkui::VPopover::closed);
 
     popover.openFor(&anchor);
     QTest::qWait(20);

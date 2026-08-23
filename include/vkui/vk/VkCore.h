@@ -3,25 +3,24 @@
 #include "VkTypes.h"
 #include "VkUserCommandRegistry.h"
 
-#include <vkui/buffer/BufferStorage.h>
-
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <vkui/buffer/BufferStorage.h>
 
 class QKeyEvent;
 
 namespace vkui::vk {
 
-enum class BufferRegistrationStatus : std::uint8_t
-{
+enum class BufferRegistrationStatus : std::uint8_t {
     Created,
     AlreadyRegistered,
     InvalidPath,
     InvalidProvider,
+    UnsupportedLineEndings,
     PathConflict,
 };
 
@@ -175,6 +174,23 @@ public:
         std::size_t maximumReadLength =
             vkui::buffer::BufferStorage::defaultMaximumReadLength);
     /**
+     * Registers a host-owned editable document without importing its text.
+     *
+     * The external session remains the sole text and history authority.
+     * VkCore retains one immutable snapshot handle and a fixed-size scalar
+     * cache; it owns no full UTF-16 mirror, line-start vector, or undo graph
+     * for this buffer.
+     *
+     * Modal mutation currently requires the snapshot descriptor's O(1)
+     * modalEditingLfOnly capability. Registration rejects unverified,
+     * CR/CRLF, or mixed-line-ending sources, and every committed replacement
+     * snapshot is checked again before Core adopts it.
+     */
+    [[nodiscard]] BufferRegistrationResult registerExternalSessionBuffer(
+        std::string path, std::shared_ptr<vkui::buffer::IEditableTextSession> session,
+        std::size_t maximumReadLength = vkui::buffer::BufferStorage::defaultMaximumReadLength,
+        std::size_t scalarCacheCapacity = 4096);
+    /**
      * Binds an existing authoritative buffer to one window.
      *
      * Unlike synchronizeBuffer(), this operation never imports host text and
@@ -236,6 +252,19 @@ public:
         std::u16string inserted,
         std::size_t selectionAnchorOffset,
         std::size_t cursorOffset);
+    /**
+     * Atomically applies sequential UTF-16 replacements and selection state.
+     *
+     * Every range addresses the snapshot produced by the preceding range.
+     * The external session validates the complete candidate and publishes
+     * one revision/history node, or leaves text, selection, and history
+     * unchanged.
+     */
+    [[nodiscard]] bool applyExternalEditBatchWithSelectionAtOffsets(
+        ViewId view, std::vector<vkui::buffer::TransactionEdit> edits,
+        std::size_t selectionBeforeAnchor, std::size_t selectionBeforeCursor,
+        std::size_t selectionAfterAnchor, std::size_t selectionAfterCursor,
+        std::optional<std::uint64_t> group = std::nullopt);
     /**
      * Replays buffer history through the same incremental event stream used
      * by Normal-mode u and Ctrl-R.
@@ -395,6 +424,13 @@ public:
      */
     [[nodiscard]] std::optional<vkui::buffer::Descriptor>
     bufferDataDescriptor(BufferId buffer) const;
+    /** Canonical UTF-16 units owned by VkCore (zero for external sessions). */
+    [[nodiscard]] std::optional<std::size_t>
+    bufferResidentCodeUnits(BufferId buffer) const noexcept;
+    /** Bounded scalar-read cache currently populated for an external session. */
+    [[nodiscard]] std::optional<std::size_t> bufferCachedCodeUnits(BufferId buffer) const noexcept;
+    [[nodiscard]] std::optional<BufferAuthoritySnapshot>
+    bufferAuthority(BufferId buffer) const noexcept;
     /** Preserves Pending/Stale/Unavailable provider states for async hosts. */
     [[nodiscard]] vkui::buffer::RangeRead readBufferDataRange(
         BufferId buffer,

@@ -2,13 +2,14 @@
 
 #pragma once
 
-#include <vkui/widgets/VkComboBox.h>
-#include <vkui/widgets/VkControlSize.h>
-#include <vkui/widgets/controls/VkSegmentedControl.h>
-#include <vkui/widgets/controls/VkSlider.h>
-#include <vkui/widgets/controls/VkSwitch.h>
-#include <vkui/widgets/overlays/VkPopover.h>
-#include <vkui/widgets/views/VkDisclosureTreeView.h>
-#include <vkui/widgets/views/VkFileTreeView.h>
-#include <vkui/widgets/style/VkStyle.h>
-#include <vkui/widgets/style/VkStyleSheet.h>
+#include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/VControlSize.h>
+#include <vkui/widgets/controls/VSegmentedControl.h>
+#include <vkui/widgets/controls/VSlider.h>
+#include <vkui/widgets/controls/VSplitter.h>
+#include <vkui/widgets/controls/VSwitch.h>
+#include <vkui/widgets/overlays/VPopover.h>
+#include <vkui/widgets/views/VTreeItemDelegate.h>
+#include <vkui/widgets/views/VTreeView.h>
+#include <vkui/widgets/views/VFileTreeView.h>
+#include <vkui/widgets/style/VStyle.h>

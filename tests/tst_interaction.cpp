@@ -1,14 +1,14 @@
-#include <vkui/vk/VkCanonicalKeyEvent.h>
-#include <vkui/vk/VkCore.h>
-#include <vkui/vk/VkWindowCommands.h>
-
 #include <QElapsedTimer>
 #include <QKeyEvent>
 #include <QTest>
-
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <stdexcept>
+#include <utility>
+#include <vkui/vk/VkCanonicalKeyEvent.h>
+#include <vkui/vk/VkCore.h>
+#include <vkui/vk/VkWindowCommands.h>
 
 using namespace vkui::vk;
 
@@ -204,11 +204,8 @@ public:
     [[nodiscard]] vkui::buffer::Descriptor
     describe() const override
     {
-        return vkui::buffer::Descriptor{
-            vkui::buffer::Identity{"core-paged-source"},
-            31,
-            sourceSize,
-            false};
+        return vkui::buffer::Descriptor{vkui::buffer::Identity{"core-paged-source"}, 31, sourceSize,
+                                        false, false};
     }
 
     [[nodiscard]] vkui::buffer::RangeRead read(
@@ -266,6 +263,384 @@ public:
     mutable std::size_t residentLength = 0;
     mutable std::size_t largestRead = 0;
     mutable std::size_t largestPrefetch = 0;
+};
+
+struct ExternalSessionProbe final {
+    std::size_t snapshotCalls = 0;
+    std::size_t readCalls = 0;
+    std::size_t largestRead = 0;
+    std::size_t returnedCodeUnits = 0;
+    std::size_t editCalls = 0;
+    std::size_t undoCalls = 0;
+    std::size_t redoCalls = 0;
+    std::size_t selectionSetCalls = 0;
+    std::size_t resetHistoryCalls = 0;
+    std::size_t setModifiedCalls = 0;
+    std::vector<std::size_t> transactionEditCounts;
+    bool failRead = false;
+    bool returnEmptyRead = false;
+    bool failCodeUnit = false;
+    bool failLineStart = false;
+};
+
+struct ExternalSnapshotState final {
+    std::u16string text;
+    std::vector<std::size_t> lines{0};
+    vkui::buffer::Revision revision = 1;
+    bool editable = true;
+    bool modalEditingLfOnly = true;
+};
+
+[[nodiscard]] std::vector<std::size_t> externalLineStarts(const std::u16string_view text) {
+    std::vector<std::size_t> starts{0};
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        if (text[index] == u'\r') {
+            if (index + 1 < text.size() && text[index + 1] == u'\n') {
+                ++index;
+            }
+            starts.push_back(index + 1);
+        } else if (text[index] == u'\n') {
+            starts.push_back(index + 1);
+        }
+    }
+    return starts;
+}
+
+class ExternalSnapshot final : public vkui::buffer::ITextSnapshot {
+  public:
+    ExternalSnapshot(std::shared_ptr<const ExternalSnapshotState> state,
+                     std::shared_ptr<ExternalSessionProbe> probe)
+        : m_state(std::move(state)), m_probe(std::move(probe)) {}
+
+    [[nodiscard]] vkui::buffer::Descriptor describe() const override {
+        return vkui::buffer::Descriptor{vkui::buffer::Identity{"external-session"},
+                                        m_state->revision, m_state->text.size(), m_state->editable,
+                                        m_state->modalEditingLfOnly};
+    }
+
+    [[nodiscard]] vkui::buffer::RangeRead
+    read(const vkui::buffer::RangeRequest& request) const override {
+        if (m_probe->failRead) {
+            throw std::runtime_error("snapshot range read deliberately failed");
+        }
+        ++m_probe->readCalls;
+        m_probe->largestRead = std::max(m_probe->largestRead, request.maximumLength);
+        if (request.expectedRevision && *request.expectedRevision != m_state->revision) {
+            return vkui::buffer::RangeRead{vkui::buffer::ReadStatus::StaleRevision,
+                                           vkui::buffer::Identity{"external-session"},
+                                           m_state->revision,
+                                           request.offset,
+                                           m_state->text.size(),
+                                           {}};
+        }
+        if (request.offset > m_state->text.size()) {
+            return vkui::buffer::RangeRead{vkui::buffer::ReadStatus::OutOfBounds,
+                                           vkui::buffer::Identity{"external-session"},
+                                           m_state->revision,
+                                           request.offset,
+                                           m_state->text.size(),
+                                           {}};
+        }
+        const std::size_t length =
+            std::min(request.maximumLength, m_state->text.size() - request.offset);
+        if (m_probe->returnEmptyRead) {
+            return vkui::buffer::RangeRead{vkui::buffer::ReadStatus::Ok,
+                                           vkui::buffer::Identity{"external-session"},
+                                           m_state->revision,
+                                           request.offset,
+                                           m_state->text.size(),
+                                           {}};
+        }
+        m_probe->returnedCodeUnits += length;
+        return vkui::buffer::RangeRead{vkui::buffer::ReadStatus::Ok,
+                                       vkui::buffer::Identity{"external-session"},
+                                       m_state->revision,
+                                       request.offset,
+                                       m_state->text.size(),
+                                       m_state->text.substr(request.offset, length)};
+    }
+
+    [[nodiscard]] std::optional<char16_t> codeUnitAt(const std::size_t offset) const override {
+        if (m_probe->failCodeUnit) {
+            return std::nullopt;
+        }
+        return offset < m_state->text.size() ? std::optional<char16_t>(m_state->text[offset])
+                                             : std::nullopt;
+    }
+
+    [[nodiscard]] std::size_t lineCount() const override {
+        return m_state->lines.size();
+    }
+
+    [[nodiscard]] std::optional<std::size_t> lineStart(const std::size_t line) const override {
+        if (m_probe->failLineStart) {
+            throw std::runtime_error("snapshot line start deliberately failed");
+        }
+        return line < m_state->lines.size() ? std::optional<std::size_t>(m_state->lines[line])
+                                            : std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<std::size_t>
+    lineForOffset(const std::size_t offset) const override {
+        if (offset > m_state->text.size()) {
+            return std::nullopt;
+        }
+        const auto upper = std::upper_bound(m_state->lines.cbegin(), m_state->lines.cend(), offset);
+        return upper == m_state->lines.cbegin()
+                   ? std::optional<std::size_t>(0)
+                   : std::optional<std::size_t>(static_cast<std::size_t>(
+                         std::distance(m_state->lines.cbegin(), upper) - 1));
+    }
+
+  private:
+    std::shared_ptr<const ExternalSnapshotState> m_state;
+    std::shared_ptr<ExternalSessionProbe> m_probe;
+};
+
+class FakeEditableSession final : public vkui::buffer::IEditableTextSession {
+  public:
+    explicit FakeEditableSession(std::u16string text)
+        : probe(std::make_shared<ExternalSessionProbe>()) {
+        replaceState(std::move(text), 1);
+    }
+
+    [[nodiscard]] std::shared_ptr<const vkui::buffer::ITextSnapshot> snapshot() const override {
+        ++probe->snapshotCalls;
+        if (throwOnSnapshot) {
+            throw std::runtime_error("snapshot lookup deliberately failed");
+        }
+        return std::make_shared<ExternalSnapshot>(m_state, probe);
+    }
+
+    [[nodiscard]] vkui::buffer::EditResult
+    applyTransaction(vkui::buffer::EditTransactionRequest request) override {
+        ++probe->editCalls;
+        if (throwOnApply) {
+            throw std::runtime_error("session apply deliberately failed");
+        }
+        probe->transactionEditCounts.push_back(request.edits.size());
+        if (forceStale ||
+            (request.expectedRevision && *request.expectedRevision != m_state->revision)) {
+            forceStale = false;
+            return editResult(vkui::buffer::EditStatus::StaleRevision);
+        }
+        if (readOnly) {
+            return editResult(vkui::buffer::EditStatus::ReadOnly);
+        }
+        std::u16string text = m_state->text;
+        std::vector<vkui::buffer::TransactionEdit> inverse;
+        inverse.reserve(request.edits.size());
+        bool changed = false;
+        for (const auto& edit : request.edits) {
+            if (edit.offset > text.size() || edit.removedLength > text.size() - edit.offset) {
+                return editResult(vkui::buffer::EditStatus::OutOfBounds);
+            }
+            std::u16string removed = text.substr(edit.offset, edit.removedLength);
+            changed = changed || removed != edit.inserted;
+            inverse.push_back(vkui::buffer::TransactionEdit{edit.offset, edit.inserted.size(),
+                                                            std::move(removed)});
+            text.replace(edit.offset, edit.removedLength, edit.inserted);
+        }
+        if (!changed) {
+            return editResult(vkui::buffer::EditStatus::Unchanged);
+        }
+        const vkui::buffer::TextSelection selectionBefore =
+            request.selectionBefore.value_or(m_selection);
+        const vkui::buffer::TextSelection selectionAfter =
+            request.selectionAfter.value_or(m_selection);
+        const bool mergeGroup = request.group && m_current == m_history.size() && m_current != 0 &&
+                                m_history.back().group == request.group;
+        if (mergeGroup) {
+            Transition& transition = m_history.back();
+            transition.forward.insert(transition.forward.end(),
+                                      std::make_move_iterator(request.edits.begin()),
+                                      std::make_move_iterator(request.edits.end()));
+            transition.inverse.insert(transition.inverse.end(),
+                                      std::make_move_iterator(inverse.begin()),
+                                      std::make_move_iterator(inverse.end()));
+            transition.selectionAfter = selectionAfter;
+        } else {
+            m_history.resize(m_current);
+            m_history.push_back(Transition{std::move(request.edits), std::move(inverse),
+                                           selectionBefore, selectionAfter, request.group});
+            ++m_current;
+        }
+        replaceState(std::move(text), m_state->revision + 1);
+        m_selection = request.selectionAfter.value_or(m_selection);
+        return editResult(vkui::buffer::EditStatus::Applied);
+    }
+
+    [[nodiscard]] vkui::buffer::SessionHistory history() const override {
+        return vkui::buffer::SessionHistory{m_current, m_clean, m_current != 0,
+                                            m_current < m_history.size()};
+    }
+
+    [[nodiscard]] std::optional<vkui::buffer::TextSelection> selection() const override {
+        return m_selection;
+    }
+
+    [[nodiscard]] bool setSelection(const vkui::buffer::TextSelection selection) override {
+        ++probe->selectionSetCalls;
+        if (selection.anchor > m_state->text.size() || selection.cursor > m_state->text.size()) {
+            return false;
+        }
+        m_selection = selection;
+        if (throwAfterSetSelection) {
+            throw std::runtime_error("session selection deliberately failed after commit");
+        }
+        return true;
+    }
+
+    [[nodiscard]] vkui::buffer::HistoryReplayResult undo(const std::size_t count) override {
+        ++probe->undoCalls;
+        if (throwOnUndo) {
+            throw std::runtime_error("session undo deliberately failed");
+        }
+        if (readOnly) {
+            return replayResult(vkui::buffer::HistoryReplayStatus::ReadOnly, {});
+        }
+        std::vector<vkui::buffer::CommittedEdit> edits;
+        for (std::size_t step = 0; step < count && m_current != 0; ++step) {
+            const Transition& transition = m_history[m_current - 1];
+            std::u16string text = m_state->text;
+            for (auto inverse = transition.inverse.crbegin(); inverse != transition.inverse.crend();
+                 ++inverse) {
+                text.replace(inverse->offset, inverse->removedLength, inverse->inserted);
+                edits.push_back(vkui::buffer::CommittedEdit{inverse->offset, inverse->removedLength,
+                                                            inverse->inserted});
+            }
+            replaceState(std::move(text), m_state->revision + 1);
+            m_selection = transition.selectionBefore;
+            --m_current;
+        }
+        auto result = replayResult(edits.empty() ? vkui::buffer::HistoryReplayStatus::Unchanged
+                                                 : vkui::buffer::HistoryReplayStatus::Applied,
+                                   std::move(edits));
+        result.selectionAnchor = m_selection.anchor;
+        result.cursor = m_selection.cursor;
+        if (std::exchange(invalidNextReplay, false)) {
+            if (result.edits.empty()) {
+                result.edits.push_back({m_state->text.size() + 1, 0, {}});
+            } else {
+                result.edits.front().offset = m_state->text.size() + 1;
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] vkui::buffer::HistoryReplayResult redo(const std::size_t count) override {
+        ++probe->redoCalls;
+        if (throwOnRedo) {
+            throw std::runtime_error("session redo deliberately failed");
+        }
+        if (readOnly) {
+            return replayResult(vkui::buffer::HistoryReplayStatus::ReadOnly, {});
+        }
+        std::vector<vkui::buffer::CommittedEdit> edits;
+        for (std::size_t step = 0; step < count && m_current < m_history.size(); ++step) {
+            const Transition& transition = m_history[m_current];
+            std::u16string text = m_state->text;
+            for (const auto& edit : transition.forward) {
+                text.replace(edit.offset, edit.removedLength, edit.inserted);
+                edits.push_back(
+                    vkui::buffer::CommittedEdit{edit.offset, edit.removedLength, edit.inserted});
+            }
+            replaceState(std::move(text), m_state->revision + 1);
+            m_selection = transition.selectionAfter;
+            ++m_current;
+        }
+        auto result = replayResult(edits.empty() ? vkui::buffer::HistoryReplayStatus::Unchanged
+                                                 : vkui::buffer::HistoryReplayStatus::Applied,
+                                   std::move(edits));
+        result.selectionAnchor = m_selection.anchor;
+        result.cursor = m_selection.cursor;
+        if (std::exchange(invalidNextReplay, false)) {
+            if (result.edits.empty()) {
+                result.edits.push_back({m_state->text.size() + 1, 0, {}});
+            } else {
+                result.edits.front().offset = m_state->text.size() + 1;
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] bool resetHistory() override {
+        ++probe->resetHistoryCalls;
+        m_history.clear();
+        m_current = 0;
+        m_clean = 0;
+        return true;
+    }
+    [[nodiscard]] bool setModified(const bool modified) override {
+        ++probe->setModifiedCalls;
+        m_clean = modified ? std::nullopt : std::optional<std::uint64_t>(m_current);
+        return true;
+    }
+
+    [[nodiscard]] const std::u16string& text() const noexcept {
+        return m_state->text;
+    }
+
+    std::shared_ptr<ExternalSessionProbe> probe;
+    bool forceStale = false;
+    bool readOnly = false;
+    bool throwOnSnapshot = false;
+    bool omitNextCommittedSnapshot = false;
+    bool throwOnApply = false;
+    bool throwOnUndo = false;
+    bool throwOnRedo = false;
+    bool throwAfterSetSelection = false;
+    bool invalidNextReplay = false;
+
+  private:
+    struct Transition final {
+        std::vector<vkui::buffer::TransactionEdit> forward;
+        std::vector<vkui::buffer::TransactionEdit> inverse;
+        vkui::buffer::TextSelection selectionBefore;
+        vkui::buffer::TextSelection selectionAfter;
+        std::optional<std::uint64_t> group;
+    };
+
+    void replaceState(std::u16string text, const vkui::buffer::Revision revision) {
+        auto state = std::make_shared<ExternalSnapshotState>();
+        state->lines = externalLineStarts(text);
+        state->text = std::move(text);
+        state->revision = revision;
+        state->editable = !readOnly;
+        state->modalEditingLfOnly =
+            std::find(state->text.cbegin(), state->text.cend(), u'\r') == state->text.cend();
+        m_state = std::move(state);
+    }
+
+    [[nodiscard]] vkui::buffer::EditResult editResult(const vkui::buffer::EditStatus status) {
+        vkui::buffer::EditResult result{status, m_state->revision, m_state->text.size(), {}};
+        if (result.accepted() && !std::exchange(omitNextCommittedSnapshot, false)) {
+            result.committedSnapshot = std::make_shared<ExternalSnapshot>(m_state, probe);
+        }
+        return result;
+    }
+
+    [[nodiscard]] vkui::buffer::HistoryReplayResult
+    replayResult(const vkui::buffer::HistoryReplayStatus status,
+                 std::vector<vkui::buffer::CommittedEdit> edits) {
+        vkui::buffer::HistoryReplayResult result{status,
+                                                 m_state->revision,
+                                                 m_state->text.size(),
+                                                 std::move(edits),
+                                                 std::nullopt,
+                                                 std::nullopt,
+                                                 {}};
+        if (result.accepted() && !std::exchange(omitNextCommittedSnapshot, false)) {
+            result.committedSnapshot = std::make_shared<ExternalSnapshot>(m_state, probe);
+        }
+        return result;
+    }
+
+    std::shared_ptr<const ExternalSnapshotState> m_state;
+    std::vector<Transition> m_history;
+    std::size_t m_current = 0;
+    std::optional<std::uint64_t> m_clean = 0;
+    vkui::buffer::TextSelection m_selection;
 };
 
 } // namespace
@@ -343,6 +718,7 @@ private slots:
     void bufferDestructionRevokesOnlyItsLocalInputContributions();
     void boundedBufferReadsCarryRevisionAndPagingState();
     void providerBuffersExposeBoundedDataWithoutUnsafeAttachment();
+    void externalEditableSessionIsZeroCopyAndDelegatesHistory();
 };
 
 void VkCoreTests::
@@ -5618,6 +5994,488 @@ void VkCoreTests::
         BufferRegistrationStatus::AlreadyRegistered);
     QCOMPARE(duplicate.buffer, registered.buffer);
     QVERIFY(core.removeBuffer(registered.buffer));
+}
+
+void VkCoreTests::externalEditableSessionIsZeroCopyAndDelegatesHistory() {
+    auto carriageReturnSession = std::make_shared<FakeEditableSession>(u"one\r\ntwo\rthree");
+    VkCore carriageReturnCore;
+    const auto carriageReturnRegistration = carriageReturnCore.registerExternalSessionBuffer(
+        "/vault/external-cr.md", carriageReturnSession, 64, 16);
+    QCOMPARE(carriageReturnRegistration.status, BufferRegistrationStatus::UnsupportedLineEndings);
+    QCOMPARE(carriageReturnRegistration.buffer, BufferId{0});
+
+    auto insertedCarriageReturnSession = std::make_shared<FakeEditableSession>(u"abc");
+    VkCore insertedCarriageReturnCore;
+    const WindowId insertedCarriageReturnWindow =
+        insertedCarriageReturnCore.registerWindow(WindowKind::Editor);
+    const auto insertedCarriageReturnRegistration =
+        insertedCarriageReturnCore.registerExternalSessionBuffer(
+            "/vault/external-inserted-cr.md", insertedCarriageReturnSession, 64, 16);
+    QVERIFY(insertedCarriageReturnRegistration.registered());
+    QCOMPARE(insertedCarriageReturnCore.attachBufferData(
+                 insertedCarriageReturnWindow, insertedCarriageReturnRegistration.buffer, {}),
+             BufferAttachStatus::Attached);
+    QVERIFY(!insertedCarriageReturnCore.applyExternalEditAtOffset(insertedCarriageReturnWindow, 1,
+                                                                  0, u"\r", 2));
+    QCOMPARE(insertedCarriageReturnSession->text(), std::u16string(u"a\rbc"));
+    QVERIFY(insertedCarriageReturnCore.bufferAuthority(insertedCarriageReturnRegistration.buffer)
+                ->desynchronized);
+    QCOMPARE(insertedCarriageReturnSession->probe->editCalls, std::size_t{1});
+    QVERIFY(!insertedCarriageReturnCore.applyExternalEditAtOffset(insertedCarriageReturnWindow, 0,
+                                                                  0, u"Z", 1));
+    QCOMPARE(insertedCarriageReturnSession->probe->editCalls, std::size_t{1});
+
+    std::u16string text = u"a\U0001f600b\nline\nthird\nfourth\n";
+    text.append(2U * 1024U * 1024U, u'z');
+    auto session = std::make_shared<FakeEditableSession>(text);
+
+    VkCore core;
+    const WindowId window = core.registerWindow(WindowKind::Editor);
+    const auto registered =
+        core.registerExternalSessionBuffer("/vault/external.md", session, 128, 32);
+    QVERIFY(registered.registered());
+    QVERIFY(registered.buffer != 0);
+    QCOMPARE(core.attachBufferData(window, registered.buffer, {}), BufferAttachStatus::Attached);
+    QCOMPARE(session->probe->snapshotCalls, std::size_t{1});
+    // Accepted mutation results carry the post-commit snapshot. If Core made
+    // a second session snapshot lookup, the edit/undo/redo checks below would
+    // fail after the authority had already committed.
+    session->throwOnSnapshot = true;
+
+    const auto authority = core.bufferAuthority(registered.buffer);
+    QVERIFY(authority.has_value());
+    QVERIFY(authority->externalTextAuthority);
+    QVERIFY(authority->externalHistoryAuthority);
+    QCOMPARE(authority->residentTextCodeUnits, std::size_t{0});
+    QCOMPARE(authority->residentLineIndexEntries, std::size_t{0});
+    QCOMPARE(authority->residentUndoNodes, std::size_t{0});
+    QVERIFY(!core.buffer(registered.buffer).has_value());
+
+    QCOMPARE(core.cursorForBufferOffset(registered.buffer, 5), std::optional<Cursor>(Cursor{1, 0}));
+    QCOMPARE(core.cursorForBufferOffset(registered.buffer, 10),
+             std::optional<Cursor>(Cursor{2, 0}));
+    QCOMPARE(core.cursorForBufferOffset(registered.buffer, 16),
+             std::optional<Cursor>(Cursor{3, 0}));
+    const WindowId sibling = core.registerWindow(WindowKind::Editor);
+    QCOMPARE(core.attachBufferData(sibling, registered.buffer, Cursor{3, 0}),
+             BufferAttachStatus::Attached);
+    QCOMPARE(core.viewSelectionOffsets(sibling), (std::pair<std::size_t, std::size_t>{16, 16}));
+
+    const auto firstRight = pressAscii(core, window, QChar(u'l'));
+    QCOMPARE(lastCursor(firstRight), std::optional<Cursor>(Cursor{0, 1}));
+    const auto secondRight = pressAscii(core, window, QChar(u'l'));
+    QCOMPARE(lastCursor(secondRight), std::optional<Cursor>(Cursor{0, 3}));
+    QVERIFY(session->probe->largestRead <= 32);
+    QVERIFY(session->probe->returnedCodeUnits < text.size() / 2);
+    const auto cached = core.bufferAuthority(registered.buffer);
+    QVERIFY(cached.has_value());
+    QVERIFY(cached->cachedTextCodeUnits <= 32);
+
+    QVERIFY(core.setViewCursor(window, Cursor{0, 0}));
+    const std::size_t editsBefore = session->probe->editCalls;
+    (void)pressAscii(core, window, QChar(u'x'));
+    QCOMPARE(session->probe->editCalls, editsBefore + 1);
+    QCOMPARE(session->text().front(), char16_t{0xd83d});
+    QCOMPARE(core.viewSelectionOffsets(sibling), (std::pair<std::size_t, std::size_t>{15, 15}));
+    auto history = core.bufferHistory(registered.buffer);
+    QVERIFY(history.has_value());
+    QVERIFY(history->canUndo);
+    QCOMPARE(history->current, std::uint64_t{1});
+    QCOMPARE(core.bufferAuthority(registered.buffer)->residentUndoNodes, std::size_t{0});
+
+    QVERIFY(core.setViewCursor(window, Cursor{3, 0}));
+    (void)press(core, window, Qt::Key_QuoteLeft, Qt::NoModifier, QStringLiteral("`"));
+    (void)press(core, window, Qt::Key_Period, Qt::NoModifier, QStringLiteral("."));
+    QCOMPARE(core.window(window)->cursor, (Cursor{0, 0}));
+    QVERIFY(core.setViewCursor(window, Cursor{3, 0}));
+    (void)pressAscii(core, window, QChar(u'g'));
+    (void)pressAscii(core, window, QChar(u';'));
+    QCOMPARE(core.window(window)->cursor, (Cursor{0, 0}));
+
+    (void)core.undo(window);
+    QCOMPARE(session->probe->undoCalls, std::size_t{1});
+    QCOMPARE(session->text().front(), u'a');
+    QCOMPARE(core.viewSelectionOffsets(sibling), (std::pair<std::size_t, std::size_t>{16, 16}));
+    (void)core.redo(window);
+    QCOMPARE(session->probe->redoCalls, std::size_t{1});
+    QCOMPARE(session->text().front(), char16_t{0xd83d});
+    QCOMPARE(core.viewSelectionOffsets(sibling), (std::pair<std::size_t, std::size_t>{15, 15}));
+
+    QVERIFY(core.setViewSelectionAtOffsets(window, 3, 0));
+    const std::size_t selectionEditCalls = session->probe->editCalls;
+    std::vector<vkui::buffer::TransactionEdit> batch;
+    batch.push_back(vkui::buffer::TransactionEdit{0, 2, u"Q"});
+    batch.push_back(vkui::buffer::TransactionEdit{1, 0, u"!"});
+    QVERIFY(
+        core.applyExternalEditBatchWithSelectionAtOffsets(window, std::move(batch), 3, 0, 2, 2));
+    QCOMPARE(session->probe->editCalls, selectionEditCalls + 1);
+    QCOMPARE(session->selection(),
+             std::optional<vkui::buffer::TextSelection>(vkui::buffer::TextSelection{2, 2}));
+    (void)core.undo(window);
+    QCOMPARE(session->probe->undoCalls, std::size_t{2});
+    const auto beforeSelection = std::pair<std::size_t, std::size_t>{3, 0};
+    QVERIFY(core.viewSelectionOffsets(window) == beforeSelection);
+    (void)core.redo(window);
+    QCOMPARE(session->probe->redoCalls, std::size_t{2});
+    const auto afterSelection = std::pair<std::size_t, std::size_t>{2, 2};
+    QVERIFY(core.viewSelectionOffsets(window) == afterSelection);
+
+    const std::u16string beforeRejected = session->text();
+    session->forceStale = true;
+    QVERIFY(core.setViewCursor(window, Cursor{0, 0}));
+    (void)pressAscii(core, window, QChar(u'x'));
+    QCOMPARE(session->text(), beforeRejected);
+    history = core.bufferHistory(registered.buffer);
+    QVERIFY(history.has_value());
+    QCOMPARE(history->current, std::uint64_t{2});
+
+    session->readOnly = true;
+    (void)pressAscii(core, window, QChar(u'x'));
+    QCOMPARE(session->text(), beforeRejected);
+    QCOMPARE(core.bufferAuthority(registered.buffer)->residentTextCodeUnits, std::size_t{0});
+    QCOMPARE(core.bufferAuthority(registered.buffer)->residentLineIndexEntries, std::size_t{0});
+    QCOMPARE(core.bufferAuthority(registered.buffer)->residentUndoNodes, std::size_t{0});
+
+    auto blockSession = std::make_shared<FakeEditableSession>(u"abcdef\nghijkl\nmnopqr");
+    VkCore blockCore;
+    blockCore.setVirtualEditMode(VirtualEditMode::Block);
+    const WindowId blockWindow = blockCore.registerWindow(WindowKind::Editor);
+    const auto blockRegistration =
+        blockCore.registerExternalSessionBuffer("/vault/external-block.md", blockSession, 64, 16);
+    QVERIFY(blockRegistration.registered());
+    QCOMPARE(blockCore.attachBufferData(blockWindow, blockRegistration.buffer, Cursor{0, 3}),
+             BufferAttachStatus::Attached);
+    (void)press(blockCore, blockWindow, Qt::Key_V, vimControlModifier(), QStringLiteral("v"));
+    (void)pressAscii(blockCore, blockWindow, QChar(u'j'));
+    (void)pressAscii(blockCore, blockWindow, QChar(u'j'));
+    (void)pressAscii(blockCore, blockWindow, QChar(u'I'));
+    QCOMPARE(blockCore.mode(), std::optional<Mode>(Mode::Insert));
+    QVERIFY(blockCore.applyExternalEditAtOffset(blockWindow, 3, 0, u"X", 4));
+    const std::size_t editsBeforeBlockExit = blockSession->probe->editCalls;
+    (void)press(blockCore, blockWindow, Qt::Key_Escape);
+    QCOMPARE(blockSession->probe->editCalls, editsBeforeBlockExit + 1);
+    QCOMPARE(blockSession->probe->transactionEditCounts.back(), std::size_t{2});
+    QCOMPARE(blockSession->text(), std::u16string(u"abcXdef\nghiXjkl\nmnoXpqr"));
+    QCOMPARE(blockCore.bufferHistory(blockRegistration.buffer)->current, std::uint64_t{1});
+
+    QVERIFY(blockCore.setViewCursor(blockWindow, Cursor{2, 0}));
+    (void)press(blockCore, blockWindow, Qt::Key_QuoteLeft, Qt::NoModifier, QStringLiteral("`"));
+    (void)pressAscii(blockCore, blockWindow, QChar(u'['));
+    QCOMPARE(blockCore.window(blockWindow)->cursor, (Cursor{0, 3}));
+    (void)press(blockCore, blockWindow, Qt::Key_QuoteLeft, Qt::NoModifier, QStringLiteral("`"));
+    (void)pressAscii(blockCore, blockWindow, QChar(u']'));
+    QCOMPARE(blockCore.window(blockWindow)->cursor, (Cursor{2, 3}));
+    (void)press(blockCore, blockWindow, Qt::Key_QuoteLeft, Qt::NoModifier, QStringLiteral("`"));
+    (void)press(blockCore, blockWindow, Qt::Key_Period, Qt::NoModifier, QStringLiteral("."));
+    QCOMPARE(blockCore.window(blockWindow)->cursor, (Cursor{1, 3}));
+
+    (void)blockCore.undo(blockWindow);
+    QCOMPARE(blockSession->text(), std::u16string(u"abcdef\nghijkl\nmnopqr"));
+    QVERIFY(blockCore.setViewCursor(blockWindow, Cursor{0, 0}));
+    const std::size_t editsBeforeDot = blockSession->probe->editCalls;
+    (void)pressAscii(blockCore, blockWindow, QChar(u'.'));
+    QCOMPARE(blockSession->probe->editCalls, editsBeforeDot + 1);
+    QCOMPARE(blockSession->probe->transactionEditCounts.back(), std::size_t{3});
+    QCOMPARE(blockSession->text(), std::u16string(u"Xabcdef\nXghijkl\nXmnopqr"));
+    (void)blockCore.undo(blockWindow);
+    QCOMPARE(blockSession->text(), std::u16string(u"abcdef\nghijkl\nmnopqr"));
+    QCOMPARE(blockCore.bufferAuthority(blockRegistration.buffer)->residentTextCodeUnits,
+             std::size_t{0});
+    QCOMPARE(blockCore.bufferAuthority(blockRegistration.buffer)->residentLineIndexEntries,
+             std::size_t{0});
+    QCOMPARE(blockCore.bufferAuthority(blockRegistration.buffer)->residentUndoNodes,
+             std::size_t{0});
+
+    std::u16string searchText(4095, u'a');
+    searchText += u"\U0001f600needle";
+    searchText.append(12U * 1024U, u'b');
+    auto searchSession = std::make_shared<FakeEditableSession>(searchText);
+    VkCore searchCore;
+    const WindowId searchWindow = searchCore.registerWindow(WindowKind::Editor);
+    const auto searchRegistration = searchCore.registerExternalSessionBuffer(
+        "/vault/external-search.md", searchSession, 128, 32);
+    QVERIFY(searchRegistration.registered());
+    QCOMPARE(searchCore.attachBufferData(searchWindow, searchRegistration.buffer, Cursor{0, 0}),
+             BufferAttachStatus::Attached);
+    const DispatchResult searched = searchCore.submitCommandLine(
+        searchWindow, CommandLineKind::SearchForward, u"\U0001f600n\\p{L}+");
+    QVERIFY(std::ranges::none_of(
+        searched.events, [](const Event& event) { return event.type == EventType::InputError; }));
+    QCOMPARE(searchCore.window(searchWindow)->cursor, (Cursor{0, 4095}));
+    QVERIFY(searchSession->probe->largestRead <= 128);
+    QCOMPARE(searchCore.bufferAuthority(searchRegistration.buffer)->residentTextCodeUnits,
+             std::size_t{0});
+    QCOMPARE(searchCore.bufferAuthority(searchRegistration.buffer)->residentLineIndexEntries,
+             std::size_t{0});
+    QCOMPARE(searchCore.bufferAuthority(searchRegistration.buffer)->residentUndoNodes,
+             std::size_t{0});
+
+    VkCore ownedSearchCore;
+    const WindowId ownedSearchWindow = ownedSearchCore.registerWindow(WindowKind::Editor);
+    QVERIFY(ownedSearchCore.synchronizeBuffer(ownedSearchWindow, "/vault/owned-search.md",
+                                              searchText, Cursor{0, 0}) != 0);
+    const DispatchResult ownedSearched = ownedSearchCore.submitCommandLine(
+        ownedSearchWindow, CommandLineKind::SearchForward, u"\U0001f600n\\p{L}+");
+    QVERIFY(std::ranges::none_of(ownedSearched.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+    QCOMPARE(ownedSearchCore.window(ownedSearchWindow)->cursor,
+             searchCore.window(searchWindow)->cursor);
+    const DispatchResult externalStartBoundary =
+        searchCore.submitCommandLine(searchWindow, CommandLineKind::SearchForward, u"^");
+    const DispatchResult ownedStartBoundary =
+        ownedSearchCore.submitCommandLine(ownedSearchWindow, CommandLineKind::SearchForward, u"^");
+    QVERIFY(std::ranges::none_of(externalStartBoundary.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+    QVERIFY(std::ranges::none_of(ownedStartBoundary.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+    QCOMPARE(ownedSearchCore.window(ownedSearchWindow)->cursor,
+             searchCore.window(searchWindow)->cursor);
+    const DispatchResult externalEndBoundary =
+        searchCore.submitCommandLine(searchWindow, CommandLineKind::SearchForward, u"$");
+    const DispatchResult ownedEndBoundary =
+        ownedSearchCore.submitCommandLine(ownedSearchWindow, CommandLineKind::SearchForward, u"$");
+    QVERIFY(std::ranges::none_of(externalEndBoundary.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+    QVERIFY(std::ranges::none_of(ownedEndBoundary.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+    QCOMPARE(ownedSearchCore.window(ownedSearchWindow)->cursor,
+             searchCore.window(searchWindow)->cursor);
+    const DispatchResult invalidExternalPattern =
+        searchCore.submitCommandLine(searchWindow, CommandLineKind::SearchForward, u"(?");
+    const DispatchResult invalidOwnedPattern =
+        ownedSearchCore.submitCommandLine(ownedSearchWindow, CommandLineKind::SearchForward, u"(?");
+    QVERIFY(std::ranges::any_of(invalidExternalPattern.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+    QVERIFY(std::ranges::any_of(invalidOwnedPattern.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+
+    auto emptySearchSession = std::make_shared<FakeEditableSession>(std::u16string{});
+    VkCore emptySearchCore;
+    const WindowId emptySearchWindow = emptySearchCore.registerWindow(WindowKind::Editor);
+    const auto emptySearchRegistration = emptySearchCore.registerExternalSessionBuffer(
+        "/vault/external-empty-search.md", emptySearchSession, 16, 0);
+    QVERIFY(emptySearchRegistration.registered());
+    QCOMPARE(
+        emptySearchCore.attachBufferData(emptySearchWindow, emptySearchRegistration.buffer, {}),
+        BufferAttachStatus::Attached);
+    const DispatchResult emptyBoundarySearch =
+        emptySearchCore.submitCommandLine(emptySearchWindow, CommandLineKind::SearchForward, u"^$");
+    QVERIFY(std::ranges::none_of(emptyBoundarySearch.events, [](const Event& event) {
+        return event.type == EventType::InputError;
+    }));
+
+    QCOMPARE(session->probe->snapshotCalls, std::size_t{1});
+
+    auto missingSnapshotSession = std::make_shared<FakeEditableSession>(u"abc");
+    VkCore missingSnapshotCore;
+    const WindowId missingSnapshotWindow = missingSnapshotCore.registerWindow(WindowKind::Editor);
+    const auto missingSnapshotRegistration = missingSnapshotCore.registerExternalSessionBuffer(
+        "/vault/missing-committed-snapshot.md", missingSnapshotSession, 64, 16);
+    QVERIFY(missingSnapshotRegistration.registered());
+    QCOMPARE(missingSnapshotCore.attachBufferData(missingSnapshotWindow,
+                                                  missingSnapshotRegistration.buffer, {}),
+             BufferAttachStatus::Attached);
+
+    // This deliberately broken host commits once but omits the mandatory
+    // snapshot in its result. Core must report that fact, discard its old
+    // projection, and stop interpreting further commands for this buffer.
+    missingSnapshotSession->omitNextCommittedSnapshot = true;
+    const DispatchResult missingSnapshotCommit =
+        pressAscii(missingSnapshotCore, missingSnapshotWindow, QChar(u'x'));
+    QCOMPARE(missingSnapshotSession->text(), std::u16string(u"bc"));
+    QCOMPARE(missingSnapshotSession->probe->editCalls, std::size_t{1});
+    const auto desynchronizedEvent =
+        std::ranges::find_if(missingSnapshotCommit.events, [](const Event& event) {
+            return event.type == EventType::ExternalAuthorityDesynchronized;
+        });
+    QVERIFY(desynchronizedEvent != missingSnapshotCommit.events.cend());
+    QCOMPARE(desynchronizedEvent->authorityRevision, std::uint64_t{2});
+    QCOMPARE(desynchronizedEvent->authoritySize, std::size_t{2});
+    const auto desynchronizedAuthority =
+        missingSnapshotCore.bufferAuthority(missingSnapshotRegistration.buffer);
+    QVERIFY(desynchronizedAuthority.has_value());
+    QVERIFY(desynchronizedAuthority->desynchronized);
+    QCOMPARE(desynchronizedAuthority->authorityRevision, std::uint64_t{2});
+    QCOMPARE(desynchronizedAuthority->authoritySize, std::size_t{2});
+    QCOMPARE(desynchronizedAuthority->residentTextCodeUnits, std::size_t{0});
+    QCOMPARE(desynchronizedAuthority->residentLineIndexEntries, std::size_t{0});
+    QCOMPARE(desynchronizedAuthority->residentUndoNodes, std::size_t{0});
+    QCOMPARE(missingSnapshotCore
+                 .readBufferDataRange(missingSnapshotRegistration.buffer,
+                                      vkui::buffer::RangeRequest{0, 1, std::nullopt})
+                 .status,
+             vkui::buffer::ReadStatus::Unavailable);
+
+    const DispatchResult blockedAfterDesync =
+        pressAscii(missingSnapshotCore, missingSnapshotWindow, QChar(u'x'));
+    QCOMPARE(blockedAfterDesync.disposition, InputDisposition::Consumed);
+    QVERIFY(std::ranges::any_of(blockedAfterDesync.events, [](const Event& event) {
+        return event.type == EventType::ExternalAuthorityDesynchronized;
+    }));
+    QCOMPARE(missingSnapshotSession->text(), std::u16string(u"bc"));
+    QCOMPARE(missingSnapshotSession->probe->editCalls, std::size_t{1});
+
+    auto invalidReplaySession = std::make_shared<FakeEditableSession>(u"abc");
+    VkCore invalidReplayCore;
+    const WindowId invalidReplayWindow = invalidReplayCore.registerWindow(WindowKind::Editor);
+    const auto invalidReplayRegistration = invalidReplayCore.registerExternalSessionBuffer(
+        "/vault/invalid-history-replay.md", invalidReplaySession, 64, 16);
+    QVERIFY(invalidReplayRegistration.registered());
+    QCOMPARE(invalidReplayCore.attachBufferData(invalidReplayWindow,
+                                                invalidReplayRegistration.buffer, {}),
+             BufferAttachStatus::Attached);
+    (void)pressAscii(invalidReplayCore, invalidReplayWindow, QChar(u'x'));
+    QCOMPARE(invalidReplaySession->text(), std::u16string(u"bc"));
+    invalidReplaySession->invalidNextReplay = true;
+    const DispatchResult invalidReplay = invalidReplayCore.undo(invalidReplayWindow);
+    QCOMPARE(invalidReplaySession->text(), std::u16string(u"abc"));
+    QCOMPARE(invalidReplaySession->probe->undoCalls, std::size_t{1});
+    QVERIFY(std::ranges::any_of(invalidReplay.events, [](const Event& event) {
+        return event.type == EventType::ExternalAuthorityDesynchronized;
+    }));
+    QVERIFY(invalidReplayCore.bufferAuthority(invalidReplayRegistration.buffer)->desynchronized);
+    const std::size_t invalidReplayEdits = invalidReplaySession->probe->editCalls;
+    (void)pressAscii(invalidReplayCore, invalidReplayWindow, QChar(u'x'));
+    QCOMPARE(invalidReplaySession->probe->editCalls, invalidReplayEdits);
+
+    const auto rejectsSnapshotReadFault = [](const std::string& path,
+                                             const std::size_t scalarCacheCapacity,
+                                             const auto injectFault) {
+        auto faultySession = std::make_shared<FakeEditableSession>(u"abc");
+        VkCore faultyCore;
+        const WindowId faultyWindow = faultyCore.registerWindow(WindowKind::Editor);
+        const auto faultyRegistration =
+            faultyCore.registerExternalSessionBuffer(path, faultySession, 64, scalarCacheCapacity);
+        if (!faultyRegistration.registered() ||
+            faultyCore.attachBufferData(faultyWindow, faultyRegistration.buffer, {}) !=
+                BufferAttachStatus::Attached) {
+            return false;
+        }
+        injectFault(*faultySession->probe);
+        (void)pressAscii(faultyCore, faultyWindow, QChar(u'l'));
+        const DispatchResult attemptedDelete = pressAscii(faultyCore, faultyWindow, QChar(u'x'));
+        const auto authority = faultyCore.bufferAuthority(faultyRegistration.buffer);
+        return faultySession->text() == u"abc" && faultySession->probe->editCalls == 0 &&
+               authority && authority->desynchronized &&
+               std::ranges::any_of(attemptedDelete.events, [](const Event& event) {
+                   return event.type == EventType::ExternalAuthorityDesynchronized;
+               });
+    };
+    QVERIFY2(
+        rejectsSnapshotReadFault("/vault/fault-code-unit.md", 0,
+                                 [](ExternalSessionProbe& probe) { probe.failCodeUnit = true; }),
+        "a missing in-bounds code unit must prevent the edit and desynchronize");
+    QVERIFY2(rejectsSnapshotReadFault("/vault/fault-range-read.md", 16,
+                                      [](ExternalSessionProbe& probe) { probe.failRead = true; }),
+             "a throwing bounded read must prevent the edit and desynchronize");
+    QVERIFY2(
+        rejectsSnapshotReadFault("/vault/fault-line-start.md", 16,
+                                 [](ExternalSessionProbe& probe) { probe.failLineStart = true; }),
+        "a throwing line lookup must prevent the edit and desynchronize");
+
+    auto gatedSession = std::make_shared<FakeEditableSession>(u"abc");
+    auto gatedStorage = vkui::buffer::BufferStorage::externalSession(gatedSession, 16, 0);
+    gatedSession->probe->failRead = true;
+    QCOMPARE(gatedStorage.read(vkui::buffer::RangeRequest{0, 1, std::nullopt}).status,
+             vkui::buffer::ReadStatus::Unavailable);
+    QVERIFY(gatedStorage.externalReadFaulted());
+    vkui::buffer::EditRequest gatedEdit;
+    gatedEdit.offset = 0;
+    gatedEdit.removedLength = 1;
+    gatedEdit.inserted = u"Z";
+    QCOMPARE(gatedStorage.edit(std::move(gatedEdit)).status, vkui::buffer::EditStatus::Unavailable);
+    QCOMPARE(gatedStorage.editTransaction({}).status, vkui::buffer::EditStatus::Unavailable);
+    QCOMPARE(gatedStorage.replayExternalHistory(1, false).status,
+             vkui::buffer::HistoryReplayStatus::Unavailable);
+    QVERIFY(!gatedStorage.setExternalSelection({0, 0}));
+    QVERIFY(!gatedStorage.resetExternalHistory());
+    QVERIFY(!gatedStorage.setExternalModified(true));
+    QCOMPARE(gatedSession->probe->editCalls, std::size_t{0});
+    QCOMPARE(gatedSession->probe->undoCalls, std::size_t{0});
+    QCOMPARE(gatedSession->probe->selectionSetCalls, std::size_t{0});
+    QCOMPARE(gatedSession->probe->resetHistoryCalls, std::size_t{0});
+    QCOMPARE(gatedSession->probe->setModifiedCalls, std::size_t{0});
+
+    auto emptyReadSession = std::make_shared<FakeEditableSession>(u"abc");
+    auto emptyReadStorage = vkui::buffer::BufferStorage::externalSession(emptyReadSession, 16, 0);
+    const auto emptyEofRead = emptyReadStorage.readExact(3, 0);
+    QVERIFY(emptyEofRead.has_value());
+    QVERIFY(emptyEofRead->empty());
+    QVERIFY(!emptyReadStorage.externalReadFaulted());
+    emptyReadSession->probe->returnEmptyRead = true;
+    QVERIFY(!emptyReadStorage.readExact(0, 1).has_value());
+    QVERIFY(emptyReadStorage.externalReadFaulted());
+
+    auto throwingApplySession = std::make_shared<FakeEditableSession>(u"abc");
+    auto throwingApplyStorage =
+        vkui::buffer::BufferStorage::externalSession(throwingApplySession, 16, 0);
+    throwingApplySession->throwOnApply = true;
+    vkui::buffer::EditRequest throwingEdit;
+    throwingEdit.offset = 0;
+    throwingEdit.removedLength = 1;
+    throwingEdit.inserted = u"Z";
+    const auto unknownApply = throwingApplyStorage.edit(std::move(throwingEdit));
+    QCOMPARE(unknownApply.status, vkui::buffer::EditStatus::CommittedSnapshotUnavailable);
+    QVERIFY(unknownApply.committed());
+    QVERIFY(throwingApplyStorage.externalReadFaulted());
+    QCOMPARE(throwingApplySession->probe->editCalls, std::size_t{1});
+    QCOMPARE(throwingApplyStorage.editTransaction({}).status,
+             vkui::buffer::EditStatus::Unavailable);
+    QCOMPARE(throwingApplySession->probe->editCalls, std::size_t{1});
+
+    auto throwingSelectionSession = std::make_shared<FakeEditableSession>(u"abc");
+    auto throwingSelectionStorage =
+        vkui::buffer::BufferStorage::externalSession(throwingSelectionSession, 16, 0);
+    throwingSelectionSession->throwAfterSetSelection = true;
+    QVERIFY(!throwingSelectionStorage.setExternalSelection({1, 1}));
+    QCOMPARE(throwingSelectionSession->selection(),
+             std::optional<vkui::buffer::TextSelection>(vkui::buffer::TextSelection{1, 1}));
+    QVERIFY(throwingSelectionStorage.externalReadFaulted());
+    QCOMPARE(throwingSelectionSession->probe->selectionSetCalls, std::size_t{1});
+    QVERIFY(!throwingSelectionStorage.setExternalSelection({0, 0}));
+    QCOMPARE(throwingSelectionSession->probe->selectionSetCalls, std::size_t{1});
+
+    const auto makeHistoryStorage = [] {
+        auto historySession = std::make_shared<FakeEditableSession>(u"abc");
+        auto historyStorage = vkui::buffer::BufferStorage::externalSession(historySession, 16, 0);
+        vkui::buffer::EditRequest edit;
+        edit.offset = 0;
+        edit.removedLength = 1;
+        edit.inserted = u"Z";
+        if (!historyStorage.edit(std::move(edit)).accepted()) {
+            return std::pair{std::shared_ptr<FakeEditableSession>{}, vkui::buffer::BufferStorage{}};
+        }
+        return std::pair{std::move(historySession), std::move(historyStorage)};
+    };
+    auto [throwingUndoSession, throwingUndoStorage] = makeHistoryStorage();
+    QVERIFY(throwingUndoSession);
+    throwingUndoSession->throwOnUndo = true;
+    const auto unknownUndo = throwingUndoStorage.replayExternalHistory(1, false);
+    QCOMPARE(unknownUndo.status, vkui::buffer::HistoryReplayStatus::CommittedSnapshotUnavailable);
+    QVERIFY(unknownUndo.committed());
+    QCOMPARE(throwingUndoSession->probe->undoCalls, std::size_t{1});
+    QCOMPARE(throwingUndoStorage.replayExternalHistory(1, false).status,
+             vkui::buffer::HistoryReplayStatus::Unavailable);
+    QCOMPARE(throwingUndoSession->probe->undoCalls, std::size_t{1});
+
+    auto [throwingRedoSession, throwingRedoStorage] = makeHistoryStorage();
+    QVERIFY(throwingRedoSession);
+    QVERIFY(throwingRedoStorage.replayExternalHistory(1, false).accepted());
+    throwingRedoSession->throwOnRedo = true;
+    const auto unknownRedo = throwingRedoStorage.replayExternalHistory(1, true);
+    QCOMPARE(unknownRedo.status, vkui::buffer::HistoryReplayStatus::CommittedSnapshotUnavailable);
+    QVERIFY(unknownRedo.committed());
+    QCOMPARE(throwingRedoSession->probe->redoCalls, std::size_t{1});
+    QCOMPARE(throwingRedoStorage.replayExternalHistory(1, true).status,
+             vkui::buffer::HistoryReplayStatus::Unavailable);
+    QCOMPARE(throwingRedoSession->probe->redoCalls, std::size_t{1});
 }
 
 QTEST_GUILESS_MAIN(VkCoreTests)

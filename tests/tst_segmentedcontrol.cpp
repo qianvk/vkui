@@ -3,7 +3,7 @@
 #include <QSignalSpy>
 #include <QStyle>
 #include <QtTest>
-#include <vkui/widgets/controls/VkSegmentedControl.h>
+#include <vkui/widgets/controls/VSegmentedControl.h>
 
 class SegmentedControlTest final : public QObject {
     Q_OBJECT
@@ -18,7 +18,7 @@ class SegmentedControlTest final : public QObject {
 };
 
 void SegmentedControlTest::insertionAndRemovalMaintainSelection() {
-    vkui::VkSegmentedControl control;
+    vkui::VSegmentedControl control;
     QCOMPARE(control.currentIndex(), -1);
     QCOMPARE(control.addSegment(QStringLiteral("One")), 0);
     QCOMPARE(control.currentIndex(), 0);
@@ -34,7 +34,7 @@ void SegmentedControlTest::insertionAndRemovalMaintainSelection() {
 }
 
 void SegmentedControlTest::contentAndEnabledStateRoundTrip() {
-    vkui::VkSegmentedControl control;
+    vkui::VSegmentedControl control;
     control.addSegment(QStringLiteral("One"));
     control.addSegment(QStringLiteral("Two"));
     control.setSegmentText(1, QStringLiteral("Second"));
@@ -55,10 +55,10 @@ void SegmentedControlTest::contentAndEnabledStateRoundTrip() {
 }
 
 void SegmentedControlTest::currentIndexSignalsOnlyOnChange() {
-    vkui::VkSegmentedControl control;
+    vkui::VSegmentedControl control;
     control.addSegment(QStringLiteral("One"));
     control.addSegment(QStringLiteral("Two"));
-    QSignalSpy spy(&control, &vkui::VkSegmentedControl::currentIndexChanged);
+    QSignalSpy spy(&control, &vkui::VSegmentedControl::currentIndexChanged);
     control.setCurrentIndex(1);
     QCOMPARE(spy.count(), 1);
     control.setCurrentIndex(1);
@@ -68,7 +68,7 @@ void SegmentedControlTest::currentIndexSignalsOnlyOnChange() {
 }
 
 void SegmentedControlTest::keyboardNavigationSkipsDisabledSegments() {
-    vkui::VkSegmentedControl control;
+    vkui::VSegmentedControl control;
     control.addSegment(QStringLiteral("One"));
     control.addSegment(QStringLiteral("Two"));
     control.addSegment(QStringLiteral("Three"));
@@ -83,7 +83,7 @@ void SegmentedControlTest::keyboardNavigationSkipsDisabledSegments() {
 }
 
 void SegmentedControlTest::rightToLeftReversesVisualArrowDirection() {
-    vkui::VkSegmentedControl control;
+    vkui::VSegmentedControl control;
     control.setLayoutDirection(Qt::RightToLeft);
     control.addSegment(QStringLiteral("One"));
     control.addSegment(QStringLiteral("Two"));
@@ -100,10 +100,10 @@ void SegmentedControlTest::rightToLeftReversesVisualArrowDirection() {
 }
 
 void SegmentedControlTest::clearRestoresEmptyInvariant() {
-    vkui::VkSegmentedControl control;
+    vkui::VSegmentedControl control;
     control.addSegment(QStringLiteral("One"));
     control.addSegment(QStringLiteral("Two"));
-    QSignalSpy spy(&control, &vkui::VkSegmentedControl::currentIndexChanged);
+    QSignalSpy spy(&control, &vkui::VSegmentedControl::currentIndexChanged);
     control.clear();
     QCOMPARE(control.count(), 0);
     QCOMPARE(control.currentIndex(), -1);

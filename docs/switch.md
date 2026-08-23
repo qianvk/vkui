@@ -1,8 +1,8 @@
-# VkSwitch
+# VSwitch
 
-`VkSwitch` is an always-checkable `QAbstractButton`. Use inherited APIs such as `isChecked()`,
+`VSwitch` is an always-checkable `QAbstractButton`. Use inherited APIs such as `isChecked()`,
 `setChecked()`, `toggle()`, `clicked()`, and `toggled()`. Mouse activation and the Space key retain
-normal Qt behavior. `VkControlSize` selects Small, Regular, or Large design tokens. They resolve to
+normal Qt behavior. `VControlSize` selects Small, Regular, or Large design tokens. They resolve to
 14, 18, and 22 logical pixels by default.
 
 The track, thumb, hover, pressed, disabled, and focus-ring visuals derive from semantic tokens. Only
@@ -19,8 +19,8 @@ The control normally displays no text. Pair it with a `QLabel` buddy or set an a
 The same size classes can be applied to standard fixed-proportion indicators without subclassing:
 
 ```cpp
-vkui::setControlSize(checkBox, vkui::VkControlSize::Small);
-vkui::setControlSize(radioButton, vkui::VkControlSize::Large);
+vkui::setControlSize(checkBox, vkui::VControlSize::Small);
+vkui::setControlSize(radioButton, vkui::VControlSize::Large);
 ```
 
 For precise control, set an integer logical-pixel visual extent. Qt exposes checkbox and radio

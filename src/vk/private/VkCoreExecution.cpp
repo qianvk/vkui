@@ -708,8 +708,11 @@ void VkCore::Implementation::closeInsertUndoBlock()
     }
     const auto found = buffers.find(*insertUndoBuffer);
     if (found != buffers.end()) {
-        found->second.undo.openInsertNode.reset();
+        if (found->second.undo) {
+            found->second.undo->openInsertNode.reset();
+        }
     }
+    externalEditGroups.erase(*insertUndoBuffer);
     insertUndoBuffer.reset();
 }
 
@@ -720,6 +723,12 @@ void VkCore::Implementation::beginInsertUndoBlock(const BufferId bufferId)
     }
     closeInsertUndoBlock();
     if (buffers.contains(bufferId)) {
+        if (buffers.at(bufferId).storage.isExternalSession()) {
+            if (nextExternalEditGroup == 0) {
+                nextExternalEditGroup = 1;
+            }
+            externalEditGroups[bufferId] = nextExternalEditGroup++;
+        }
         insertUndoBuffer = bufferId;
     }
 }

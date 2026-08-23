@@ -31,7 +31,11 @@ struct VKUI_CORE_EXPORT VkMetricTokens final {
     qreal cornerRadiusRegular = 0.0;
     qreal cornerRadiusLarge = 0.0;
     qreal windowCornerRadius = 0.0;
+    // Popup surfaces keep independent radii even when platform defaults currently match.
     qreal popoverCornerRadius = 0.0;
+    qreal menuCornerRadius = 0.0;
+    qreal comboBoxCornerRadius = 0.0;
+    qreal comboBoxPopupCornerRadius = 0.0;
 
     qreal borderWidth = 0.0;
     qreal focusRingWidth = 0.0;

@@ -8,6 +8,7 @@
 #include <QtGui/QStyleHints>
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkTheme.h>
+#include <vkui/core/VkThemeChange.h>
 
 namespace vkui {
 
@@ -23,12 +24,13 @@ class VkThemeManagerPrivate final {
     void handleSystemColorSchemeChange();
 
     [[nodiscard]] VkAppearance resolveEffectiveAppearance() const;
-    [[nodiscard]] bool refreshTheme();
+    [[nodiscard]] VkThemeChanges refreshTheme();
     void applyPalette() const;
 
     [[nodiscard]] static VkTheme createTheme(VkAppearance appearance, VkAccentColor accentColor,
-                                             quint64 generation);
-    [[nodiscard]] static bool themesHaveEqualTokens(const VkTheme& left, const VkTheme& right);
+                                             quint64 generation, quint64 colorGeneration);
+    [[nodiscard]] static VkThemeChanges changedTokenGroups(const VkTheme& previous,
+                                                           const VkTheme& candidate);
 
     VkThemeManager* q = nullptr;
     VkAppearance requestedAppearance = VkAppearance::Auto;

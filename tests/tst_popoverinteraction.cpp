@@ -4,7 +4,7 @@
 #include <QtTest/QTest>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QWidget>
-#include <vkui/widgets/overlays/VkPopover.h>
+#include <vkui/widgets/overlays/VPopover.h>
 
 class PopoverInteractionTest : public QObject {
     Q_OBJECT
@@ -16,7 +16,7 @@ class PopoverInteractionTest : public QObject {
 
 namespace {
 
-void clickThroughPopover(vkui::VkPopover& popover, const QWidget& target) {
+void clickThroughPopover(vkui::VPopover& popover, const QWidget& target) {
     const QPoint globalPoint = target.mapToGlobal(target.rect().center());
     QTest::mouseClick(&popover, Qt::LeftButton, Qt::NoModifier, popover.mapFromGlobal(globalPoint));
 }
@@ -30,7 +30,7 @@ void PopoverInteractionTest::currentAnchorClickTogglesClosed() {
     anchor.setGeometry(340, 12, 96, 32);
     window.show();
 
-    vkui::VkPopover popover(&window);
+    vkui::VPopover popover(&window);
     auto* content = new QWidget;
     content->setFixedSize(240, 160);
     popover.setContentWidget(content);
@@ -66,7 +66,7 @@ void PopoverInteractionTest::anotherAnchorClickSurvivesOldPopoverClose() {
     second.setGeometry(424, 12, 96, 32);
     window.show();
 
-    vkui::VkPopover popover(&window);
+    vkui::VPopover popover(&window);
     auto* content = new QWidget;
     content->setFixedSize(260, 180);
     popover.setContentWidget(content);

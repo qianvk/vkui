@@ -85,6 +85,7 @@ void setError(std::string *const target, std::string message)
     case EventType::CursorChanged:
     case EventType::ViewportChanged:
     case EventType::BufferEdited:
+    case EventType::ExternalAuthorityDesynchronized:
     case EventType::InsertText:
     case EventType::InsertCommand:
     case EventType::InputError:

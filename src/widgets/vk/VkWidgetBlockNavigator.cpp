@@ -1,7 +1,7 @@
 #include <vkui/widgets/vk/VkWidgetBlockNavigator.h>
 
-#include <vkui/widgets/views/VkDisclosureTreeView.h>
-#include <vkui/widgets/controls/VkSegmentedControl.h>
+#include <vkui/widgets/views/VTreeView.h>
+#include <vkui/widgets/controls/VSegmentedControl.h>
 
 #include <QAbstractButton>
 #include <QAbstractItemModel>
@@ -47,7 +47,7 @@ namespace {
          ancestor = ancestor->parentWidget()) {
         if (qobject_cast<const QComboBox *>(ancestor) != nullptr
             || qobject_cast<const QAbstractSpinBox *>(ancestor) != nullptr
-            || qobject_cast<const vkui::VkSegmentedControl *>(ancestor)
+            || qobject_cast<const vkui::VSegmentedControl *>(ancestor)
                 != nullptr) {
             return true;
         }
@@ -76,7 +76,7 @@ namespace {
             || qobject_cast<QTextEdit *>(widget) != nullptr
             || qobject_cast<QPlainTextEdit *>(widget) != nullptr
             || qobject_cast<QTabBar *>(widget) != nullptr
-            || qobject_cast<vkui::VkSegmentedControl *>(widget) != nullptr);
+            || qobject_cast<vkui::VSegmentedControl *>(widget) != nullptr);
 }
 
 [[nodiscard]] QVector<QWidget *> controls(QWidget *const root)
@@ -192,7 +192,7 @@ namespace {
                                      const QModelIndex &index,
                                      const bool expanded) {
             if (auto *const disclosure =
-                    qobject_cast<vkui::VkDisclosureTreeView *>(tree)) {
+                    qobject_cast<vkui::VTreeView *>(tree)) {
                 disclosure->setExpandedAnimated(index, expanded);
             } else {
                 tree->setExpanded(index, expanded);
@@ -398,7 +398,7 @@ namespace {
     }
     if (horizontal != 0) {
         if (auto *const segments =
-                qobject_cast<vkui::VkSegmentedControl *>(focused)) {
+                qobject_cast<vkui::VSegmentedControl *>(focused)) {
             const int current = segments->currentIndex();
             const int target = std::clamp(
                 current + (horizontal > 0 ? 1 : -1),
@@ -692,7 +692,7 @@ bool VkWidgetBlockNavigator::activate(QWidget *const root)
         return true;
     }
     if (auto *const segments =
-            qobject_cast<vkui::VkSegmentedControl *>(focused)) {
+            qobject_cast<vkui::VSegmentedControl *>(focused)) {
         // Selection is already authoritative; Enter intentionally reapplies
         // it through the public setter so a segmented control remains one
         // compound block rather than exposing its private buttons.

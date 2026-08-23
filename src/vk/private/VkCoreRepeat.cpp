@@ -263,6 +263,45 @@ void VkCore::Implementation::repeatVisualBlockInsert(
                 buffer.lineStarts.size() - 1
                     - origin.line));
     beginInsertUndoBlock(view.buffer);
+    if (buffer.storage.isExternalSession()) {
+        std::vector<vkui::buffer::TransactionEdit> edits;
+        edits.reserve(lastLine - origin.line + 1);
+        std::size_t targetOffset = offset(buffer, origin);
+        for (std::size_t line = lastLine;; --line) {
+            const auto insertion =
+                blockInsertionEdit(buffer, line, displayColumn, append || line == origin.line);
+            if (insertion) {
+                std::u16string replacement = insertion->replacement;
+                replacement.insert(insertion->insertionOffset, repeat.insertedText);
+                const std::size_t lineStart = buffer.lineStarts[line];
+                edits.push_back(vkui::buffer::TransactionEdit{
+                    lineStart + insertion->bufferStart,
+                    insertion->bufferEnd - insertion->bufferStart, std::move(replacement)});
+                if (line == origin.line) {
+                    targetOffset =
+                        lineStart + insertion->resultingColumn + repeat.insertedText.size();
+                }
+            }
+            if (line == origin.line) {
+                break;
+            }
+        }
+        const std::size_t beforeCursor = offset(buffer, view.cursors[view.buffer]);
+        const vkui::buffer::TextSelection before{view.selectionAnchorOffset.value_or(beforeCursor),
+                                                 beforeCursor};
+        const auto group = externalEditGroups.find(view.buffer);
+        const bool applied = mutateExternalBatch(
+            &result, view.buffer, std::move(edits), before,
+            vkui::buffer::TextSelection{targetOffset, targetOffset}, windowId,
+            group == externalEditGroups.end() ? std::nullopt
+                                              : std::optional<std::uint64_t>(group->second));
+        closeInsertUndoBlock();
+        if (applied) {
+            view.preferredColumn.reset();
+            emitCursor(result, windowId, view);
+        }
+        return;
+    }
     for (std::size_t line = lastLine;; --line) {
         const auto insertion = blockInsertionEdit(
             buffer,

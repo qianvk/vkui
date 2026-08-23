@@ -1,6 +1,6 @@
-# VkSegmentedControl
+# VSegmentedControl
 
-`VkSegmentedControl` is a generic, single-selection group. Add text-only, icon-only, or mixed
+`VSegmentedControl` is a generic, single-selection group. Add text-only, icon-only, or mixed
 segments, enable or disable individual items, and read or set `currentIndex`. Changes emit
 `currentIndexChanged`; direct activation also emits `segmentActivated`.
 

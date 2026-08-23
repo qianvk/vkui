@@ -1,0 +1,496 @@
+// SPDX-License-Identifier: MIT
+
+#include "VPopoverPlacementEngine_p.h"
+
+#include <QtCore/QtMath>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <vector>
+
+namespace vkui {
+namespace {
+
+constexpr qreal kGeometryEpsilon = 0.001;
+
+qreal nonNegative(qreal value) noexcept {
+    return std::isfinite(value) ? std::max<qreal>(0.0, value) : 0.0;
+}
+
+qreal clamped(qreal value, qreal minimum, qreal maximum) noexcept {
+    if (maximum < minimum) {
+        return minimum;
+    }
+    return std::clamp(value, minimum, maximum);
+}
+
+qreal area(const QRectF& rect) noexcept {
+    return rect.isEmpty() ? 0.0 : rect.width() * rect.height();
+}
+
+bool isFinite(const QRectF& rect) noexcept {
+    return std::isfinite(rect.x()) && std::isfinite(rect.y()) && std::isfinite(rect.width()) &&
+           std::isfinite(rect.height());
+}
+
+bool containsRect(const QRectF& outer, const QRectF& inner) noexcept {
+    return inner.left() >= outer.left() - kGeometryEpsilon &&
+           inner.top() >= outer.top() - kGeometryEpsilon &&
+           inner.right() <= outer.right() + kGeometryEpsilon &&
+           inner.bottom() <= outer.bottom() + kGeometryEpsilon;
+}
+
+VPopoverBoundaryPlacementFlag boundaryFlagFor(const VPopoverPlacement placement) noexcept {
+    switch (placement) {
+    case VPopoverPlacement::Below:
+        return VPopoverBoundaryPlacementFlag::Below;
+    case VPopoverPlacement::Above:
+        return VPopoverBoundaryPlacementFlag::Above;
+    case VPopoverPlacement::Right:
+        return VPopoverBoundaryPlacementFlag::Right;
+    case VPopoverPlacement::Left:
+        return VPopoverBoundaryPlacementFlag::Left;
+    case VPopoverPlacement::Automatic:
+        return VPopoverBoundaryPlacementFlag::None;
+    }
+    return VPopoverBoundaryPlacementFlag::None;
+}
+
+QRectF usableGeometry(const QRectF& available, const qreal margin) noexcept {
+    const qreal usableLeft = std::ceil(available.left() + margin);
+    const qreal usableTop = std::ceil(available.top() + margin);
+    const qreal usableRight = std::floor(available.right() - margin);
+    const qreal usableBottom = std::floor(available.bottom() - margin);
+    return {usableLeft, usableTop, usableRight - usableLeft, usableBottom - usableTop};
+}
+
+struct Candidate final {
+    VPopoverPlacementResult result;
+    bool selectionGeometryFits = false;
+    bool selectionPreservesContentSize = false;
+    qreal visibleArea = 0.0;
+    qreal displacement = std::numeric_limits<qreal>::max();
+    int priority = 0;
+};
+
+QRectF contentRectFor(const QRectF& body, const QMarginsF& margins) {
+    QRectF content =
+        body.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
+    if (content.width() < 0.0) {
+        content.setLeft(content.center().x());
+        content.setRight(content.left());
+    }
+    if (content.height() < 0.0) {
+        content.setTop(content.center().y());
+        content.setBottom(content.top());
+    }
+    return content;
+}
+
+VPopoverCrossAxisAlignment
+physicalHorizontalAlignment(const VPopoverPlacementInput& input) noexcept {
+    if (input.layoutDirection != Qt::RightToLeft) {
+        return input.crossAxisAlignment;
+    }
+    if (input.crossAxisAlignment == VPopoverCrossAxisAlignment::Start) {
+        return VPopoverCrossAxisAlignment::End;
+    }
+    if (input.crossAxisAlignment == VPopoverCrossAxisAlignment::End) {
+        return VPopoverCrossAxisAlignment::Start;
+    }
+    return VPopoverCrossAxisAlignment::Center;
+}
+
+qreal alignedOrigin(const VPopoverCrossAxisAlignment alignment, const qreal anchorStart,
+                    const qreal anchorEnd, const qreal anchorCenter, const qreal totalExtent,
+                    const qreal outer) noexcept {
+    switch (alignment) {
+    case VPopoverCrossAxisAlignment::Start:
+        return anchorStart - outer;
+    case VPopoverCrossAxisAlignment::End:
+        return anchorEnd - totalExtent + outer;
+    case VPopoverCrossAxisAlignment::Center:
+        return anchorCenter - totalExtent / 2.0;
+    }
+    return anchorCenter - totalExtent / 2.0;
+}
+
+std::vector<VPopoverPlacement> placementOrder(const VPopoverPlacementInput& input) {
+    const VPopoverPlacement horizontalFirst = input.layoutDirection == Qt::RightToLeft
+                                                   ? VPopoverPlacement::Left
+                                                   : VPopoverPlacement::Right;
+    const VPopoverPlacement horizontalSecond = horizontalFirst == VPopoverPlacement::Right
+                                                    ? VPopoverPlacement::Left
+                                                    : VPopoverPlacement::Right;
+    switch (input.preferredPlacement) {
+    case VPopoverPlacement::Above:
+        return {VPopoverPlacement::Above, VPopoverPlacement::Below, horizontalFirst,
+                horizontalSecond};
+    case VPopoverPlacement::Below:
+        return {VPopoverPlacement::Below, VPopoverPlacement::Above, horizontalFirst,
+                horizontalSecond};
+    case VPopoverPlacement::Right:
+        return {VPopoverPlacement::Right, VPopoverPlacement::Left, VPopoverPlacement::Below,
+                VPopoverPlacement::Above};
+    case VPopoverPlacement::Left:
+        return {VPopoverPlacement::Left, VPopoverPlacement::Right, VPopoverPlacement::Below,
+                VPopoverPlacement::Above};
+    case VPopoverPlacement::Automatic:
+        return {VPopoverPlacement::Below, VPopoverPlacement::Above, horizontalFirst,
+                horizontalSecond};
+    }
+    return {};
+}
+
+Candidate makeCandidate(const VPopoverPlacementInput& input, const QRectF& anchor,
+                        const QRectF& usable, VPopoverPlacement placement, int priority) {
+    Candidate candidate;
+    candidate.priority = priority;
+
+    const qreal outer = nonNegative(input.outerMargin);
+    const qreal gap = nonNegative(input.anchorGap);
+    const qreal arrowDepth = nonNegative(input.arrowDepth);
+    const qreal arrowWidth = nonNegative(input.arrowWidth);
+    const qreal radius = nonNegative(input.bodyCornerRadius);
+    const QMarginsF margins(
+        nonNegative(input.contentMargins.left()), nonNegative(input.contentMargins.top()),
+        nonNegative(input.contentMargins.right()), nonNegative(input.contentMargins.bottom()));
+
+    const bool vertical =
+        placement == VPopoverPlacement::Below || placement == VPopoverPlacement::Above;
+    const qreal minimumArrowEdge = 2.0 * (radius + arrowWidth / 2.0 + 1.0);
+    const qreal minimumPlainEdge = std::max<qreal>(1.0, 2.0 * radius + 1.0);
+
+    qreal requestedBodyWidth =
+        nonNegative(input.contentSize.width()) + margins.left() + margins.right();
+    qreal requestedBodyHeight =
+        nonNegative(input.contentSize.height()) + margins.top() + margins.bottom();
+    requestedBodyWidth =
+        std::max(requestedBodyWidth, vertical ? minimumArrowEdge : minimumPlainEdge);
+    requestedBodyHeight =
+        std::max(requestedBodyHeight, vertical ? minimumPlainEdge : minimumArrowEdge);
+
+    const qreal requestedWidth = requestedBodyWidth + 2.0 * outer + (vertical ? 0.0 : arrowDepth);
+    const qreal requestedHeight = requestedBodyHeight + 2.0 * outer + (vertical ? arrowDepth : 0.0);
+
+    const qreal targetX = anchor.center().x();
+    const qreal targetY = anchor.center().y();
+    const VPopoverCrossAxisAlignment horizontalAlignment = physicalHorizontalAlignment(input);
+    QRectF desired;
+    switch (placement) {
+    case VPopoverPlacement::Below: {
+        const qreal tipY = anchor.bottom() + gap;
+        desired = QRectF(alignedOrigin(horizontalAlignment, anchor.left(), anchor.right(), targetX,
+                                       requestedWidth, outer),
+                         tipY - outer, requestedWidth, requestedHeight);
+        break;
+    }
+    case VPopoverPlacement::Above: {
+        const qreal tipY = anchor.top() - gap;
+        desired = QRectF(alignedOrigin(horizontalAlignment, anchor.left(), anchor.right(), targetX,
+                                       requestedWidth, outer),
+                         tipY - (requestedHeight - outer), requestedWidth, requestedHeight);
+        break;
+    }
+    case VPopoverPlacement::Right: {
+        const qreal tipX = anchor.right() + gap;
+        desired = QRectF(tipX - outer,
+                         alignedOrigin(input.crossAxisAlignment, anchor.top(), anchor.bottom(),
+                                       targetY, requestedHeight, outer),
+                         requestedWidth, requestedHeight);
+        break;
+    }
+    case VPopoverPlacement::Left: {
+        const qreal tipX = anchor.left() - gap;
+        desired = QRectF(tipX - (requestedWidth - outer),
+                         alignedOrigin(input.crossAxisAlignment, anchor.top(), anchor.bottom(),
+                                       targetY, requestedHeight, outer),
+                         requestedWidth, requestedHeight);
+        break;
+    }
+    case VPopoverPlacement::Automatic:
+        return candidate;
+    }
+
+    candidate.selectionGeometryFits = containsRect(usable, desired);
+    candidate.visibleArea = area(desired.intersected(usable));
+
+    qreal bodyWidth = requestedBodyWidth;
+    qreal bodyHeight = requestedBodyHeight;
+    qreal maximumBodyWidth = usable.width() - 2.0 * outer;
+    qreal maximumBodyHeight = usable.height() - 2.0 * outer;
+    qreal resolvedTipX = targetX;
+    qreal resolvedTipY = targetY;
+
+    // The trigger may legitimately sit between the physical screen edge and
+    // the configured screen margin. Move the transparent outer edge inward in
+    // that case instead of rejecting the direction; the arrow remains aimed
+    // at the trigger while its body and shadow stay inside usable geometry.
+    switch (placement) {
+    case VPopoverPlacement::Below:
+        resolvedTipY = std::max(anchor.bottom() + gap, usable.top() + outer);
+        maximumBodyHeight = usable.bottom() - resolvedTipY - arrowDepth - outer;
+        break;
+    case VPopoverPlacement::Above:
+        resolvedTipY = std::min(anchor.top() - gap, usable.bottom() - outer);
+        maximumBodyHeight = resolvedTipY - usable.top() - arrowDepth - outer;
+        break;
+    case VPopoverPlacement::Right:
+        resolvedTipX = std::max(anchor.right() + gap, usable.left() + outer);
+        maximumBodyWidth = usable.right() - resolvedTipX - arrowDepth - outer;
+        break;
+    case VPopoverPlacement::Left:
+        resolvedTipX = std::min(anchor.left() - gap, usable.right() - outer);
+        maximumBodyWidth = resolvedTipX - usable.left() - arrowDepth - outer;
+        break;
+    case VPopoverPlacement::Automatic:
+        return candidate;
+    }
+
+    if (maximumBodyWidth + kGeometryEpsilon < (vertical ? minimumArrowEdge : minimumPlainEdge) ||
+        maximumBodyHeight + kGeometryEpsilon < (vertical ? minimumPlainEdge : minimumArrowEdge)) {
+        return candidate;
+    }
+
+    bodyWidth = std::min(bodyWidth, std::max<qreal>(0.0, maximumBodyWidth));
+    bodyHeight = std::min(bodyHeight, std::max<qreal>(0.0, maximumBodyHeight));
+
+    const qreal totalWidth = bodyWidth + 2.0 * outer + (vertical ? 0.0 : arrowDepth);
+    const qreal totalHeight = bodyHeight + 2.0 * outer + (vertical ? arrowDepth : 0.0);
+    const int popupWidth = std::max(1, qCeil(totalWidth));
+    const int popupHeight = std::max(1, qCeil(totalHeight));
+
+    qreal popupX = 0.0;
+    qreal popupY = 0.0;
+    switch (placement) {
+    case VPopoverPlacement::Below:
+        popupX = clamped(alignedOrigin(horizontalAlignment, anchor.left(), anchor.right(), targetX,
+                                       totalWidth, outer),
+                         usable.left(), usable.right() - popupWidth);
+        popupY = resolvedTipY - outer;
+        break;
+    case VPopoverPlacement::Above:
+        popupX = clamped(alignedOrigin(horizontalAlignment, anchor.left(), anchor.right(), targetX,
+                                       totalWidth, outer),
+                         usable.left(), usable.right() - popupWidth);
+        popupY = resolvedTipY - (totalHeight - outer);
+        break;
+    case VPopoverPlacement::Right:
+        popupX = resolvedTipX - outer;
+        popupY = clamped(alignedOrigin(input.crossAxisAlignment, anchor.top(), anchor.bottom(),
+                                       targetY, totalHeight, outer),
+                         usable.top(), usable.bottom() - popupHeight);
+        break;
+    case VPopoverPlacement::Left:
+        popupX = resolvedTipX - (totalWidth - outer);
+        popupY = clamped(alignedOrigin(input.crossAxisAlignment, anchor.top(), anchor.bottom(),
+                                       targetY, totalHeight, outer),
+                         usable.top(), usable.bottom() - popupHeight);
+        break;
+    case VPopoverPlacement::Automatic:
+        return candidate;
+    }
+
+    int popupLeft = qRound(popupX);
+    int popupTop = qRound(popupY);
+    popupLeft = std::clamp(popupLeft, qCeil(usable.left()), qFloor(usable.right()) - popupWidth);
+    popupTop = std::clamp(popupTop, qCeil(usable.top()), qFloor(usable.bottom()) - popupHeight);
+    QRect popupRect(popupLeft, popupTop, popupWidth, popupHeight);
+
+    QRectF bodyRect;
+    switch (placement) {
+    case VPopoverPlacement::Below:
+        bodyRect = QRectF(outer, outer + arrowDepth, bodyWidth, bodyHeight);
+        break;
+    case VPopoverPlacement::Above:
+        bodyRect = QRectF(outer, outer, bodyWidth, bodyHeight);
+        break;
+    case VPopoverPlacement::Right:
+        bodyRect = QRectF(outer + arrowDepth, outer, bodyWidth, bodyHeight);
+        break;
+    case VPopoverPlacement::Left:
+        bodyRect = QRectF(outer, outer, bodyWidth, bodyHeight);
+        break;
+    case VPopoverPlacement::Automatic:
+        return candidate;
+    }
+
+    const qreal effectiveRadius =
+        std::min({radius, bodyRect.width() / 2.0, bodyRect.height() / 2.0});
+    const qreal clearance = effectiveRadius + arrowWidth / 2.0;
+
+    // Prefer moving the body along the cross axis over drawing a long,
+    // diagonal arrow. Cross-axis alignment remains stable until rounded-corner
+    // clearance would otherwise push the arrow base away from its target.
+    if (vertical) {
+        const qreal minimumOffset = bodyRect.left() + clearance;
+        const qreal maximumOffset = bodyRect.right() - clearance;
+        const qreal minimumLeft = targetX - maximumOffset;
+        const qreal maximumLeft = targetX - minimumOffset;
+        popupLeft = qRound(clamped(popupRect.left(), minimumLeft, maximumLeft));
+        popupLeft =
+            std::clamp(popupLeft, qCeil(usable.left()), qFloor(usable.right()) - popupWidth);
+        popupRect.moveLeft(popupLeft);
+    } else {
+        const qreal minimumOffset = bodyRect.top() + clearance;
+        const qreal maximumOffset = bodyRect.bottom() - clearance;
+        const qreal minimumTop = targetY - maximumOffset;
+        const qreal maximumTop = targetY - minimumOffset;
+        popupTop = qRound(clamped(popupRect.top(), minimumTop, maximumTop));
+        popupTop = std::clamp(popupTop, qCeil(usable.top()), qFloor(usable.bottom()) - popupHeight);
+        popupRect.moveTop(popupTop);
+    }
+
+    QPointF arrowBase;
+    QPointF arrowTip;
+
+    if (vertical) {
+        const qreal minimumBase = popupRect.left() + bodyRect.left() + clearance;
+        const qreal maximumBase = popupRect.left() + bodyRect.right() - clearance;
+        if (maximumBase < minimumBase - kGeometryEpsilon) {
+            return candidate;
+        }
+        const qreal baseGlobal = clamped(anchor.center().x(), minimumBase, maximumBase);
+        const qreal anchorTarget = clamped(baseGlobal, anchor.left(), anchor.right());
+        const qreal tipGlobal =
+            clamped(anchorTarget, popupRect.left(), popupRect.left() + popupRect.width());
+        const qreal baseY =
+            placement == VPopoverPlacement::Below ? bodyRect.top() : bodyRect.bottom();
+        const qreal tipY =
+            placement == VPopoverPlacement::Below ? outer : bodyRect.bottom() + arrowDepth;
+        arrowBase = QPointF(baseGlobal - popupRect.left(), baseY);
+        arrowTip = QPointF(tipGlobal - popupRect.left(), tipY);
+    } else {
+        const qreal minimumBase = popupRect.top() + bodyRect.top() + clearance;
+        const qreal maximumBase = popupRect.top() + bodyRect.bottom() - clearance;
+        if (maximumBase < minimumBase - kGeometryEpsilon) {
+            return candidate;
+        }
+        const qreal baseGlobal = clamped(anchor.center().y(), minimumBase, maximumBase);
+        const qreal anchorTarget = clamped(baseGlobal, anchor.top(), anchor.bottom());
+        const qreal tipGlobal =
+            clamped(anchorTarget, popupRect.top(), popupRect.top() + popupRect.height());
+        const qreal baseX =
+            placement == VPopoverPlacement::Right ? bodyRect.left() : bodyRect.right();
+        const qreal tipX =
+            placement == VPopoverPlacement::Right ? outer : bodyRect.right() + arrowDepth;
+        arrowBase = QPointF(baseX, baseGlobal - popupRect.top());
+        arrowTip = QPointF(tipX, tipGlobal - popupRect.top());
+    }
+
+    candidate.displacement =
+        std::abs(popupLeft - desired.left()) + std::abs(popupTop - desired.top()) +
+        std::abs(requestedBodyWidth - bodyWidth) + std::abs(requestedBodyHeight - bodyHeight);
+    candidate.selectionPreservesContentSize =
+        std::abs(requestedBodyWidth - bodyWidth) <= kGeometryEpsilon &&
+        std::abs(requestedBodyHeight - bodyHeight) <= kGeometryEpsilon;
+    candidate.result.resolvedPlacement = placement;
+    candidate.result.popupRect = popupRect;
+    candidate.result.bodyRect = bodyRect;
+    candidate.result.contentRect = contentRectFor(bodyRect, margins);
+    candidate.result.arrowTip = arrowTip;
+    candidate.result.arrowBaseCenter = arrowBase;
+    candidate.result.valid = true;
+    return candidate;
+}
+
+bool betterFallback(const Candidate& candidate, const Candidate& best) noexcept {
+    if (candidate.visibleArea > best.visibleArea + kGeometryEpsilon) {
+        return true;
+    }
+    if (std::abs(candidate.visibleArea - best.visibleArea) <= kGeometryEpsilon) {
+        if (candidate.displacement < best.displacement - kGeometryEpsilon) {
+            return true;
+        }
+        if (std::abs(candidate.displacement - best.displacement) <= kGeometryEpsilon) {
+            return candidate.priority < best.priority;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+VPopoverPlacementResult VPopoverPlacementEngine::calculate(const VPopoverPlacementInput& input) {
+    VPopoverPlacementResult invalid;
+    if (!isFinite(input.anchorRect) || !isFinite(input.availableGeometry) ||
+        !input.availableGeometry.isValid() || input.availableGeometry.isEmpty() ||
+        nonNegative(input.arrowWidth) <= kGeometryEpsilon ||
+        nonNegative(input.arrowDepth) <= kGeometryEpsilon) {
+        return invalid;
+    }
+
+    QRectF anchor = input.anchorRect.normalized();
+    const qreal margin = nonNegative(input.screenMargin);
+    const QRectF available = input.availableGeometry.normalized();
+    const QRectF usable = usableGeometry(available, margin);
+    if (usable.width() < 1.0 || usable.height() < 1.0) {
+        return invalid;
+    }
+
+    const auto order = placementOrder(input);
+    std::vector<Candidate> candidates;
+    candidates.reserve(order.size());
+    for (std::size_t index = 0; index < order.size(); ++index) {
+        Candidate screenCandidate =
+            makeCandidate(input, anchor, usable, order[index], static_cast<int>(index));
+        if (!screenCandidate.result.valid) {
+            continue;
+        }
+
+        Candidate candidate = screenCandidate;
+        const VPopoverBoundaryPlacementFlag flag = boundaryFlagFor(order[index]);
+        if (input.boundaryPlacements.testFlag(flag)) {
+            if (!isFinite(input.boundaryGeometry) || !input.boundaryGeometry.isValid() ||
+                input.boundaryGeometry.isEmpty()) {
+                continue;
+            }
+            const QRectF boundedAvailable =
+                available.intersected(input.boundaryGeometry.normalized());
+            const QRectF boundedUsable = usableGeometry(boundedAvailable, margin);
+            if (boundedUsable.width() < 1.0 || boundedUsable.height() < 1.0) {
+                continue;
+            }
+            Candidate boundedCandidate =
+                makeCandidate(input, anchor, boundedUsable, order[index], static_cast<int>(index));
+            if (!boundedCandidate.result.valid) {
+                continue;
+            }
+
+            // A directional boundary constrains the geometry after direction
+            // selection. It must not make a preferred direction flip while
+            // the requested popup still fits the physical screen.
+            boundedCandidate.selectionGeometryFits =
+                screenCandidate.selectionGeometryFits;
+            boundedCandidate.selectionPreservesContentSize =
+                screenCandidate.selectionPreservesContentSize;
+            candidate = std::move(boundedCandidate);
+        }
+        candidates.push_back(std::move(candidate));
+    }
+    if (candidates.empty()) {
+        return invalid;
+    }
+
+    // Preferred means first choice, not a forced direction. Always use the
+    // earliest direction that preserves the requested content size; only
+    // compare clipped candidates when no direction can fit completely.
+    for (const Candidate& candidate : candidates) {
+        const bool acceptable = input.preferredPlacement == VPopoverPlacement::Automatic
+                                    ? candidate.selectionGeometryFits
+                                    : candidate.selectionPreservesContentSize;
+        if (acceptable) {
+            return candidate.result;
+        }
+    }
+
+    const Candidate* best = &candidates.front();
+    for (const Candidate& candidate : candidates) {
+        if (betterFallback(candidate, *best)) {
+            best = &candidate;
+        }
+    }
+    return best->result;
+}
+
+} // namespace vkui

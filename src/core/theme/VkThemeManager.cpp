@@ -249,6 +249,15 @@ VkMetricTokens defaultMetrics() {
     metrics.windowCornerRadius = platformWindowCornerRadius();
     metrics.cornerRadiusLarge = metrics.windowCornerRadius;
     metrics.popoverCornerRadius = metrics.windowCornerRadius;
+    // AppKit pop-up buttons use a tighter radius than detached menu surfaces.
+    metrics.comboBoxCornerRadius = 6.0;
+#if defined(Q_OS_MACOS)
+    metrics.menuCornerRadius = 16.0;
+    metrics.comboBoxPopupCornerRadius = 16.0;
+#else
+    metrics.menuCornerRadius = 10.0;
+    metrics.comboBoxPopupCornerRadius = 10.0;
+#endif
     metrics.popoverShadowRadius = 24.0;
 
     metrics.borderWidth = 1.0;
@@ -384,9 +393,12 @@ bool metricTokensEqual(const VkMetricTokens& a, const VkMetricTokens& b) {
            a.cornerRadiusRegular == b.cornerRadiusRegular &&
            a.cornerRadiusLarge == b.cornerRadiusLarge &&
            a.windowCornerRadius == b.windowCornerRadius &&
-           a.popoverCornerRadius == b.popoverCornerRadius && a.borderWidth == b.borderWidth &&
-           a.focusRingWidth == b.focusRingWidth && a.switchTrackWidth == b.switchTrackWidth &&
-           a.switchTrackHeight == b.switchTrackHeight &&
+           a.popoverCornerRadius == b.popoverCornerRadius &&
+           a.menuCornerRadius == b.menuCornerRadius &&
+           a.comboBoxCornerRadius == b.comboBoxCornerRadius &&
+           a.comboBoxPopupCornerRadius == b.comboBoxPopupCornerRadius &&
+           a.borderWidth == b.borderWidth && a.focusRingWidth == b.focusRingWidth &&
+           a.switchTrackWidth == b.switchTrackWidth && a.switchTrackHeight == b.switchTrackHeight &&
            a.switchThumbDiameter == b.switchThumbDiameter &&
            a.popoverArrowWidth == b.popoverArrowWidth &&
            a.popoverArrowDepth == b.popoverArrowDepth &&
@@ -415,7 +427,7 @@ bool motionTokensEqual(const VkMotionTokens& a, const VkMotionTokens& b) {
 } // namespace
 
 VkThemeManagerPrivate::VkThemeManagerPrivate(VkThemeManager* manager)
-    : q(manager), resolvedTheme(createTheme(systemAppearance(), requestedAccentColor, 1)) {}
+    : q(manager), resolvedTheme(createTheme(systemAppearance(), requestedAccentColor, 1, 1)) {}
 
 VkAppearance VkThemeManagerPrivate::resolveEffectiveAppearance() const {
     return requestedAppearance == VkAppearance::Auto ? systemAppearance() : requestedAppearance;
@@ -423,30 +435,47 @@ VkAppearance VkThemeManagerPrivate::resolveEffectiveAppearance() const {
 
 VkTheme VkThemeManagerPrivate::createTheme(const VkAppearance appearance,
                                            const VkAccentColor accentColor,
-                                           const quint64 generation) {
+                                           const quint64 generation,
+                                           const quint64 colorGeneration) {
     return VkTheme(appearance == VkAppearance::Dark ? darkColors(accentColor)
                                                     : lightColors(accentColor),
-                   defaultMetrics(), defaultTypography(), defaultMotion(), appearance, generation);
+                   defaultMetrics(), defaultTypography(), defaultMotion(), appearance, generation,
+                   colorGeneration);
 }
 
-bool VkThemeManagerPrivate::themesHaveEqualTokens(const VkTheme& left, const VkTheme& right) {
-    return left.effectiveAppearance_ == right.effectiveAppearance_ &&
-           colorTokensEqual(left.colors_, right.colors_) &&
-           metricTokensEqual(left.metrics_, right.metrics_) &&
-           typographyTokensEqual(left.typography_, right.typography_) &&
-           motionTokensEqual(left.motion_, right.motion_);
+VkThemeChanges VkThemeManagerPrivate::changedTokenGroups(const VkTheme& previous,
+                                                         const VkTheme& candidate) {
+    VkThemeChanges changes;
+    if (previous.effectiveAppearance_ != candidate.effectiveAppearance_ ||
+        !colorTokensEqual(previous.colors_, candidate.colors_)) {
+        changes |= VkThemeChange::Colors;
+    }
+    if (!metricTokensEqual(previous.metrics_, candidate.metrics_)) {
+        changes |= VkThemeChange::Metrics;
+    }
+    if (!typographyTokensEqual(previous.typography_, candidate.typography_)) {
+        changes |= VkThemeChange::Typography;
+    }
+    if (!motionTokensEqual(previous.motion_, candidate.motion_)) {
+        changes |= VkThemeChange::Motion;
+    }
+    return changes;
 }
 
-bool VkThemeManagerPrivate::refreshTheme() {
+VkThemeChanges VkThemeManagerPrivate::refreshTheme() {
     const VkAppearance effective = resolveEffectiveAppearance();
-    const VkTheme candidate =
-        createTheme(effective, requestedAccentColor, resolvedTheme.generation_);
-    if (themesHaveEqualTokens(resolvedTheme, candidate)) {
-        return false;
+    const VkTheme candidate = createTheme(
+        effective, requestedAccentColor, resolvedTheme.generation_, resolvedTheme.colorGeneration_);
+    const VkThemeChanges changes = changedTokenGroups(resolvedTheme, candidate);
+    if (changes == VkThemeChange::None) {
+        return {};
     }
 
-    resolvedTheme = createTheme(effective, requestedAccentColor, resolvedTheme.generation_ + 1);
-    return true;
+    const quint64 colorGeneration =
+        resolvedTheme.colorGeneration_ + (changes.testFlag(VkThemeChange::Colors) ? 1U : 0U);
+    resolvedTheme = createTheme(effective, requestedAccentColor, resolvedTheme.generation_ + 1,
+                                colorGeneration);
+    return changes;
 }
 
 void VkThemeManagerPrivate::applyPalette() const {
@@ -485,7 +514,7 @@ void VkThemeManagerPrivate::attachToApplication() {
                          [this](Qt::ColorScheme) { handleSystemColorSchemeChange(); });
 
     const VkAppearance previousEffective = resolvedTheme.effectiveAppearance_;
-    const bool tokensChanged = refreshTheme();
+    const VkThemeChanges changes = refreshTheme();
 
     // A palette may have been customized between manager construction and the
     // creation of QGuiApplication, so apply it even if token values compare equal.
@@ -493,8 +522,8 @@ void VkThemeManagerPrivate::attachToApplication() {
     if (resolvedTheme.effectiveAppearance_ != previousEffective) {
         Q_EMIT q->effectiveAppearanceChanged(resolvedTheme.effectiveAppearance_);
     }
-    if (tokensChanged) {
-        Q_EMIT q->themeChanged(resolvedTheme.generation_);
+    if (changes != VkThemeChange::None) {
+        Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
     }
 }
 
@@ -505,15 +534,15 @@ void VkThemeManagerPrivate::setAppearance(const VkAppearance appearance) {
 
     const VkAppearance previousEffective = resolvedTheme.effectiveAppearance_;
     requestedAppearance = appearance;
-    const bool tokensChanged = refreshTheme();
+    const VkThemeChanges changes = refreshTheme();
     applyPalette();
 
     Q_EMIT q->appearanceChanged(requestedAppearance);
     if (resolvedTheme.effectiveAppearance_ != previousEffective) {
         Q_EMIT q->effectiveAppearanceChanged(resolvedTheme.effectiveAppearance_);
     }
-    if (tokensChanged) {
-        Q_EMIT q->themeChanged(resolvedTheme.generation_);
+    if (changes != VkThemeChange::None) {
+        Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
     }
 }
 
@@ -523,12 +552,12 @@ void VkThemeManagerPrivate::setAccentColor(const VkAccentColor accentColor) {
     }
 
     requestedAccentColor = accentColor;
-    const bool tokensChanged = refreshTheme();
+    const VkThemeChanges changes = refreshTheme();
     applyPalette();
 
     Q_EMIT q->accentColorChanged(requestedAccentColor);
-    if (tokensChanged) {
-        Q_EMIT q->themeChanged(resolvedTheme.generation_);
+    if (changes != VkThemeChange::None) {
+        Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
     }
 }
 
@@ -538,7 +567,8 @@ void VkThemeManagerPrivate::handleSystemColorSchemeChange() {
     }
 
     const VkAppearance previousEffective = resolvedTheme.effectiveAppearance_;
-    if (!refreshTheme()) {
+    const VkThemeChanges changes = refreshTheme();
+    if (changes == VkThemeChange::None) {
         return;
     }
 
@@ -546,7 +576,7 @@ void VkThemeManagerPrivate::handleSystemColorSchemeChange() {
     if (resolvedTheme.effectiveAppearance_ != previousEffective) {
         Q_EMIT q->effectiveAppearanceChanged(resolvedTheme.effectiveAppearance_);
     }
-    Q_EMIT q->themeChanged(resolvedTheme.generation_);
+    Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
 }
 
 VkThemeManager* VkThemeManager::instance() {

@@ -1,22 +1,48 @@
 # File-tree frontend
 
-`VkFileTreeView` is VkUI's reusable, model-agnostic filesystem frontend. It
-owns compact `QTreeView` configuration, DPI-aware Nerd Font metrics, canonical
-icon/text/selection geometry, and the ordinary file-row renderer.
+`VFileTreeView` is the filesystem specialization of VkUI's unified tree
+framework:
 
-There is intentionally no second disclosure implementation:
-
-```
-VkFileTreeView -> VkDisclosureTreeView -> QTreeView
+```text
+VFileTreeView -> VTreeView -> QTreeView
+VFileTreeDelegate -> VTreeItemDelegate -> QStyledItemDelegate
 ```
 
-`VkDisclosureTreeView` remains the only authority for reversible folder
-disclosure and model row insertion, removal, and movement animation. Reader
-tables of contents may use it directly; filesystem products use
-`VkFileTreeView` and receive exactly the same animation pipeline.
+`VTreeView` remains the only expansion, input, connector, and animation
+authority. `VFileTreeView` adds font-relative SVG metrics, open and closed
+folder symbols, path-based file symbols, optional tags and drop-target visuals,
+and enables hierarchy connector lines by default. It owns no filesystem I/O.
 
-Application modules retain domain policy. They provide models, asynchronous
-directory loading, filesystem mutations, metadata, tags, and specialized
-source-list or summary-card renderers. A domain delegate can call
-`VkFileTreeDelegate::paintFileTreeRow()` for ordinary hierarchy rows without
-copying VkUI's geometry or paint code.
+Applications provide a model and semantic file roles:
+
+```cpp
+auto* tree = new vkui::VFileTreeView(parent);
+auto* model = new QStandardItemModel(tree);
+
+auto* folder = new QStandardItem("Source");
+folder->setData(true, vkui::VFileTreeDirectoryRole);
+
+auto* file = new QStandardItem("VTreeView.cpp");
+file->setData(false, vkui::VFileTreeDirectoryRole);
+file->setData("src/widgets/views/VTreeView.cpp", vkui::VFileTreePathRole);
+folder->appendRow(file);
+
+model->appendRow(folder);
+tree->setModel(model);
+```
+
+The delegate resolves a directory glyph from `isExpanded()` at paint time, so
+the model never duplicates view state by manually swapping open and closed
+icons. A single click inside `fileTreeIconRect()` triggers the reversible
+disclosure animation; clicking the label only selects or activates the item.
+
+Domain delegates may derive from `VFileTreeDelegate` and override
+`fileTreePresentation()` for semantic leading text, glyph, tags, or drop state.
+They inherit the shared layout and painting template, while animation remains
+automatically supplied by `VTreeView`.
+
+Titlebars and other chrome belong outside the item view. Row geometry stays in
+the viewport coordinate system owned by `QTreeView`; applications must not
+translate rows in `drawRow()` and compensate with an additional paint pass,
+because that would make Qt's culling, `visualRect()`, `indexAt()`, hover, and
+input geometry disagree.

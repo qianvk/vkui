@@ -6,14 +6,19 @@
 #include <QtCore/QSize>
 #include <QtGui/QColor>
 #include <QtGui/QIconEngine>
+#include <QtGui/QPalette>
 #include <QtGui/QPixmap>
+#include <memory>
 #include <vkui/core/VkIcon.h>
 
 namespace vkui {
 
+struct VkSvgIconSourceData;
+
 class VkSvgIconEngine final : public QIconEngine {
   public:
     VkSvgIconEngine(VkSymbol symbol, VkIconRole role);
+    VkSvgIconEngine(VkSymbol symbol, QPalette::ColorRole role, QPalette::ColorGroup group);
     VkSvgIconEngine(VkSymbol symbol, QColor primary, QColor secondary);
 
     [[nodiscard]] QIconEngine* clone() const override;
@@ -31,11 +36,13 @@ class VkSvgIconEngine final : public QIconEngine {
 
     VkSymbol symbol_;
     VkIconRole role_;
+    QPalette::ColorRole paletteRole_ = QPalette::Text;
+    QPalette::ColorGroup paletteGroup_ = QPalette::Active;
     QColor explicitPrimary_;
     QColor explicitSecondary_;
+    bool usesApplicationPalette_ = false;
     bool usesExplicitColors_ = false;
-    QByteArray source_;
-    QSize intrinsicSize_;
+    std::shared_ptr<const VkSvgIconSourceData> source_;
 };
 
 } // namespace vkui

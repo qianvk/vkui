@@ -5,62 +5,11 @@
 #include <QtCore/QMetaType>
 #include <QtGui/QColor>
 #include <QtGui/QIcon>
+#include <QtGui/QPalette>
 #include <vkui/VkUiGlobal.h>
+#include <vkui/core/VkSymbol.h>
 
 namespace vkui {
-
-enum class VkSymbol {
-    ChevronLeft,
-    ChevronRight,
-    ChevronUp,
-    ChevronDown,
-    Plus,
-    Minus,
-    Close,
-    Checkmark,
-    Information,
-    Warning,
-    Settings,
-    Search,
-    Folder,
-    Document,
-    Share,
-    More,
-    ToggleOff,
-    ToggleOn,
-    Power,
-    Sidebar,
-    Grid,
-    List,
-    Edit,
-    Trash,
-    Download,
-    Install,
-    Upload,
-    Lock,
-    Eye,
-    Save,
-    Reset,
-    Duplicate,
-    Templates,
-    Image,
-    Background,
-    CanvasBackground,
-    PhotoLibrary,
-    Focus,
-    FocusTarget,
-    Rename,
-    Projects,
-    Remove,
-    Reveal,
-    Clear,
-    DefaultTemplate,
-    UnsavedIndicator,
-    Bookmark,
-    BookmarkFilled,
-    InsertAbove,
-    InsertBelow,
-};
 
 enum class VkIconRole {
     Primary,
@@ -73,6 +22,10 @@ enum class VkIconRole {
 /** Creates a scalable icon whose semantic colors follow the current theme. */
 [[nodiscard]] VKUI_CORE_EXPORT QIcon icon(VkSymbol symbol, VkIconRole role = VkIconRole::Primary);
 
+/** Creates an icon that resolves its colors from the application palette when rendered. */
+[[nodiscard]] VKUI_CORE_EXPORT QIcon icon(VkSymbol symbol, QPalette::ColorRole role,
+                                          QPalette::ColorGroup group = QPalette::Active);
+
 /**
  * Creates a scalable icon with caller-supplied two-tone colors.
  *
@@ -80,10 +33,8 @@ enum class VkIconRole {
  * differ from the process-wide semantic theme. An invalid secondary color is
  * derived as a quieter contrasting tone.
  */
-[[nodiscard]] VKUI_CORE_EXPORT QIcon icon(
-    VkSymbol symbol,
-    const QColor& primary,
-    const QColor& secondary = {});
+[[nodiscard]] VKUI_CORE_EXPORT QIcon icon(VkSymbol symbol, const QColor& primary,
+                                          const QColor& secondary = {});
 
 } // namespace vkui
 

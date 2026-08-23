@@ -795,10 +795,7 @@ namespace vkui::vk {
             && nextCharacter != u')') {
             joined.push_back(u' ');
         }
-        joined.append(
-            buffer.text(),
-            contentStart + first,
-            contentLength - first);
+        joined.append(buffer.text().substr(contentStart + first, contentLength - first));
         hasPreviousText = true;
         previousCharacter = joined.back();
     }

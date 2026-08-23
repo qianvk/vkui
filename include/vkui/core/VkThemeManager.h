@@ -9,6 +9,7 @@
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkTheme.h>
+#include <vkui/core/VkThemeChange.h>
 
 namespace vkui {
 
@@ -46,7 +47,8 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
   Q_SIGNALS:
     void appearanceChanged(vkui::VkAppearance appearance);
     void effectiveAppearanceChanged(vkui::VkAppearance appearance);
-    void themeChanged(quint64 generation);
+    /** Reports the new generation and the exact token groups that changed. */
+    void themeChanged(quint64 generation, vkui::VkThemeChanges changes);
     void accentColorChanged(vkui::VkAccentColor accentColor);
     void animationsEnabledChanged(bool enabled);
 

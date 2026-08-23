@@ -2,10 +2,12 @@
 
 qt_add_executable(vkui_gallery
     main.cpp
-    GalleryFonts.h
-    GalleryFonts.cpp
-    GalleryFileTreeView.h
-    GalleryFileTreeView.cpp
+    GalleryApplicationController.h
+    GalleryApplicationController.cpp
+    GalleryContentView.h
+    GalleryContentView.cpp
+    GalleryPreferencesWindow.h
+    GalleryPreferencesWindow.cpp
     GalleryWindow.h
     GalleryWindow.cpp
     pages/StandardWidgetsPage.h
@@ -24,19 +26,24 @@ qt_add_executable(vkui_gallery
     pages/MotionPage.cpp
     pages/LocalizationPage.h
     pages/LocalizationPage.cpp
+    pages/WindowPage.h
+    pages/WindowPage.cpp
 )
 
 target_link_libraries(vkui_gallery PRIVATE VkUI::Widgets VkUI::Window Qt6::Widgets)
+target_include_directories(vkui_gallery PRIVATE ${VKUI_GENERATED_GALLERY_DIR})
 
 # Gallery text is the project's translatable UI. Embedding the catalogs in the
 # executable keeps VkUI::Core free of an auxiliary resource target when it is
 # exported as a static library.
-qt_add_translations(vkui_gallery
-    TS_FILES
-        ${PROJECT_SOURCE_DIR}/resources/translations/vkui_en.ts
-        ${PROJECT_SOURCE_DIR}/resources/translations/vkui_zh_CN.ts
-    RESOURCE_PREFIX "/vkui/translations"
-)
+if(COMMAND qt_add_translations)
+    qt_add_translations(vkui_gallery
+        TS_FILES
+            ${PROJECT_SOURCE_DIR}/resources/translations/vkui_en.ts
+            ${PROJECT_SOURCE_DIR}/resources/translations/vkui_zh_CN.ts
+        RESOURCE_PREFIX "/vkui/translations"
+    )
+endif()
 set_target_properties(vkui_gallery PROPERTIES
     OUTPUT_NAME vkui-gallery
     WIN32_EXECUTABLE TRUE

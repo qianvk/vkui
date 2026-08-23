@@ -1,6 +1,241 @@
 #include "VkCoreInternal.h"
 
+#include <unicode/uregex.h>
+#include <unicode/utext.h>
+#include <unicode/utf16.h>
+
 namespace vkui::vk {
+
+namespace {
+
+constexpr int32_t SnapshotRegexChunkLength = 4096;
+
+struct SnapshotTextContext final {
+    const vkui::buffer::BufferStorage* storage = nullptr;
+    std::int64_t length = 0;
+    bool failed = false;
+};
+
+[[nodiscard]] UText* openSnapshotText(UText* text, SnapshotTextContext* context,
+                                      UErrorCode* status);
+
+[[nodiscard]] UText* U_CALLCONV snapshotTextClone(UText* destination, const UText* source,
+                                                  const UBool deep, UErrorCode* status) {
+    if (U_FAILURE(*status)) {
+        return nullptr;
+    }
+    if (deep) {
+        *status = U_UNSUPPORTED_ERROR;
+        return nullptr;
+    }
+    auto* context =
+        const_cast<SnapshotTextContext*>(static_cast<const SnapshotTextContext*>(source->context));
+    destination = openSnapshotText(destination, context, status);
+    if (U_SUCCESS(*status) && destination != nullptr) {
+        const std::int64_t index = utext_getNativeIndex(const_cast<UText*>(source));
+        utext_setNativeIndex(destination, index);
+    }
+    return destination;
+}
+
+[[nodiscard]] std::int64_t U_CALLCONV snapshotTextLength(UText* text) {
+    return text->a;
+}
+
+[[nodiscard]] UBool U_CALLCONV snapshotTextAccess(UText* text, std::int64_t index,
+                                                  const UBool forward) {
+    auto* context =
+        const_cast<SnapshotTextContext*>(static_cast<const SnapshotTextContext*>(text->context));
+    if (context == nullptr || context->storage == nullptr) {
+        return false;
+    }
+    const bool outOfBounds = index < 0 || index > context->length;
+    index = std::clamp<std::int64_t>(index, 0, context->length);
+    const auto useCurrentChunk = [&] {
+        if (forward) {
+            return (index >= text->chunkNativeStart && index < text->chunkNativeLimit) ||
+                   (index == context->length && text->chunkNativeLimit == context->length);
+        }
+        return (index > text->chunkNativeStart && index <= text->chunkNativeLimit) ||
+               (index == 0 && text->chunkNativeStart == 0);
+    };
+    if (!useCurrentChunk()) {
+        std::int64_t needed = index;
+        if (!forward && needed > 0) {
+            --needed;
+        } else if (forward && needed == context->length && needed > 0) {
+            --needed;
+        }
+        std::int64_t start = needed - needed % SnapshotRegexChunkLength;
+        const std::int64_t remaining = context->length - start;
+        const std::int64_t limitWithoutBoundaryAdjustment =
+            start + std::min<std::int64_t>(remaining, SnapshotRegexChunkLength);
+        std::int64_t limit = limitWithoutBoundaryAdjustment;
+
+        if (start > 0) {
+            const auto atStart = context->storage->codeUnitAt(static_cast<std::size_t>(start));
+            const auto beforeStart =
+                context->storage->codeUnitAt(static_cast<std::size_t>(start - 1));
+            if (atStart && beforeStart && U16_IS_TRAIL(*atStart) && U16_IS_LEAD(*beforeStart)) {
+                --start;
+            }
+        }
+        if (limit < context->length && limit > start) {
+            const auto beforeLimit =
+                context->storage->codeUnitAt(static_cast<std::size_t>(limit - 1));
+            const auto atLimit = context->storage->codeUnitAt(static_cast<std::size_t>(limit));
+            if (beforeLimit && atLimit && U16_IS_LEAD(*beforeLimit) && U16_IS_TRAIL(*atLimit)) {
+                ++limit;
+            }
+        }
+        const auto chunk = context->storage->readExact(static_cast<std::size_t>(start),
+                                                       static_cast<std::size_t>(limit - start));
+        if (!chunk || chunk->size() > static_cast<std::size_t>(SnapshotRegexChunkLength + 2)) {
+            context->failed = true;
+            text->chunkLength = 0;
+            text->chunkNativeStart = index;
+            text->chunkNativeLimit = index;
+            text->chunkOffset = 0;
+            text->nativeIndexingLimit = 0;
+            return false;
+        }
+        auto* destination = static_cast<UChar*>(text->pExtra);
+        std::transform(chunk->cbegin(), chunk->cend(), destination,
+                       [](const char16_t codeUnit) { return static_cast<UChar>(codeUnit); });
+        text->chunkContents = destination;
+        text->chunkNativeStart = start;
+        text->chunkNativeLimit = limit;
+        text->chunkLength = static_cast<int32_t>(chunk->size());
+        text->nativeIndexingLimit = text->chunkLength;
+    }
+
+    text->chunkOffset = static_cast<int32_t>(index - text->chunkNativeStart);
+    if (text->chunkOffset > 0 && text->chunkOffset < text->chunkLength &&
+        U16_IS_TRAIL(text->chunkContents[text->chunkOffset]) &&
+        U16_IS_LEAD(text->chunkContents[text->chunkOffset - 1])) {
+        --text->chunkOffset;
+    }
+    return !outOfBounds &&
+           (forward ? text->chunkOffset < text->chunkLength : text->chunkOffset > 0);
+}
+
+[[nodiscard]] int32_t U_CALLCONV snapshotTextExtract(UText* text, std::int64_t start,
+                                                     std::int64_t limit, UChar* destination,
+                                                     const int32_t destinationCapacity,
+                                                     UErrorCode* status) {
+    if (U_FAILURE(*status)) {
+        return 0;
+    }
+    auto* context =
+        const_cast<SnapshotTextContext*>(static_cast<const SnapshotTextContext*>(text->context));
+    if (context == nullptr || context->storage == nullptr || destinationCapacity < 0 ||
+        (destination == nullptr && destinationCapacity > 0) || start > limit) {
+        *status = U_ILLEGAL_ARGUMENT_ERROR;
+        return 0;
+    }
+    start = std::clamp<std::int64_t>(start, 0, context->length);
+    limit = std::clamp<std::int64_t>(limit, 0, context->length);
+    if (start < context->length && start > 0) {
+        const auto current = context->storage->codeUnitAt(static_cast<std::size_t>(start));
+        const auto previous = context->storage->codeUnitAt(static_cast<std::size_t>(start - 1));
+        if (current && previous && U16_IS_TRAIL(*current) && U16_IS_LEAD(*previous)) {
+            --start;
+        }
+    }
+    if (limit < context->length && limit > 0) {
+        const auto current = context->storage->codeUnitAt(static_cast<std::size_t>(limit));
+        const auto previous = context->storage->codeUnitAt(static_cast<std::size_t>(limit - 1));
+        if (current && previous && U16_IS_TRAIL(*current) && U16_IS_LEAD(*previous)) {
+            --limit;
+        }
+    }
+    const std::int64_t requested = limit - start;
+    if (requested > std::numeric_limits<int32_t>::max()) {
+        *status = U_INDEX_OUTOFBOUNDS_ERROR;
+        return 0;
+    }
+    const std::size_t copyLength =
+        static_cast<std::size_t>(std::min<std::int64_t>(requested, destinationCapacity));
+    std::size_t copied = 0;
+    while (copied < copyLength) {
+        const std::size_t amount =
+            std::min<std::size_t>(SnapshotRegexChunkLength, copyLength - copied);
+        const auto chunk =
+            context->storage->readExact(static_cast<std::size_t>(start) + copied, amount);
+        if (!chunk) {
+            context->failed = true;
+            *status = U_INTERNAL_PROGRAM_ERROR;
+            return 0;
+        }
+        std::transform(chunk->cbegin(), chunk->cend(), destination + copied,
+                       [](const char16_t codeUnit) { return static_cast<UChar>(codeUnit); });
+        copied += chunk->size();
+    }
+    if (destination != nullptr && copied < static_cast<std::size_t>(destinationCapacity)) {
+        destination[copied] = 0;
+    }
+    (void)snapshotTextAccess(text, limit, true);
+    if (requested > destinationCapacity) {
+        *status = U_BUFFER_OVERFLOW_ERROR;
+    }
+    return static_cast<int32_t>(requested);
+}
+
+const UTextFuncs SnapshotTextFunctions{sizeof(UTextFuncs),
+                                       0,
+                                       0,
+                                       0,
+                                       snapshotTextClone,
+                                       snapshotTextLength,
+                                       snapshotTextAccess,
+                                       snapshotTextExtract,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       nullptr};
+
+[[nodiscard]] UText* openSnapshotText(UText* text, SnapshotTextContext* context,
+                                      UErrorCode* status) {
+    if (U_FAILURE(*status) || context == nullptr || context->storage == nullptr) {
+        if (U_SUCCESS(*status)) {
+            *status = U_ILLEGAL_ARGUMENT_ERROR;
+        }
+        return text;
+    }
+    text = utext_setup(text, static_cast<int32_t>((SnapshotRegexChunkLength + 2) * sizeof(UChar)),
+                       status);
+    if (U_FAILURE(*status) || text == nullptr) {
+        return text;
+    }
+    text->pFuncs = &SnapshotTextFunctions;
+    text->context = context;
+    text->a = context->length;
+    text->chunkContents = static_cast<UChar*>(text->pExtra);
+    text->chunkNativeStart = -1;
+    text->chunkOffset = 1;
+    text->chunkNativeLimit = 0;
+    text->chunkLength = 0;
+    text->nativeIndexingLimit = text->chunkOffset;
+    return text;
+}
+
+struct RegexCloser final {
+    void operator()(URegularExpression* expression) const noexcept {
+        uregex_close(expression);
+    }
+};
+
+struct TextCloser final {
+    void operator()(UText* text) const noexcept {
+        (void)utext_close(text);
+    }
+};
+
+} // namespace
 
 void VkCore::Implementation::requestCommandLine(
     DispatchResult &result,
@@ -47,6 +282,116 @@ void VkCore::Implementation::searchBuffer(
         || pattern.empty()) {
         return;
     }
+    // Use one engine for both owned and external text so regex syntax and
+    // Unicode behavior cannot diverge with the storage representation.
+    if (foundBuffer->second.storage.isExternalSession() || foundBuffer->second.storage.isOwned()) {
+        const auto reportError = [&](std::string message) {
+            Event error;
+            error.type = EventType::InputError;
+            error.view = windowId;
+            error.buffer = view.buffer;
+            error.message = std::move(message);
+            result.events.push_back(std::move(error));
+        };
+        const auto descriptor = foundBuffer->second.storage.describe();
+        if (!descriptor ||
+            descriptor->size > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+            pattern.size() > static_cast<std::size_t>(std::numeric_limits<int32_t>::max())) {
+            reportError("external snapshot is unavailable for search");
+            return;
+        }
+
+        SnapshotTextContext context{&foundBuffer->second.storage,
+                                    static_cast<std::int64_t>(descriptor->size), false};
+        UErrorCode status = U_ZERO_ERROR;
+        UText subjectText = UTEXT_INITIALIZER;
+        UText* opened = openSnapshotText(&subjectText, &context, &status);
+        if (U_FAILURE(status) || opened == nullptr) {
+            reportError(u_errorName(status));
+            return;
+        }
+        std::unique_ptr<UText, TextCloser> inputOwner(opened);
+        UParseError parseError{};
+        std::unique_ptr<URegularExpression, RegexCloser> expression(
+            uregex_open(reinterpret_cast<const UChar*>(pattern.data()),
+                        static_cast<int32_t>(pattern.size()), UREGEX_UWORD, &parseError, &status));
+        if (U_FAILURE(status) || !expression) {
+            reportError(u_errorName(status));
+            return;
+        }
+        uregex_setUText(expression.get(), opened, &status);
+        if (U_FAILURE(status)) {
+            reportError(u_errorName(status));
+            return;
+        }
+        if (rememberPattern) {
+            lastSearchPattern = pattern;
+            lastSearchForward = forward;
+        }
+
+        const Cursor originCursor =
+            clampCursor(foundBuffer->second, view.cursors[view.buffer], false);
+        const std::size_t originOffset = offset(foundBuffer->second, originCursor);
+        const std::size_t forwardBegin = std::min(descriptor->size, originOffset + 1);
+        const std::size_t count = std::max<std::size_t>(1, rawCount);
+        std::size_t totalMatches = 0;
+        std::size_t matchesBeforeForwardBegin = 0;
+        std::size_t matchesBeforeOrigin = 0;
+        UBool matched = uregex_find64(expression.get(), 0, &status);
+        while (matched && U_SUCCESS(status)) {
+            const std::int64_t position = uregex_start64(expression.get(), 0, &status);
+            if (U_FAILURE(status) || position < 0) {
+                break;
+            }
+            const std::size_t matchOffset = static_cast<std::size_t>(position);
+            matchesBeforeForwardBegin += matchOffset < forwardBegin ? 1 : 0;
+            matchesBeforeOrigin += matchOffset < originOffset ? 1 : 0;
+            ++totalMatches;
+            matched = uregex_findNext(expression.get(), &status);
+        }
+        if (U_FAILURE(status) || context.failed) {
+            reportError(context.failed ? "external snapshot range became unavailable during search"
+                                       : std::string(u_errorName(status)));
+            return;
+        }
+
+        std::optional<std::size_t> destination;
+        if (totalMatches != 0) {
+            const std::size_t targetOrdinal =
+                forward
+                    ? (matchesBeforeForwardBegin % totalMatches + (count - 1) % totalMatches) %
+                          totalMatches
+                    : (matchesBeforeOrigin % totalMatches + totalMatches - count % totalMatches) %
+                          totalMatches;
+            status = U_ZERO_ERROR;
+            matched = uregex_find64(expression.get(), 0, &status);
+            std::size_t ordinal = 0;
+            while (matched && U_SUCCESS(status)) {
+                const std::int64_t position = uregex_start64(expression.get(), 0, &status);
+                if (U_FAILURE(status) || position < 0) {
+                    break;
+                }
+                if (ordinal++ == targetOrdinal) {
+                    destination = static_cast<std::size_t>(position);
+                    break;
+                }
+                matched = uregex_findNext(expression.get(), &status);
+            }
+        }
+        if (U_FAILURE(status) || context.failed) {
+            reportError(context.failed ? "external snapshot range became unavailable during search"
+                                       : std::string(u_errorName(status)));
+            return;
+        }
+        if (!destination) {
+            reportError("pattern not found");
+            return;
+        }
+        const Cursor destinationCursor = cursorAtOffset(foundBuffer->second, *destination);
+        (void)moveToLocation(result, windowId, Location{view.buffer, *destination}, false,
+                             destinationCursor.line != originCursor.line);
+        return;
+    }
     if (!searchExpressionCached
         || cachedSearchPattern != pattern) {
         cachedSearchPattern = pattern;
@@ -79,8 +424,7 @@ void VkCore::Implementation::searchBuffer(
         foundBuffer->second, originCursor);
     const std::size_t count =
         std::max<std::size_t>(1, rawCount);
-    const std::u16string &bufferText =
-        foundBuffer->second.text();
+    const std::u16string& bufferText = foundBuffer->second.storage.ownedText()->text();
     const QStringView subject{
         reinterpret_cast<const QChar *>(
             bufferText.data()),
@@ -233,13 +577,9 @@ void VkCore::Implementation::searchWordUnderCursor(
 
     const std::size_t absoluteStart =
         buffer.lineStarts[cursor.line] + start;
+    const std::u16string patternText = buffer.text().substr(absoluteStart, end - start);
     QString pattern = QRegularExpression::escape(
-        QStringView{
-            reinterpret_cast<const QChar *>(
-                buffer.text().data()
-                + absoluteStart),
-            static_cast<qsizetype>(end - start)}
-            .toString());
+        QString::fromUtf16(patternText.data(), static_cast<qsizetype>(patternText.size())));
     if (exact && runClass == WordClass::Keyword) {
         // This boundary mirrors wordClass(): Unicode letters, numbers,
         // combining marks, and underscore are keyword characters. Qt's
@@ -299,9 +639,7 @@ void VkCore::Implementation::searchWordUnderCursor(
     const std::size_t length = lineLength(buffer, line);
     const std::size_t requested = std::min(
         cursor.column, length);
-    const std::u16string_view text{
-        buffer.text().data() + lineStart,
-        length};
+    const std::u16string text = buffer.text().substr(lineStart, length);
 
     std::size_t at = 0;
     while (at < length) {
@@ -560,31 +898,39 @@ void VkCore::Implementation::showDetailedBufferStatus(
         foundView->second.cursors.at(
             foundView->second.buffer),
         false);
-    const std::u16string &text = buffer.text();
+    const BufferTextView& text = buffer.text();
     const std::size_t cursorOffset = offset(buffer, cursor);
     const std::size_t cursorEnd = text.empty()
         ? 0
         : cursorCharacterEnd(buffer, cursor);
 
-    const auto scalarCount = [](const std::u16string_view value) {
+    const auto scalarCount = [](const auto& value, const std::size_t rawLimit) {
+        const std::size_t limit = std::min(rawLimit, value.size());
         std::size_t count = 0;
-        for (std::size_t at = 0; at < value.size();) {
+        for (std::size_t at = 0; at < limit;) {
             ++count;
-            at += QChar::isHighSurrogate(value[at])
-                    && at + 1 < value.size()
-                    && QChar::isLowSurrogate(value[at + 1])
-                ? 2
-                : 1;
+            at += QChar::isHighSurrogate(value[at]) && at + 1 < limit &&
+                          QChar::isLowSurrogate(value[at + 1])
+                      ? 2
+                      : 1;
         }
         return count;
     };
-    const auto utf8Size = [](const std::u16string_view value) {
-        return static_cast<std::size_t>(
-            QString::fromUtf16(
-                reinterpret_cast<const char16_t *>(value.data()),
-                static_cast<qsizetype>(value.size()))
-                .toUtf8()
-                .size());
+    const auto utf8Size = [](const auto& value, const std::size_t rawLimit) {
+        const std::size_t limit = std::min(rawLimit, value.size());
+        std::size_t bytes = 0;
+        for (std::size_t at = 0; at < limit; ++at) {
+            char32_t scalar = value[at];
+            if (QChar::isHighSurrogate(value[at]) && at + 1 < limit &&
+                QChar::isLowSurrogate(value[at + 1])) {
+                const char16_t high = value[at];
+                const char16_t low = value[at + 1];
+                ++at;
+                scalar = QChar::surrogateToUcs4(high, low);
+            }
+            bytes += scalar <= 0x7fU ? 1 : scalar <= 0x7ffU ? 2 : scalar <= 0xffffU ? 3 : 4;
+        }
+        return bytes;
     };
 
     std::size_t wordTotal = 0;
@@ -608,28 +954,21 @@ void VkCore::Implementation::showDetailedBufferStatus(
 
     const std::size_t lineLengthUtf16 =
         lineLength(buffer, cursor.line);
-    const std::u16string_view beforeCursor{
-        text.data(), std::min(cursorEnd, text.size())};
+
     Event status;
     status.type = EventType::StatusMessage;
     status.view = windowId;
     status.buffer = foundView->second.buffer;
     status.cursor = cursor;
     status.hasCursor = true;
-    status.message = "Col "
-        + std::to_string(cursor.column + 1)
-        + " of " + std::to_string(lineLengthUtf16)
-        + "; Line " + std::to_string(cursor.line + 1)
-        + " of " + std::to_string(buffer.lineStarts.size())
-        + "; Word " + std::to_string(wordOrdinal)
-        + " of " + std::to_string(wordTotal)
-        + "; Char " + std::to_string(
-              scalarCount(beforeCursor))
-        + " of " + std::to_string(
-              scalarCount(text))
-        + "; Byte " + std::to_string(
-              utf8Size(beforeCursor))
-        + " of " + std::to_string(utf8Size(text));
+    status.message = "Col " + std::to_string(cursor.column + 1) + " of " +
+                     std::to_string(lineLengthUtf16) + "; Line " + std::to_string(cursor.line + 1) +
+                     " of " + std::to_string(buffer.lineStarts.size()) + "; Word " +
+                     std::to_string(wordOrdinal) + " of " + std::to_string(wordTotal) + "; Char " +
+                     std::to_string(scalarCount(text, cursorEnd)) + " of " +
+                     std::to_string(scalarCount(text, text.size())) + "; Byte " +
+                     std::to_string(utf8Size(text, cursorEnd)) + " of " +
+                     std::to_string(utf8Size(text, text.size()));
     result.events.push_back(std::move(status));
 }
 
@@ -716,9 +1055,7 @@ VkCore::Implementation::beginKeywordCompletion(
                 && insertionOffset <= end) {
                 continue;
             }
-            const std::u16string_view word{
-                buffer.text().data() + start,
-                end - start};
+            const std::u16string word = buffer.text().substr(start, end - start);
             if (!keywordStartsWith(word, completionPrefix)) {
                 continue;
             }

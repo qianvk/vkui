@@ -1,14 +1,27 @@
 # Icons
 
 Call `vkui::icon(VkSymbol, VkIconRole)` to obtain a theme-aware `QIcon`. The project ships one
-original SVG per symbol. Literal `#000001` and `#000002` colors in those sources represent the
-primary and secondary semantic channels; the private icon engine substitutes resolved theme colors
-when it renders.
+original SVG per symbol. `resources/icons/manifest.json` is the single source of truth: CMake
+validates it and generates the public `VkSymbol` enum, the constant-time resource registry, the Qt
+resource collection, and the Gallery's curated descriptor table. Adding a symbol does not require
+editing parallel C++ switches or resource lists.
+
+Only data required by those consumers is retained. A normal entry stores `id` and `asset`. A
+Gallery-curated entry additionally stores `collection`, a display `label`, and the upstream
+`sourceName`. Font code points, glyph advances, baselines, pack names, and conversion-tool element
+IDs are deliberately excluded because the runtime SVG pipeline does not use them. Configuration
+fails on unknown fields, duplicate IDs or assets, missing SVGs, and unsupported literal colors.
+
+Literal `#000001` and `#000002` colors in SVG sources represent the primary and secondary semantic
+channels. The private icon engine converts those channels into a color-independent, antialiased
+geometry mask once per symbol and physical raster size, then applies the requested theme, palette,
+or explicit colors without parsing the SVG again.
 
 The engine honors `QIcon::Mode` and `QIcon::State`. Rendered pixmaps are keyed by symbol, role,
-logical size, device-pixel ratio, mode, state, and theme generation. A theme change therefore cannot
-return a stale light- or dark-appearance rendering. Rendering at the requested DPR keeps vector
-artwork crisp without parallel asset directories.
+logical size, device-pixel ratio, mode, state, and color generation. A color change therefore cannot
+return a stale light- or dark-appearance rendering, while metric and motion changes retain valid
+pixmaps. Rendering at the requested DPR keeps vector artwork crisp without parallel asset
+directories.
 
 Icon-only controls still need a meaningful accessible name or visible label relationship.
 
@@ -18,31 +31,32 @@ download/upload, lock, and visibility symbols. These application-command icons s
 view box, rounded outline geometry, semantic two-channel color, and deterministic metrics across
 platforms.
 
-`VkUI::Core` also bundles Fira Code Nerd Font for dense file-system surfaces. Applications use
-`VkFileGlyph`, never a private code point:
+File-system surfaces use the same SVG pipeline. Path mapping and layout metrics remain separate
+from the rendering engine:
 
 ```cpp
-const auto metrics = vkui::fileIconMetrics(tree->font(), tree->devicePixelRatioF());
-tree->setIconSize(metrics.glyphSlotSize);
-item->setIcon(vkui::fileIcon(vkui::VkFileGlyph::FolderClosed,
-                             vkui::VkIconRole::Accent));
+const auto metrics = vkui::fileIconMetrics(tree->font());
+tree->setIconSize(metrics.iconSize);
+item->setIcon(vkui::icon(vkui::VkSymbol::FileFolderClosed,
+                         vkui::VkIconRole::Accent));
 ```
 
-The public set covers closed/open folders and generic, text, source, image, PDF, and archive files.
-The font is registered process-locally on first use after `QGuiApplication` construction. Repeated
-initialization is idempotent, and the operating system font collection is never modified.
+The public set covers closed/open folders and generic, text, source, image, PDF, archive, and book
+files. `fileSymbolForPath()` maps extensions without filesystem I/O. `icon()` accepts a live
+semantic `VkIconRole`, a live application `QPalette::ColorRole`, or an explicit `QColor`.
 
-`fileIcon()` accepts a live semantic `VkIconRole`, a live application `QPalette::ColorRole`, or an
-explicit `QColor`. Theme generation and palette cache keys participate in raster caching, while the
-icon engine normalizes the Qt 6.6/6.7 high-DPI `scaledPixmap()` convention. For a delegate with a
-widget-specific palette, call `drawFileGlyph()` with the current palette during painting.
+The curated filled set adds `GearFilled`, `CloudFilled`, and `CloseCircleFilled`. The selected
+`fa-folder`, `fa-folder_open`, and `fa-file` outlines are shared with `FileFolderClosed`,
+`FileFolderOpen`, and `FileGeneric`; duplicate enum values and duplicate SVG files are deliberately
+avoided. Every promoted outline uses a canonical 24-by-24 view box and records its Nerd Fonts source
+symbol in the SVG metadata comment.
 
-`fileIconMetrics()` has no process-wide font or DPR cache. Recompute it for `QEvent::FontChange`,
-`QEvent::ApplicationFontChange`, and device-pixel-ratio changes; it returns both logical and physical
-slot sizes. The stable maximum glyph slot prevents file-tree columns from moving when a folder
-opens or a file type changes.
+SVG source bytes and intrinsic metadata are initialized once per `VkSymbol` and shared by all
+`QIconEngine` clones. A bounded mask cache reuses color-independent raster geometry across theme
+changes, and a second bounded cache stores final colored pixmaps. Color generation, explicit color
+identity, and palette cache keys prevent stale results, while the engine normalizes the Qt 6.6/6.7
+high-DPI `scaledPixmap()` convention.
 
-File glyphs remain separate from primary desktop commands. Owned SVG assets are still preferred for
-buttons, menus, and general application actions because they provide more predictable geometry and
-semantic two-channel rendering. See `THIRD_PARTY_NOTICES.md` for the bundled font's upstream
-licenses.
+`fileIconMetrics()` has no process-wide cache. Recompute it for `QEvent::FontChange` and
+`QEvent::ApplicationFontChange`. The stable square icon slot prevents file-tree columns from moving
+when a folder opens or a file type changes.

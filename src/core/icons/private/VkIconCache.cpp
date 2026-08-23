@@ -14,7 +14,7 @@ namespace vkui {
 size_t qHash(const VkIconCacheKey& key, size_t seed) noexcept {
     return qHashMulti(seed, static_cast<int>(key.symbol), static_cast<int>(key.role), key.size,
                       key.devicePixelRatio, static_cast<int>(key.mode), static_cast<int>(key.state),
-                      key.themeGeneration, key.colorIdentity);
+                      key.colorGeneration, key.colorIdentity);
 }
 
 VkIconCache& VkIconCache::instance() {

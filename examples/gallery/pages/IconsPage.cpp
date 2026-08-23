@@ -1,34 +1,145 @@
 // SPDX-License-Identifier: MIT
 
 #include "IconsPage.h"
-
-#include "../GalleryFonts.h"
+#include "VkChosenSymbols_p.h"
 
 #include <QColorDialog>
-#include <QFrame>
+#include <QCoreApplication>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
-#include <QScrollArea>
-#include <QScrollBar>
-#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <algorithm>
+#include <utility>
 #include <vkui/core/VkFileIcon.h>
 #include <vkui/core/VkIcon.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
 
-IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
-    auto* outer = new QVBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
+namespace {
 
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    auto* canvas = new QWidget(scrollArea);
+QString normalizedSearchText(QString text) {
+    text.replace(u'-', u' ');
+    text.replace(u'_', u' ');
+    return text.simplified().toCaseFolded();
+}
+
+QString iconsPageText(const char* sourceText) {
+    return QCoreApplication::translate("IconsPage", sourceText);
+}
+
+class ChosenIconsView final : public QWidget {
+  public:
+    explicit ChosenIconsView(QWidget* parent = nullptr) : QWidget(parent) {
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(10);
+
+        auto* explanation = new QLabel(
+            iconsPageText(
+                QT_TRANSLATE_NOOP(
+                    "IconsPage",
+                    "Standalone 24×24 SVGs promoted from the persisted icon-chosen selection.")),
+            this);
+        explanation->setWordWrap(true);
+        layout->addWidget(explanation);
+
+        auto* search = new QLineEdit(this);
+        search->setObjectName(QStringLiteral("chosenIconSearch"));
+        search->setClearButtonEnabled(true);
+        search->setPlaceholderText(
+            iconsPageText(QT_TRANSLATE_NOOP("IconsPage", "Search chosen icons by name")));
+        layout->addWidget(search);
+
+        gridHost_ = new QWidget(this);
+        grid_ = new QGridLayout(gridHost_);
+        grid_->setContentsMargins(0, 0, 0, 0);
+        grid_->setHorizontalSpacing(10);
+        grid_->setVerticalSpacing(10);
+        for (int column = 0; column < kColumns; ++column) {
+            grid_->setColumnStretch(column, 1);
+        }
+        layout->addWidget(gridHost_);
+
+        empty_ = new QLabel(
+            iconsPageText(QT_TRANSLATE_NOOP("IconsPage", "No chosen icons match the search.")),
+            gridHost_);
+        empty_->setAlignment(Qt::AlignCenter);
+
+        cards_.reserve(gallery::detail::kVkChosenSymbols.size());
+        for (const gallery::detail::VkChosenSymbolDescriptor& descriptor :
+             gallery::detail::kVkChosenSymbols) {
+            auto* button = new QToolButton(gridHost_);
+            const QString sourceName = QString::fromLatin1(descriptor.sourceName);
+            const QString label = iconsPageText(descriptor.label);
+            button->setObjectName(QStringLiteral("chosenIconCard"));
+            button->setProperty("sourceName", sourceName);
+            button->setIcon(vkui::icon(descriptor.symbol));
+            button->setIconSize(QSize(28, 28));
+            button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+            button->setText(QStringLiteral("%1\n%2").arg(label, sourceName));
+            button->setToolTip(sourceName);
+            button->setAccessibleName(QStringLiteral("%1, %2").arg(label, sourceName));
+            button->setMinimumSize(132, 80);
+            button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+            const QString searchable =
+                normalizedSearchText(QStringLiteral("%1 %2").arg(label, sourceName));
+            cards_.append({button, searchable});
+        }
+
+        connect(search, &QLineEdit::textChanged, this,
+                [this](const QString& text) { applyFilter(text); });
+        applyFilter({});
+    }
+
+  private:
+    struct Card final {
+        QToolButton* button = nullptr;
+        QString searchable;
+    };
+
+    void applyFilter(const QString& text) {
+        while (QLayoutItem* item = grid_->takeAt(0)) {
+            delete item;
+        }
+
+        const QStringList terms =
+            normalizedSearchText(text).split(u' ', Qt::SkipEmptyParts);
+        int visibleCount = 0;
+        for (const Card& card : std::as_const(cards_)) {
+            const bool matches = std::all_of(terms.cbegin(), terms.cend(), [&card](const auto& term) {
+                return card.searchable.contains(term);
+            });
+            card.button->setVisible(matches);
+            if (!matches) {
+                continue;
+            }
+            grid_->addWidget(card.button, visibleCount / kColumns, visibleCount % kColumns);
+            ++visibleCount;
+        }
+
+        empty_->setVisible(visibleCount == 0);
+        if (visibleCount == 0) {
+            grid_->addWidget(empty_, 0, 0, 1, kColumns);
+        }
+    }
+
+    static constexpr int kColumns = 4;
+    QWidget* gridHost_ = nullptr;
+    QGridLayout* grid_ = nullptr;
+    QLabel* empty_ = nullptr;
+    QList<Card> cards_;
+};
+
+} // namespace
+
+IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
+    auto* canvas = this;
     auto* layout = new QVBoxLayout(canvas);
     layout->setContentsMargins(4, 4, 14, 14);
     layout->setSpacing(14);
@@ -119,6 +230,11 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
     }
     layout->addWidget(symbolsGroup);
 
+    auto* chosenGroup = new QGroupBox(tr("Chosen SVG symbols"), canvas);
+    auto* chosenLayout = new QVBoxLayout(chosenGroup);
+    chosenLayout->addWidget(new ChosenIconsView(chosenGroup));
+    layout->addWidget(chosenGroup);
+
     auto* rolesGroup = new QGroupBox(tr("Semantic roles"), canvas);
     auto* roles = new QHBoxLayout(rolesGroup);
     struct RoleEntry {
@@ -148,32 +264,26 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
     roles->addStretch();
     layout->addWidget(rolesGroup);
 
-    auto* fontGroup = new QGroupBox(tr("Fira Code and Nerd Font"), canvas);
-    auto* fontLayout = new QVBoxLayout(fontGroup);
-    auto* codeSample = new QLabel(
-        QStringLiteral("auto ready = file != nullptr && count >= 2;  // -> => != >="), fontGroup);
-    codeSample->setFont(gallery::codeFont(codeSample->font().pointSizeF() + 1.0));
-    codeSample->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    fontLayout->addWidget(codeSample);
+    auto* fileGroup = new QGroupBox(tr("File symbols"), canvas);
+    auto* fileLayout = new QVBoxLayout(fileGroup);
 
     auto* fileTypes = new QHBoxLayout;
-    struct FontIconEntry {
-        vkui::VkFileGlyph glyph;
+    struct FileIconEntry {
+        vkui::VkSymbol symbol;
         vkui::VkIconRole role;
         const char* name;
     };
-    const QList<FontIconEntry> fileEntries{
-        {vkui::VkFileGlyph::FolderClosed, vkui::VkIconRole::Accent, QT_TR_NOOP("Folder")},
-        {vkui::VkFileGlyph::CodeFile, vkui::VkIconRole::Secondary,
-         QT_TR_NOOP("Source file")},
-        {vkui::VkFileGlyph::PdfFile, vkui::VkIconRole::Destructive, QT_TR_NOOP("PDF file")},
-        {vkui::VkFileGlyph::ImageFile, vkui::VkIconRole::Accent, QT_TR_NOOP("Image file")},
-        {vkui::VkFileGlyph::ArchiveFile, vkui::VkIconRole::Secondary, QT_TR_NOOP("Archive")},
-        {vkui::VkFileGlyph::BookFile, vkui::VkIconRole::Accent, QT_TR_NOOP("Book")},
+    const QList<FileIconEntry> fileEntries{
+        {vkui::VkSymbol::FileFolderClosed, vkui::VkIconRole::Accent, QT_TR_NOOP("Folder")},
+        {vkui::VkSymbol::FileCode, vkui::VkIconRole::Secondary, QT_TR_NOOP("Source file")},
+        {vkui::VkSymbol::FilePdf, vkui::VkIconRole::Destructive, QT_TR_NOOP("PDF file")},
+        {vkui::VkSymbol::FileImage, vkui::VkIconRole::Accent, QT_TR_NOOP("Image file")},
+        {vkui::VkSymbol::FileArchive, vkui::VkIconRole::Secondary, QT_TR_NOOP("Archive")},
+        {vkui::VkSymbol::FileBook, vkui::VkIconRole::Accent, QT_TR_NOOP("Book")},
     };
-    for (const FontIconEntry& entry : fileEntries) {
-        auto* button = new QToolButton(fontGroup);
-        button->setIcon(vkui::fileIcon(entry.glyph, entry.role));
+    for (const FileIconEntry& entry : fileEntries) {
+        auto* button = new QToolButton(fileGroup);
+        button->setIcon(vkui::icon(entry.symbol, entry.role));
         button->setIconSize(QSize(24, 24));
         button->setText(tr(entry.name));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -181,25 +291,26 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
         fileTypes->addWidget(button);
     }
     fileTypes->addStretch();
-    fontLayout->addLayout(fileTypes);
+    fileLayout->addLayout(fileTypes);
 
     auto* colorExplanation = new QLabel(
-        tr("Nerd Font glyphs can use a semantic theme role or an explicit QColor."), fontGroup);
+        tr("File SVGs use the same semantic theme roles and explicit colors as every symbol."),
+        fileGroup);
     colorExplanation->setWordWrap(true);
-    fontLayout->addWidget(colorExplanation);
+    fileLayout->addWidget(colorExplanation);
     auto* colorRow = new QHBoxLayout;
-    auto* folderPreview = new QToolButton(fontGroup);
+    auto* folderPreview = new QToolButton(fileGroup);
     folderPreview->setIconSize(QSize(28, 28));
     folderPreview->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     folderPreview->setText(tr("Custom folder"));
     folderPreview->setMinimumHeight(42);
-    auto* chooseColor = new QPushButton(tr("Choose color…"), fontGroup);
-    auto* colorValue = new QLabel(fontGroup);
+    auto* chooseColor = new QPushButton(tr("Choose color…"), fileGroup);
+    auto* colorValue = new QLabel(fileGroup);
     const QColor initialColor = vkui::VkThemeManager::instance()->theme().colors().accent;
     folderPreview->setProperty("folderColor", initialColor);
     auto applyFolderColor = [folderPreview, colorValue](const QColor& color) {
         folderPreview->setProperty("folderColor", color);
-        folderPreview->setIcon(vkui::fileIcon(vkui::VkFileGlyph::FolderClosed, color));
+        folderPreview->setIcon(vkui::icon(vkui::VkSymbol::FileFolderClosed, color));
         colorValue->setText(color.name(QColor::HexArgb));
     };
     applyFolderColor(initialColor);
@@ -217,13 +328,7 @@ IconsPage::IconsPage(QWidget* parent) : QWidget(parent) {
     colorRow->addWidget(chooseColor);
     colorRow->addWidget(colorValue);
     colorRow->addStretch();
-    fontLayout->addLayout(colorRow);
-    layout->addWidget(fontGroup);
+    fileLayout->addLayout(colorRow);
+    layout->addWidget(fileGroup);
     layout->addStretch();
-
-    scrollArea->setWidget(canvas);
-    outer->addWidget(scrollArea);
-    QTimer::singleShot(0, scrollArea, [scrollArea] {
-        scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->minimum());
-    });
 }

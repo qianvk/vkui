@@ -1,6 +1,6 @@
-# VkPopover
+# VPopover
 
-`VkPopover` is a frameless, translucent `Qt::Popup` that owns one caller-supplied content widget.
+`VPopover` is a frameless, translucent `Qt::Popup` that owns one caller-supplied content widget.
 Opening for a widget anchors to its complete rectangle; the rectangle overload targets a sub-region
 such as one icon inside a larger button. Replacing content reparents the new widget and releases the
 previous one according to the ownership contract documented in the header.
@@ -25,4 +25,4 @@ The shadow cache rasterizes only final geometry and applies the pixmap device-pi
 once. Animation transforms that cached result in logical coordinates, avoiding the high-DPI source
 rectangle bug that can shift or crop the lower-right blur. A separable in-place blur uses one
 scanline scratch buffer instead of a second full-size image. Cache identity follows actual geometry,
-DPR, color, blur, and offset inputs, so accent-only theme generations do not rebuild the shadow.
+DPR, color, blur, and offset inputs, so accent-only theme changes do not rebuild the shadow.

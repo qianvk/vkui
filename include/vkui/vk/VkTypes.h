@@ -290,14 +290,15 @@ enum class HostAction : std::uint8_t
     Cancel
 };
 
-enum class EventType : std::uint8_t
-{
+enum class EventType : std::uint8_t {
     HostAction,
     ModeChanged,
     BufferActivationRequested,
     CursorChanged,
     ViewportChanged,
     BufferEdited,
+    /** External authority committed, but Core cannot obtain its post-commit snapshot. */
+    ExternalAuthorityDesynchronized,
     InsertText,
     InsertCommand,
     InputError,
@@ -372,6 +373,8 @@ struct Event final
     std::size_t editOffset = 0;
     std::size_t editRemoved = 0;
     std::u16string editInserted;
+    std::uint64_t authorityRevision = 0;
+    std::size_t authoritySize = 0;
     InsertCommand insertCommand = InsertCommand::Backspace;
     std::string message;
     std::string commandId;
@@ -668,6 +671,20 @@ struct BufferHistorySnapshot final
     {
         return !clean || *clean != current;
     }
+};
+
+/** Lightweight ownership/memory facts for host session eviction policy. */
+struct BufferAuthoritySnapshot final {
+    BufferId id = 0;
+    bool externalTextAuthority = false;
+    bool externalHistoryAuthority = false;
+    std::size_t residentTextCodeUnits = 0;
+    std::size_t cachedTextCodeUnits = 0;
+    std::size_t residentLineIndexEntries = 0;
+    std::size_t residentUndoNodes = 0;
+    bool desynchronized = false;
+    std::uint64_t authorityRevision = 0;
+    std::size_t authoritySize = 0;
 };
 
 /**

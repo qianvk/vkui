@@ -26,8 +26,7 @@ namespace vkui::vk {
          ++line) {
         const std::size_t start = buffer.lineStarts[line];
         const std::size_t length = lineLength(buffer, line);
-        std::u16string_view content{
-            buffer.text().data() + start, length};
+        const std::u16string content = buffer.text().substr(start, length);
         std::size_t contentStart = 0;
         std::size_t indentation = 0;
         while (contentStart < content.size()) {
@@ -79,9 +78,9 @@ namespace vkui::vk {
 {
     if (operation == OperatorKind::Lowercase
         || operation == OperatorKind::Uppercase) {
-        const QString original = QString::fromUtf16(
-            buffer.text().data() + start,
-            static_cast<qsizetype>(end - start));
+        const std::u16string originalText = buffer.text().substr(start, end - start);
+        const QString original =
+            QString::fromUtf16(originalText.data(), static_cast<qsizetype>(end - start));
         const QString transformed =
             operation == OperatorKind::Lowercase
             ? original.toLower()

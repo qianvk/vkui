@@ -40,11 +40,7 @@ public:
     [[nodiscard]] Descriptor describe() const override
     {
         ++describeCalls;
-        return Descriptor{
-            Identity{"large-source"},
-            currentRevision,
-            m_size,
-            false};
+        return Descriptor{Identity{"large-source"}, currentRevision, m_size, false, false};
     }
 
     [[nodiscard]] RangeRead read(
@@ -88,11 +84,7 @@ class NonResidentProvider final : public IRangeProvider
 public:
     [[nodiscard]] Descriptor describe() const override
     {
-        return Descriptor{
-            Identity{"nonresident-source"},
-            41,
-            sourceSize,
-            false};
+        return Descriptor{Identity{"nonresident-source"}, 41, sourceSize, false, false};
     }
 
     [[nodiscard]] RangeRead read(

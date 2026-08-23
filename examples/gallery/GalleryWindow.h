@@ -2,26 +2,30 @@
 
 #pragma once
 
-#include <QMainWindow>
 #include <QTranslator>
+#include <QWidget>
+#include <vkui/window/VWindowAgent.h>
 
-class QComboBox;
 class QLabel;
-class QListView;
-class QStackedWidget;
-class QStringListModel;
-class QToolButton;
+class QStandardItemModel;
 class QWidget;
 
-namespace vkui {
-class VkWindowAgent;
-}
+class GalleryContentView;
 
-class GalleryWindow final : public QMainWindow {
+namespace vkui {
+class VCombobox;
+class VTreeView;
+class VSplitter;
+} // namespace vkui
+
+class GalleryWindow final : public QWidget {
     Q_OBJECT
 
   public:
     explicit GalleryWindow(QWidget* parent = nullptr);
+
+  signals:
+    void preferencesRequested();
 
   private:
     enum class Language {
@@ -39,11 +43,14 @@ class GalleryWindow final : public QMainWindow {
     QTranslator translator_;
     Language language_ = Language::System;
     int currentPage_ = 0;
-    QListView* navigation_ = nullptr;
-    QStackedWidget* pages_ = nullptr;
-    QStringListModel* navigationModel_ = nullptr;
-    QComboBox* appearanceBox_ = nullptr;
-    QComboBox* languageBox_ = nullptr;
-    vkui::VkWindowAgent* windowAgent_ = nullptr;
-    bool nativeSystemButtonsAvailable_ = false;
+    int navigationWidth_ = 224;
+    QWidget* central_ = nullptr;
+    vkui::VSplitter* splitter_ = nullptr;
+    vkui::VTreeView* navigation_ = nullptr;
+    GalleryContentView* pages_ = nullptr;
+    QStandardItemModel* navigationModel_ = nullptr;
+    vkui::VCombobox* appearanceBox_ = nullptr;
+    vkui::VCombobox* languageBox_ = nullptr;
+    // Declared last so native teardown precedes QWidget base destruction.
+    vkui::VWindowAgent windowAgent_;
 };

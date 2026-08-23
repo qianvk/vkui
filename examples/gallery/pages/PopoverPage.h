@@ -5,11 +5,11 @@
 #include <QWidget>
 
 namespace vkui {
-class VkPopover;
-}
+class VCombobox;
+class VPopover;
+} // namespace vkui
 
 class QCheckBox;
-class QComboBox;
 class QPushButton;
 
 class PopoverPage final : public QWidget {
@@ -22,7 +22,7 @@ class PopoverPage final : public QWidget {
     QWidget* makePopoverContent();
     void openForAnchor(QWidget* anchor, const QRect& subRect = {});
 
-    vkui::VkPopover* popover_ = nullptr;
-    QComboBox* placementBox_ = nullptr;
+    vkui::VPopover* popover_ = nullptr;
+    vkui::VCombobox* placementBox_ = nullptr;
     QCheckBox* largeContent_ = nullptr;
 };

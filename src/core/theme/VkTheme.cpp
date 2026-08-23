@@ -7,10 +7,10 @@ namespace vkui {
 
 VkTheme::VkTheme(VkColorTokens colors, VkMetricTokens metrics, VkTypographyTokens typography,
                  VkMotionTokens motion, const VkAppearance effectiveAppearance,
-                 const quint64 generation)
+                 const quint64 generation, const quint64 colorGeneration)
     : colors_(std::move(colors)), metrics_(std::move(metrics)), typography_(std::move(typography)),
       motion_(std::move(motion)), effectiveAppearance_(effectiveAppearance),
-      generation_(generation) {}
+      generation_(generation), colorGeneration_(colorGeneration) {}
 
 VkTheme::VkTheme(const VkTheme& other) = default;
 VkTheme::VkTheme(VkTheme&& other) noexcept = default;
@@ -40,6 +40,10 @@ VkAppearance VkTheme::effectiveAppearance() const noexcept {
 
 quint64 VkTheme::generation() const noexcept {
     return generation_;
+}
+
+quint64 VkTheme::colorGeneration() const noexcept {
+    return colorGeneration_;
 }
 
 } // namespace vkui

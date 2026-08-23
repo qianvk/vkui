@@ -33,7 +33,8 @@ jobs:
         run: >-
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DVKUI_BUILD_EXAMPLES=ON
+          -DVKUI_BUILD_EXAMPLES=${{ runner.os != 'Linux' }}
+          -DVKUI_BUILD_WINDOW=${{ runner.os != 'Linux' }}
           -DVKUI_BUILD_TESTS=ON
           -DVKUI_ENABLE_WARNINGS=ON
       - name: Build
@@ -60,7 +61,8 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$PWD/stage" \
-            -DVKUI_BUILD_EXAMPLES=OFF -DVKUI_BUILD_TESTS=ON
+            -DVKUI_BUILD_EXAMPLES=OFF -DVKUI_BUILD_WINDOW=OFF \
+            -DVKUI_BUILD_TESTS=ON
           cmake --build build
           ctest --test-dir build --output-on-failure
           cmake --install build
