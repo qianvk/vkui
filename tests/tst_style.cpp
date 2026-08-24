@@ -622,6 +622,7 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     QVERIFY(popupFrame != nullptr);
     QCOMPARE(popupFrame->frameStyle(), static_cast<int>(QFrame::NoFrame));
     QVERIFY(popup->testAttribute(Qt::WA_TranslucentBackground));
+    QVERIFY(popup->windowFlags().testFlag(Qt::NoDropShadowWindowHint));
     QVERIFY(popup->mask().isEmpty());
     QCOMPARE(combo.view()->frameShape(), QFrame::NoFrame);
     for (QWidget* content : {static_cast<QWidget*>(combo.view()), combo.view()->viewport()}) {
@@ -735,7 +736,6 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QCOMPARE(comboGlass->geometry(),
              comboPopup->rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(comboGlass->glassStyle().cornerRadius, metrics.comboBoxPopupCornerRadius);
-    QCOMPARE(comboGlass->glassStyle().backdropUniformity, 1.0);
     QCOMPARE(comboGlass->glassStyle().refractionHeight, 0.0);
     QCOMPARE(comboGlass->glassStyle().opticalEdgeIntensity, 0.0);
 
@@ -797,7 +797,7 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QCOMPARE(menuGlass->geometry(),
              menu.rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(menuGlass->glassStyle().cornerRadius, metrics.menuCornerRadius);
-    QCOMPARE(menuGlass->glassStyle().backdropUniformity, 1.0);
+    QVERIFY(menu.windowFlags().testFlag(Qt::NoDropShadowWindowHint));
 
     menuGlass->setBackdrop(nullptr);
     const QImage menuSurfaceImage = renderPopupSurface(menu);
