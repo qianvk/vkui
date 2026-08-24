@@ -3,7 +3,6 @@
 #include "GalleryWindow.h"
 
 #include "GalleryContentView.h"
-
 #include "pages/IconsPage.h"
 #include "pages/LocalizationPage.h"
 #include "pages/MotionPage.h"
@@ -28,6 +27,7 @@
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/controls/VSplitter.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 #include <vkui/widgets/views/VTreeView.h>
 
 namespace {
@@ -107,8 +107,7 @@ void GalleryWindow::rebuildCentralWidget() {
 
     auto* navigationBody = new QWidget(navigationPanel);
     auto* navigationBodyLayout = new QVBoxLayout(navigationBody);
-    navigationBodyLayout->setContentsMargins(
-        12, GalleryContentView::TitleBarHeight, 8, 12);
+    navigationBodyLayout->setContentsMargins(12, GalleryContentView::TitleBarHeight, 8, 12);
     navigationBodyLayout->setSpacing(0);
     navigation_ = new vkui::VTreeView(navigationBody);
     navigation_->setObjectName(QStringLiteral("galleryNavigation"));
@@ -174,8 +173,24 @@ void GalleryWindow::rebuildCentralWidget() {
     contentTitleLayout->setContentsMargins(18, 0, 14, 0);
     contentTitleLayout->addStretch();
 
-    contentTitleLayout->addWidget(new QLabel(tr("Appearance"), pages_));
-    appearanceBox_ = new vkui::VCombobox(pages_);
+    const auto addGlassSetting = [this, contentTitleLayout](const QString& objectName,
+                                                            const QString& labelText) {
+        auto* surface = new vkui::VLiquidGlassSurface(pages_);
+        surface->setObjectName(objectName);
+        surface->setBackdrop(pages_->liquidGlassBackdrop());
+        surface->setGlassStyle(vkui::VLiquidGlassStyle::regular());
+        surface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        auto* layout = new QHBoxLayout(surface);
+        layout->setContentsMargins(10, 3, 5, 3);
+        layout->setSpacing(4);
+        layout->addWidget(new QLabel(labelText, surface));
+        contentTitleLayout->addWidget(surface);
+        return std::pair{surface, layout};
+    };
+
+    const auto [appearanceSurface, appearanceLayout] =
+        addGlassSetting(QStringLiteral("galleryAppearanceGlass"), tr("Appearance"));
+    appearanceBox_ = new vkui::VCombobox(appearanceSurface);
     appearanceBox_->addItem(tr("System"), static_cast<int>(vkui::VkAppearance::Auto));
     appearanceBox_->addItem(tr("Light"), static_cast<int>(vkui::VkAppearance::Light));
     appearanceBox_->addItem(tr("Dark"), static_cast<int>(vkui::VkAppearance::Dark));
@@ -183,18 +198,19 @@ void GalleryWindow::rebuildCentralWidget() {
     const int appearanceIndex =
         appearanceBox_->findData(static_cast<int>(vkui::VkThemeManager::instance()->appearance()));
     appearanceBox_->setCurrentIndex(qMax(0, appearanceIndex));
-    contentTitleLayout->addWidget(appearanceBox_);
+    appearanceLayout->addWidget(appearanceBox_);
 
-    contentTitleLayout->addSpacing(10);
-    contentTitleLayout->addWidget(new QLabel(tr("Language"), pages_));
-    languageBox_ = new vkui::VCombobox(pages_);
+    contentTitleLayout->addSpacing(8);
+    const auto [languageSurface, languageLayout] =
+        addGlassSetting(QStringLiteral("galleryLanguageGlass"), tr("Language"));
+    languageBox_ = new vkui::VCombobox(languageSurface);
     languageBox_->addItem(tr("System"), static_cast<int>(Language::System));
     languageBox_->addItem(QStringLiteral("English"), static_cast<int>(Language::English));
     languageBox_->addItem(QStringLiteral("简体中文"),
                           static_cast<int>(Language::SimplifiedChinese));
     languageBox_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     languageBox_->setCurrentIndex(qMax(0, languageBox_->findData(static_cast<int>(language_))));
-    contentTitleLayout->addWidget(languageBox_);
+    languageLayout->addWidget(languageBox_);
 
     QList<QWidget*> interactiveWidgets{appearanceBox_, languageBox_};
 #ifndef Q_OS_MAC

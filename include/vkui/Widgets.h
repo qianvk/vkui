@@ -9,8 +9,9 @@
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSplitter.h>
 #include <vkui/widgets/controls/VSwitch.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 #include <vkui/widgets/overlays/VPopover.h>
+#include <vkui/widgets/style/VStyle.h>
+#include <vkui/widgets/views/VFileTreeView.h>
 #include <vkui/widgets/views/VTreeItemDelegate.h>
 #include <vkui/widgets/views/VTreeView.h>
-#include <vkui/widgets/views/VFileTreeView.h>
-#include <vkui/widgets/style/VStyle.h>

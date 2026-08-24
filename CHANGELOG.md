@@ -5,6 +5,9 @@ releases are tagged.
 
 ## Unreleased
 
+- Added cross-platform `VLiquidGlassBackdrop` and `VLiquidGlassSurface` with shared local backdrop
+  capture, cached downsampled blur, rounded-edge refraction, adaptive tint, dispersion, rim
+  highlights, and quality fallbacks; applied the material to both Gallery title-bar settings.
 - Added live 12-level interface-text sizing with level 3 as Default, semantic `VTextStyle` roles,
   complete standard-widget font inheritance, responsive control/icon/spacing metrics,
   non-compounding baseline font resolution, and a Things-inspired discrete Gallery slider.

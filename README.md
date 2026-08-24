@@ -15,8 +15,8 @@ symbol artwork.
 
 - `VkUI::Core` contains appearance resolution, immutable semantic tokens, theme-aware SVG and
   named file icons, and motion specifications. It has no QWidget subclasses.
-- `VkUI::Widgets` contains `VStyle` plus focused controls, views, and overlays such as `VSwitch`,
-  `VSegmentedControl`, `VSplitter`, `VTreeView`, and `VPopover`.
+- `VkUI::Widgets` contains `VStyle` plus focused controls, views, effects, and overlays such as
+  `VSwitch`, `VSegmentedControl`, `VSplitter`, `VTreeView`, `VLiquidGlassSurface`, and `VPopover`.
 - `VkUI::Buffer` is the renderer-independent owned/provider-backed text data plane.
 - `VkUI::Interaction` owns canonical key input, modal grammar, commands, registers, buffers,
   semantic windows, and trusted interaction-plugin lifecycle. It never depends on QWidget.
@@ -96,7 +96,7 @@ vkui::installVkUi(application);
 applies the resolved palette. Change appearance later through `VkThemeManager`; the style is not
 recreated.
 
-Interface typography can be adjusted live without a global widget traversal:
+Interface typography can be adjusted live through one coalesced structural refresh:
 
 ```cpp
 vkui::VkThemeManager::instance()->setTextSizeLevel(6); // Levels 1–12; level 3 is Default.
@@ -120,6 +120,10 @@ with palette roles, tokens, and ordinary widget properties instead.
 `VTreeView` keeps model data, row rendering, and structural animation separate. Custom row layouts
 derive from `VTreeItemDelegate`; their leading-icon geometry automatically remains the expansion
 hit target. See the [tree-view guide](docs/tree-view.md) and [file-tree guide](docs/file-tree.md).
+
+`VLiquidGlassBackdrop` and `VLiquidGlassSurface` provide shared, local backdrop sampling for
+cross-platform glass compositions without replacing child-widget behavior. See the
+[liquid-glass guide](docs/liquid-glass.md).
 
 ## Status
 

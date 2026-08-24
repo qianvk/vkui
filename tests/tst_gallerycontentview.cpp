@@ -10,6 +10,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QtTest>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 
 class GalleryContentViewTest final : public QObject {
     Q_OBJECT
@@ -44,16 +45,18 @@ void GalleryContentViewTest::scrollableInsetMovesBehindTransparentTitleBar() {
     QVERIFY(scrollArea != nullptr);
     QCOMPARE(titleBar->geometry().top(), 0);
     QCOMPARE(titleBar->height(), GalleryContentView::TitleBarHeight);
+    QVERIFY(view.liquidGlassBackdrop() != nullptr);
+    QVERIFY(view.liquidGlassBackdrop()->sourceWidget() != nullptr);
+    QCOMPARE(view.liquidGlassBackdrop()->sourceWidget()->objectName(),
+             QStringLiteral("galleryPages"));
     QVERIFY(!titleBar->autoFillBackground());
     QVERIFY(!titleBar->testAttribute(Qt::WA_StyledBackground));
     QCOMPARE(scrollArea->geometry().top(), 0);
     QVERIFY(titleBarControl->isVisible());
     QCOMPARE(titleBarControl->geometry().center().y(), titleBar->geometry().center().y());
 
-    QCOMPARE(page->mapTo(scrollArea->viewport(), QPoint{}).y(),
-             GalleryContentView::TitleBarHeight);
-    QVERIFY(scrollArea->verticalScrollBar()->maximum() >
-            GalleryContentView::TitleBarHeight + 20);
+    QCOMPARE(page->mapTo(scrollArea->viewport(), QPoint{}).y(), GalleryContentView::TitleBarHeight);
+    QVERIFY(scrollArea->verticalScrollBar()->maximum() > GalleryContentView::TitleBarHeight + 20);
 
     scrollArea->verticalScrollBar()->setValue(GalleryContentView::TitleBarHeight);
     QApplication::processEvents();
