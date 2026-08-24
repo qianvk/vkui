@@ -219,6 +219,11 @@ VLiquidGlassQuality resolvedQuality(const VLiquidGlassQuality quality) noexcept 
 } // namespace
 
 int VkLiquidGlassRenderer::capturePadding(const VLiquidGlassStyle& style) noexcept {
+    if (style.backdropUniformity >= 1.0) {
+        // A fully uniform material samples only a representative surface-wide color. It has no
+        // local blur or displaced edge samples, so the minimum bilinear guard is sufficient.
+        return 2;
+    }
     return qCeil(
         std::max({style.blurRadius * 1.35, style.refractionHeight + style.refractionAmount, 2.0}));
 }
