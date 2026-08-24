@@ -17,12 +17,13 @@ int main(int argc, char* argv[]) {
     auto* themeManager = vkui::VkThemeManager::instance();
     QLabel sectionTitle(QStringLiteral("Installed typography API"));
     vkui::setTextStyle(sectionTitle, vkui::VTextStyle::Title);
-    themeManager->setTextScale(1.25);
-    const bool typographyApiValid = themeManager->theme().textScale() == 1.25 &&
-                                    vkui::textStyle(sectionTitle) == vkui::VTextStyle::Title &&
-                                    sectionTitle.font() ==
-                                        vkui::textStyleFont(vkui::VTextStyle::Title);
-    themeManager->resetTextScale();
+    themeManager->setTextSizeLevel(6);
+    const bool typographyApiValid =
+        themeManager->theme().textSizeLevel() == 6 &&
+        themeManager->theme().textScale() == vkui::textScaleForTextSizeLevel(6) &&
+        vkui::textStyle(sectionTitle) == vkui::VTextStyle::Title &&
+        sectionTitle.font() == vkui::textStyleFont(vkui::VTextStyle::Title);
+    themeManager->resetTextSizeLevel();
 
     const quint64 previousColorGeneration = themeManager->theme().colorGeneration();
     vkui::VkThemeChanges observedChanges;

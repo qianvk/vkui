@@ -157,7 +157,7 @@ class VkSegmentButton final : public QAbstractButton {
             painter.restore();
         }
 
-        painter.setFont(theme.typography().body);
+        painter.setFont(font());
         painter.setPen(foreground);
         const QString elided = fm.elidedText(text(), Qt::ElideRight, textRect.width());
         painter.drawText(textRect, Qt::AlignCenter | Qt::TextShowMnemonic, elided);
@@ -323,15 +323,11 @@ VSegmentedControl::VSegmentedControl(QWidget* parent)
     : QWidget(parent), d(std::make_unique<VSegmentedControlPrivate>(this)) {
     setFocusPolicy(Qt::StrongFocus);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    setFont(VkThemeManager::instance()->theme().typography().body);
 
     connect(VkThemeManager::instance(), &VkThemeManager::themeChanged, this,
             [this](quint64, const VkThemeChanges changes) {
                 const bool geometryChanged = changes.testFlag(VkThemeChange::Metrics) ||
                                              changes.testFlag(VkThemeChange::Typography);
-                if (changes.testFlag(VkThemeChange::Typography)) {
-                    setFont(VkThemeManager::instance()->theme().typography().body);
-                }
                 if (geometryChanged) {
                     d->relayout(false);
                     updateGeometry();

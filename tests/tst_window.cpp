@@ -15,6 +15,8 @@
 #include <QtTest>
 #include <memory>
 #include <type_traits>
+#include <vkui/core/VkTheme.h>
+#include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/controls/VSplitter.h>
 #include <vkui/window/VMessageDialog.h>
 #include <vkui/window/VWindowAgent.h>
@@ -40,11 +42,36 @@ class WindowTest final : public QObject {
     void splitterCursorRemainsStableAcrossTitleBar();
     void composedAgentOwnsNativeBehavior();
     void messageDialogOwnsChromeAndButtonContract();
+    void messageDialogTitleTracksTextSize();
     void destructivePromptDefaultsToCancel();
     void macFullScreenUsesNativeTrafficLightLayout();
     void macNativeCloseAbandonsDyingHandle_data();
     void macNativeCloseAbandonsDyingHandle();
 };
+
+void WindowTest::messageDialogTitleTracksTextSize() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int originalLevel = manager->textSizeLevel();
+    struct LevelGuard final {
+        vkui::VkThemeManager* manager;
+        int level;
+        ~LevelGuard() {
+            manager->setTextSizeLevel(level);
+        }
+    } restore{manager, originalLevel};
+    manager->resetTextSizeLevel();
+
+    vkui::VMessageDialog prompt(vkui::VMessageDialog::Icon::Information,
+                                QStringLiteral("Typography"), QStringLiteral("Message"),
+                                QDialogButtonBox::Cancel);
+    auto* titleLabel = prompt.findChild<QLabel*>(QStringLiteral("VMessageDialogTitleLabel"));
+    QVERIFY(titleLabel != nullptr);
+    const qreal defaultSize = titleLabel->font().pointSizeF();
+
+    manager->setTextSizeLevel(vkui::VkMaximumTextSizeLevel);
+    QCOMPARE(titleLabel->font(), manager->theme().typography().bodyEmphasized);
+    QVERIFY(titleLabel->font().pointSizeF() > defaultSize);
+}
 
 void WindowTest::registersMultipleTitleBars() {
     QWidget host;

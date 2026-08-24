@@ -16,6 +16,7 @@
 #include <QFrame>
 #include <QLayout>
 #include <QPainter>
+#include <QSlider>
 #include <QStyleFactory>
 #include <QStyleHintReturn>
 #include <QStyleOptionButton>
@@ -65,6 +66,22 @@ InteractionState interactionState(const QStyleOption* option, bool selected = fa
         keyboardFocus ? 1.0 : 0.0,
         selected ? 1.0 : 0.0,
     };
+}
+
+bool usesDiscreteSliderStyle(const QStyleOptionSlider& slider) {
+    return slider.tickPosition != QSlider::NoTicks && slider.maximum > slider.minimum;
+}
+
+int discreteSliderGrooveOffset(const QStyleOptionSlider& slider,
+                               const vkui::VkMetricTokens& metrics) {
+    const int offset = std::max(1, qRound(metrics.spacing2));
+    if (slider.tickPosition == QSlider::TicksBelow) {
+        return -offset;
+    }
+    if (slider.tickPosition == QSlider::TicksAbove) {
+        return offset;
+    }
+    return 0;
 }
 
 bool isDestructiveDialogButton(const QWidget* widget) {
@@ -918,6 +935,78 @@ void VStyle::drawComplexControl(ComplexControl control, const QStyleOptionComple
         } else {
             groove.adjust(0.0, handle.height() * 0.5, 0.0, -handle.height() * 0.5);
         }
+        if (usesDiscreteSliderStyle(*slider)) {
+            QColor trackColor = enabled ? colors.borderStrong : colors.controlFillDisabled;
+            trackColor.setAlpha(enabled ? 105 : 70);
+            VStylePainter::drawRoundedPanel(*painter, groove,
+                                            std::min(groove.width(), groove.height()) * 0.5,
+                                            trackColor, Qt::transparent, 0.0);
+
+            const int interval =
+                slider->tickInterval > 0 ? slider->tickInterval : std::max(1, slider->singleStep);
+            const qint64 tickCount =
+                (static_cast<qint64>(slider->maximum) - slider->minimum) / interval + 1;
+            if (tickCount <= 256) {
+                QColor tickColor = enabled ? colors.borderStrong : colors.controlFillDisabled;
+                tickColor.setAlpha(enabled ? 95 : 60);
+                painter->save();
+                painter->setRenderHint(QPainter::Antialiasing, true);
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(tickColor);
+                const int axisSpan = slider->orientation == Qt::Horizontal
+                                         ? qRound(groove.width())
+                                         : qRound(groove.height());
+                for (qint64 value = slider->minimum; value <= slider->maximum; value += interval) {
+                    const int position = QStyle::sliderPositionFromValue(
+                        slider->minimum, slider->maximum, static_cast<int>(value),
+                        std::max(0, axisSpan), slider->upsideDown);
+                    const auto drawTick = [&](const qreal direction) {
+                        const QPointF center =
+                            slider->orientation == Qt::Horizontal
+                                ? QPointF(groove.left() + position,
+                                          groove.center().y() + direction * metrics.spacing6)
+                                : QPointF(groove.center().x() + direction * metrics.spacing6,
+                                          groove.top() + position);
+                        painter->drawEllipse(center, 1.0, 1.0);
+                    };
+                    if (slider->tickPosition == QSlider::TicksBothSides) {
+                        drawTick(-1.0);
+                        drawTick(1.0);
+                    } else {
+                        drawTick(slider->tickPosition == QSlider::TicksAbove ? -1.0 : 1.0);
+                    }
+                }
+                painter->restore();
+            }
+
+            const qreal expansion = progress.hover * 0.5 + progress.press * 0.35;
+            const QRectF drawnHandle =
+                handle.adjusted(-expansion, -expansion, expansion, expansion);
+            QColor shadow = colors.shadow;
+            shadow.setAlpha(enabled ? 38 : 18);
+            VStylePainter::drawRoundedPanel(
+                *painter, drawnHandle.translated(0.0, 1.0).adjusted(-1.0, -1.0, 1.0, 1.0),
+                std::min(drawnHandle.width(), drawnHandle.height()) * 0.5 + 1.0, shadow,
+                Qt::transparent, 0.0);
+            QColor handleBorder = colors.borderStrong;
+            handleBorder.setAlpha(enabled ? 72 : 46);
+            VStylePainter::drawRoundedPanel(
+                *painter, drawnHandle, std::min(drawnHandle.width(), drawnHandle.height()) * 0.5,
+                enabled ? colors.elevatedBackground : colors.controlFillDisabled, handleBorder,
+                std::max<qreal>(1.0, metrics.borderWidth));
+            if (progress.focus > 0.0) {
+                VStylePainter::drawFocusRing(
+                    *painter,
+                    drawnHandle.adjusted(-metrics.spacing2, -metrics.spacing2, metrics.spacing2,
+                                         metrics.spacing2),
+                    std::min(drawnHandle.width(), drawnHandle.height()) * 0.5 + metrics.spacing2,
+                    VStylePainter::multiplyAlpha(
+                        VStylePainter::neutralFocusColor(colors.borderStrong), progress.focus),
+                    std::max<qreal>(1.0, metrics.borderWidth));
+            }
+            return;
+        }
+
         QRectF active = groove;
         if (slider->orientation == Qt::Horizontal) {
             if (slider->upsideDown) {
@@ -1117,6 +1206,17 @@ QSize VStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
     case CT_ProgressBar:
         result.rheight() = std::max(result.height(), qRound(metrics.controlHeightSmall));
         break;
+    case CT_Slider:
+        if (const auto* slider = qstyleoption_cast<const QStyleOptionSlider*>(option);
+            slider && usesDiscreteSliderStyle(*slider)) {
+            const int crossExtent = qRound(metrics.controlHeightSmall + metrics.spacing8);
+            if (slider->orientation == Qt::Horizontal) {
+                result.rheight() = std::max(result.height(), crossExtent);
+            } else {
+                result.rwidth() = std::max(result.width(), crossExtent);
+            }
+        }
+        break;
     case CT_TabBarTab:
         result.rheight() = std::max(result.height(), qRound(metrics.controlHeightRegular));
         result.rwidth() =
@@ -1256,30 +1356,38 @@ QRect VStyle::subControlRect(ComplexControl control, const QStyleOptionComplex* 
         if (!slider) {
             break;
         }
+        const bool discrete = usesDiscreteSliderStyle(*slider);
         const int handleExtent = pixelMetric(PM_SliderLength, slider, widget);
-        const int grooveExtent = std::max(4, qRound(metrics.spacing4));
+        const int handleAxisExtent =
+            discrete ? std::max(10, qRound(metrics.spacing12)) : handleExtent;
+        const int handleCrossExtent =
+            discrete ? std::max(18, qRound(metrics.controlHeightSmall * 0.90)) : handleExtent;
+        const int grooveExtent = discrete ? std::max(2, qRound(metrics.borderWidth * 2.0))
+                                          : std::max(4, qRound(metrics.spacing4));
+        const int grooveOffset = discrete ? discreteSliderGrooveOffset(*slider, metrics) : 0;
         if (subControl == SC_SliderGroove) {
             if (slider->orientation == Qt::Horizontal) {
-                return QRect(option->rect.left(), option->rect.center().y() - grooveExtent / 2,
+                return QRect(option->rect.left(),
+                             option->rect.center().y() - grooveExtent / 2 + grooveOffset,
                              option->rect.width(), grooveExtent);
             }
-            return QRect(option->rect.center().x() - grooveExtent / 2, option->rect.top(),
-                         grooveExtent, option->rect.height());
+            return QRect(option->rect.center().x() - grooveExtent / 2 + grooveOffset,
+                         option->rect.top(), grooveExtent, option->rect.height());
         }
         if (subControl == SC_SliderHandle) {
             const int span = (slider->orientation == Qt::Horizontal ? option->rect.width()
                                                                     : option->rect.height()) -
-                             handleExtent;
+                             handleAxisExtent;
             const int position = QStyle::sliderPositionFromValue(
                 slider->minimum, slider->maximum, slider->sliderPosition, std::max(0, span),
                 slider->upsideDown);
             if (slider->orientation == Qt::Horizontal) {
                 return QRect(option->rect.left() + position,
-                             option->rect.center().y() - handleExtent / 2, handleExtent,
-                             handleExtent);
+                             option->rect.center().y() - handleCrossExtent / 2 + grooveOffset,
+                             handleAxisExtent, handleCrossExtent);
             }
-            return QRect(option->rect.center().x() - handleExtent / 2,
-                         option->rect.top() + position, handleExtent, handleExtent);
+            return QRect(option->rect.center().x() - handleCrossExtent / 2 + grooveOffset,
+                         option->rect.top() + position, handleCrossExtent, handleAxisExtent);
         }
         break;
     }

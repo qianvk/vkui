@@ -1427,24 +1427,16 @@
         <translation>强调色</translation>
     </message>
     <message>
-        <source>Interface text size</source>
-        <translation>界面文字大小</translation>
+        <source>Text Size</source>
+        <translation>文字大小</translation>
     </message>
     <message>
-        <source>Text follows the platform system font. Controls, meaningful icons, spacing, and semantic text styles respond without uniformly zooming window chrome.</source>
-        <translation>文字使用平台系统字体。控件、语义图标、间距和语义文字样式会协调响应，但不会等比缩放窗口框架。</translation>
+        <source>Standard Qt widgets inherit the application font automatically. Semantic headings, controls, meaningful icons, and spacing respond without dedicated label subclasses.</source>
+        <translation>标准 Qt 控件会自动继承应用字体。语义标题、控件、语义图标和间距会协调响应，无需创建专用的标签子类。</translation>
     </message>
     <message>
-        <source>80%</source>
-        <translation>80%</translation>
-    </message>
-    <message>
-        <source>160%</source>
-        <translation>160%</translation>
-    </message>
-    <message>
-        <source>Reset to 100%</source>
-        <translation>重置为 100%</translation>
+        <source>Default</source>
+        <translation>默认</translation>
     </message>
     <message>
         <source>Settings</source>
@@ -1467,12 +1459,16 @@
         <translation>响应式尺寸</translation>
     </message>
     <message>
-        <source>%1% · %2 pt body</source>
-        <translation>%1% · 正文 %2 pt</translation>
+        <source>Text size</source>
+        <translation>文字大小</translation>
     </message>
     <message>
-        <source>%1% · %2 px body</source>
-        <translation>%1% · 正文 %2 px</translation>
+        <source>Level %1 · %2 pt body</source>
+        <translation>第 %1 档 · 正文 %2 pt</translation>
+    </message>
+    <message>
+        <source>Level %1 · %2 px body</source>
+        <translation>第 %1 档 · 正文 %2 px</translation>
     </message>
     <message>
         <source>%1 px control · %2 px icon</source>

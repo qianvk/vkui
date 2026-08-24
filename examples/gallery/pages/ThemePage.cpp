@@ -2,19 +2,26 @@
 
 #include "ThemePage.h"
 
+#include <QAbstractButton>
 #include <QButtonGroup>
 #include <QCheckBox>
-#include <QFormLayout>
+#include <QEvent>
 #include <QFontInfo>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPainter>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QResizeEvent>
 #include <QSignalBlocker>
+#include <QStyle>
+#include <QStyleOptionSlider>
 #include <QVBoxLayout>
 #include <QtMath>
+#include <algorithm>
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkIcon.h>
@@ -26,6 +33,162 @@
 #include <vkui/widgets/controls/VSwitch.h>
 
 namespace {
+
+class DefaultMarkerButton final : public QAbstractButton {
+  public:
+    explicit DefaultMarkerButton(const QString& text, QWidget* parent = nullptr)
+        : QAbstractButton(parent) {
+        setText(text);
+        setFocusPolicy(Qt::TabFocus);
+        setCursor(Qt::PointingHandCursor);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+
+    [[nodiscard]] QSize sizeHint() const override {
+        const QFontMetrics metrics(font());
+        return {metrics.horizontalAdvance(text()) + 8, metrics.height() + 4};
+    }
+
+  protected:
+    void paintEvent(QPaintEvent*) override {
+        QColor foreground =
+            palette().color(isEnabled() ? QPalette::ButtonText : QPalette::PlaceholderText);
+        if (underMouse() && isEnabled()) {
+            foreground = vkui::VkThemeManager::instance()->theme().colors().accent;
+        }
+        QPainter painter(this);
+        painter.setPen(foreground);
+        painter.drawText(rect(), Qt::AlignCenter | Qt::TextSingleLine, text());
+    }
+
+    void enterEvent(QEnterEvent* event) override {
+        QAbstractButton::enterEvent(event);
+        update();
+    }
+
+    void leaveEvent(QEvent* event) override {
+        QAbstractButton::leaveEvent(event);
+        update();
+    }
+};
+
+class TextSizePicker final : public QWidget {
+  public:
+    explicit TextSizePicker(QWidget* parent = nullptr) : QWidget(parent) {
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+        smallerLabel_ = new QLabel(QStringLiteral("A"), this);
+        smallerLabel_->setObjectName(QStringLiteral("textSizeSmallerLabel"));
+        slider_ = new vkui::VSlider(Qt::Horizontal, this);
+        slider_->setObjectName(QStringLiteral("interfaceTextSizeSlider"));
+        slider_->setAccessibleName(ThemePage::tr("Text Size"));
+        slider_->setRange(vkui::VkMinimumTextSizeLevel, vkui::VkMaximumTextSizeLevel);
+        slider_->setSingleStep(1);
+        slider_->setPageStep(1);
+        slider_->setTickInterval(1);
+        slider_->setTickPosition(QSlider::TicksBelow);
+        slider_->setTracking(true);
+
+        largerLabel_ = new QLabel(QStringLiteral("A"), this);
+        largerLabel_->setObjectName(QStringLiteral("textSizeLargerLabel"));
+        vkui::setTextStyle(*largerLabel_, vkui::VTextStyle::Title);
+        defaultButton_ = new DefaultMarkerButton(ThemePage::tr("Default"), this);
+        defaultButton_->setObjectName(QStringLiteral("defaultTextSizeButton"));
+        vkui::setTextStyle(*defaultButton_, vkui::VTextStyle::Caption);
+
+        connect(defaultButton_, &QAbstractButton::clicked, vkui::VkThemeManager::instance(),
+                &vkui::VkThemeManager::resetTextSizeLevel);
+        connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::themeChanged, this,
+                [this](quint64, const vkui::VkThemeChanges changes) {
+                    if (changes.testFlag(vkui::VkThemeChange::Metrics) ||
+                        changes.testFlag(vkui::VkThemeChange::Typography)) {
+                        updateGeometry();
+                        layoutChildren();
+                    }
+                });
+    }
+
+    [[nodiscard]] vkui::VSlider* slider() const noexcept {
+        return slider_;
+    }
+
+    [[nodiscard]] QSize sizeHint() const override {
+        const int topHeight =
+            std::max({smallerLabel_->sizeHint().height(), slider_->sizeHint().height(),
+                      largerLabel_->sizeHint().height()});
+        return {320, topHeight + defaultButton_->sizeHint().height()};
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QWidget::resizeEvent(event);
+        layoutChildren();
+    }
+
+    void changeEvent(QEvent* event) override {
+        QWidget::changeEvent(event);
+        if (event->type() == QEvent::FontChange || event->type() == QEvent::LayoutDirectionChange ||
+            event->type() == QEvent::StyleChange) {
+            updateGeometry();
+            layoutChildren();
+        }
+    }
+
+  private:
+    void layoutChildren() {
+        const auto& metrics = vkui::VkThemeManager::instance()->theme().metrics();
+        const int gap = std::max(4, qRound(metrics.spacing6));
+        const QSize smallerSize = smallerLabel_->sizeHint();
+        const QSize largerSize = largerLabel_->sizeHint();
+        const int topHeight =
+            std::max({smallerSize.height(), slider_->sizeHint().height(), largerSize.height()});
+
+        const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
+        const int leadingWidth = rightToLeft ? largerSize.width() : smallerSize.width();
+        const int trailingWidth = rightToLeft ? smallerSize.width() : largerSize.width();
+        QWidget* leadingLabel = rightToLeft ? static_cast<QWidget*>(largerLabel_)
+                                            : static_cast<QWidget*>(smallerLabel_);
+        QWidget* trailingLabel = rightToLeft ? static_cast<QWidget*>(smallerLabel_)
+                                             : static_cast<QWidget*>(largerLabel_);
+        leadingLabel->setGeometry(0, (topHeight - leadingLabel->sizeHint().height()) / 2,
+                                  leadingWidth, leadingLabel->sizeHint().height());
+        trailingLabel->setGeometry(width() - trailingWidth,
+                                   (topHeight - trailingLabel->sizeHint().height()) / 2,
+                                   trailingWidth, trailingLabel->sizeHint().height());
+
+        const int sliderLeft = leadingWidth + gap;
+        const int sliderWidth = std::max(1, width() - leadingWidth - trailingWidth - gap * 2);
+        slider_->setGeometry(sliderLeft, 0, sliderWidth, topHeight);
+
+        QStyleOptionSlider option;
+        option.initFrom(slider_);
+        option.orientation = slider_->orientation();
+        option.minimum = slider_->minimum();
+        option.maximum = slider_->maximum();
+        option.sliderPosition = vkui::VkDefaultTextSizeLevel;
+        option.sliderValue = vkui::VkDefaultTextSizeLevel;
+        option.singleStep = slider_->singleStep();
+        option.pageStep = slider_->pageStep();
+        option.tickInterval = slider_->tickInterval();
+        option.tickPosition = slider_->tickPosition();
+        bool upsideDown = slider_->invertedAppearance();
+        if (rightToLeft) {
+            upsideDown = !upsideDown;
+        }
+        option.upsideDown = upsideDown;
+        const QRect defaultHandle = slider_->style()->subControlRect(
+            QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, slider_);
+        const QSize defaultSize = defaultButton_->sizeHint();
+        const int defaultCenter = sliderLeft + defaultHandle.center().x();
+        defaultButton_->setGeometry(defaultCenter - defaultSize.width() / 2, topHeight,
+                                    defaultSize.width(), defaultSize.height());
+    }
+
+    QLabel* smallerLabel_ = nullptr;
+    vkui::VSlider* slider_ = nullptr;
+    QLabel* largerLabel_ = nullptr;
+    DefaultMarkerButton* defaultButton_ = nullptr;
+};
 
 QString accentColorName(vkui::VkAccentColor accentColor) {
     switch (accentColor) {
@@ -121,44 +284,20 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
             });
     layout->addWidget(accentGroup);
 
-    auto* textSizeGroup = new QGroupBox(tr("Interface text size"), this);
+    auto* textSizeGroup = new QGroupBox(tr("Text Size"), this);
     textSizeGroup->setObjectName(QStringLiteral("interfaceTextSizeGroup"));
     auto* textSizeLayout = new QVBoxLayout(textSizeGroup);
     auto* textSizeExplanation = new QLabel(
-        tr("Text follows the platform system font. Controls, meaningful icons, spacing, and "
-           "semantic text styles respond without uniformly zooming window chrome."),
+        tr("Standard Qt widgets inherit the application font automatically. Semantic headings, "
+           "controls, meaningful icons, and spacing respond without dedicated label subclasses."),
         textSizeGroup);
     textSizeExplanation->setWordWrap(true);
     textSizeLayout->addWidget(textSizeExplanation);
 
-    auto* sliderRow = new QHBoxLayout;
-    auto* minimumLabel = new QLabel(tr("80%"), textSizeGroup);
-    auto* textScaleSlider = new vkui::VSlider(Qt::Horizontal, textSizeGroup);
-    textScaleSlider->setObjectName(QStringLiteral("interfaceTextScaleSlider"));
-    textScaleSlider->setAccessibleName(tr("Interface text size"));
-    textScaleSlider->setRange(qRound(vkui::VkMinimumTextScale * 100.0),
-                              qRound(vkui::VkMaximumTextScale * 100.0));
-    textScaleSlider->setSingleStep(qRound(vkui::VkTextScaleStep * 100.0));
-    textScaleSlider->setPageStep(10);
-    textScaleSlider->setTickInterval(10);
-    textScaleSlider->setTickPosition(QSlider::TicksBelow);
-    textScaleSlider->setTracking(true);
-    textScaleSlider->setValue(
-        qRound(vkui::VkThemeManager::instance()->textScale() * 100.0));
-    auto* maximumLabel = new QLabel(tr("160%"), textSizeGroup);
-    sliderRow->addWidget(minimumLabel);
-    sliderRow->addWidget(textScaleSlider, 1);
-    sliderRow->addWidget(maximumLabel);
-    textSizeLayout->addLayout(sliderRow);
-
-    auto* scaleFooter = new QHBoxLayout;
-    textScaleValueLabel_ = new QLabel(textSizeGroup);
-    vkui::setTextStyle(*textScaleValueLabel_, vkui::VTextStyle::BodyEmphasized);
-    auto* resetTextScale = new QPushButton(tr("Reset to 100%"), textSizeGroup);
-    scaleFooter->addWidget(textScaleValueLabel_);
-    scaleFooter->addStretch();
-    scaleFooter->addWidget(resetTextScale);
-    textSizeLayout->addLayout(scaleFooter);
+    auto* textSizePicker = new TextSizePicker(textSizeGroup);
+    auto* textSizeSlider = textSizePicker->slider();
+    textSizeSlider->setValue(vkui::VkThemeManager::instance()->textSizeLevel());
+    textSizeLayout->addWidget(textSizePicker);
 
     auto* previewRow = new QHBoxLayout;
     auto* previewButton = new QPushButton(vkui::icon(vkui::VkSymbol::Settings),
@@ -178,24 +317,12 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     previewRow->addStretch();
     textSizeLayout->addLayout(previewRow);
 
-    connect(textScaleSlider, &QSlider::valueChanged, this,
-            [textScaleSlider](const int percent) {
-                const int minimum = textScaleSlider->minimum();
-                const int step = textScaleSlider->singleStep();
-                const int canonicalPercent =
-                    minimum + qRound(static_cast<qreal>(percent - minimum) / step) * step;
-                if (canonicalPercent != percent) {
-                    const QSignalBlocker blocker(textScaleSlider);
-                    textScaleSlider->setValue(canonicalPercent);
-                }
-                vkui::VkThemeManager::instance()->setTextScale(canonicalPercent / 100.0);
-            });
-    connect(resetTextScale, &QPushButton::clicked, vkui::VkThemeManager::instance(),
-            &vkui::VkThemeManager::resetTextScale);
-    connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::textScaleChanged,
-            textScaleSlider, [textScaleSlider](const qreal scale) {
-                const QSignalBlocker blocker(textScaleSlider);
-                textScaleSlider->setValue(qRound(scale * 100.0));
+    connect(textSizeSlider, &QSlider::valueChanged, vkui::VkThemeManager::instance(),
+            &vkui::VkThemeManager::setTextSizeLevel);
+    connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::textSizeLevelChanged,
+            textSizeSlider, [textSizeSlider](const int level) {
+                const QSignalBlocker blocker(textSizeSlider);
+                textSizeSlider->setValue(level);
             });
     layout->addWidget(textSizeGroup);
 
@@ -219,10 +346,13 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     auto* diagnosticsLayout = new QFormLayout(diagnostics);
     effectiveLabel_ = new QLabel(diagnostics);
     accentLabel_ = new QLabel(diagnostics);
+    textSizeValueLabel_ = new QLabel(diagnostics);
+    vkui::setTextStyle(*textSizeValueLabel_, vkui::VTextStyle::BodyEmphasized);
     typographyLabel_ = new QLabel(diagnostics);
     generationLabel_ = new QLabel(diagnostics);
     diagnosticsLayout->addRow(tr("Effective appearance"), effectiveLabel_);
     diagnosticsLayout->addRow(tr("Accent color"), accentLabel_);
+    diagnosticsLayout->addRow(tr("Text size"), textSizeValueLabel_);
     diagnosticsLayout->addRow(tr("Responsive metrics"), typographyLabel_);
     diagnosticsLayout->addRow(tr("Theme generation"), generationLabel_);
     layout->addWidget(diagnostics);
@@ -247,12 +377,12 @@ void ThemePage::updateSummary() {
     accentLabel_->setText(accentColorName(manager->accentColor()));
 
     const vkui::VkTheme& theme = manager->theme();
-    const int percent = qRound(manager->textScale() * 100.0);
+    const int level = manager->textSizeLevel();
     const qreal bodyPoints = QFontInfo(theme.typography().body).pointSizeF();
-    textScaleValueLabel_->setText(
+    textSizeValueLabel_->setText(
         bodyPoints > 0.0
-            ? tr("%1% · %2 pt body").arg(percent).arg(bodyPoints, 0, 'f', 1)
-            : tr("%1% · %2 px body").arg(percent).arg(theme.typography().body.pixelSize()));
+            ? tr("Level %1 · %2 pt body").arg(level).arg(bodyPoints, 0, 'f', 1)
+            : tr("Level %1 · %2 px body").arg(level).arg(theme.typography().body.pixelSize()));
     const int controlHeight = qRound(theme.metrics().controlHeightRegular);
     const int iconExtent = qRound(theme.metrics().controlHeightSmall * 0.67);
     typographyLabel_->setText(

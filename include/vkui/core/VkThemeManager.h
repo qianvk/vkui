@@ -8,6 +8,7 @@
 #include <vkui/VkUiGlobal.h>
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkAppearance.h>
+#include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeChange.h>
 
@@ -15,16 +16,11 @@ namespace vkui {
 
 class VkThemeManagerPrivate;
 
-inline constexpr qreal VkMinimumTextScale = 0.80;
-inline constexpr qreal VkDefaultTextScale = 1.00;
-inline constexpr qreal VkMaximumTextScale = 1.60;
-inline constexpr qreal VkTextScaleStep = 0.05;
-
 /** Owns the process-wide appearance request and resolved semantic theme. */
 class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     Q_OBJECT
-    Q_PROPERTY(qreal textScale READ textScale WRITE setTextScale RESET resetTextScale NOTIFY
-                   textScaleChanged)
+    Q_PROPERTY(int textSizeLevel READ textSizeLevel WRITE setTextSizeLevel RESET resetTextSizeLevel
+                   NOTIFY textSizeLevelChanged)
 
   public:
     /**
@@ -48,12 +44,12 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     [[nodiscard]] VkAccentColor accentColor() const noexcept;
     void setAccentColor(VkAccentColor accentColor);
 
-    /** Returns the canonical application interface-text scale. */
-    [[nodiscard]] qreal textScale() const noexcept;
-    /** Applies a clamped, five-percent text scale and its responsive geometry tokens. */
-    void setTextScale(qreal scale);
+    /** Returns the canonical application interface-text level. */
+    [[nodiscard]] int textSizeLevel() const noexcept;
+    /** Applies a clamped discrete text level and its responsive geometry tokens. */
+    void setTextSizeLevel(int level);
     /** Restores the platform system typography and default control geometry. */
-    void resetTextScale();
+    void resetTextSizeLevel();
 
     [[nodiscard]] bool animationsEnabled() const noexcept;
     void setAnimationsEnabled(bool enabled);
@@ -64,7 +60,7 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     /** Reports the new generation and the exact token groups that changed. */
     void themeChanged(quint64 generation, vkui::VkThemeChanges changes);
     void accentColorChanged(vkui::VkAccentColor accentColor);
-    void textScaleChanged(qreal scale);
+    void textSizeLevelChanged(int level);
     void animationsEnabledChanged(bool enabled);
 
   private:

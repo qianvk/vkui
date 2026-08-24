@@ -13,6 +13,8 @@
 #include <QVBoxLayout>
 #include <optional>
 #include <vkui/core/VkIcon.h>
+#include <vkui/core/VkTheme.h>
+#include <vkui/core/VkThemeManager.h>
 #include <vkui/window/VMessageDialog.h>
 #include <vkui/window/VWindowAgent.h>
 
@@ -74,6 +76,13 @@ VMessageDialog::VMessageDialog(const Icon type, const QString& title, const QStr
     setSizeGripEnabled(false);
 
     buildUi(type, text, buttons);
+    connect(VkThemeManager::instance(), &VkThemeManager::themeChanged, this,
+            [this](quint64, const VkThemeChanges changes) {
+                if (changes.testFlag(VkThemeChange::Typography)) {
+                    d_->titleLabel->setFont(
+                        VkThemeManager::instance()->theme().typography().bodyEmphasized);
+                }
+            });
     configureWindowChrome();
 
     refreshAutomaticEscapeButton();
@@ -340,9 +349,7 @@ void VMessageDialog::buildUi(const Icon type, const QString& text,
 
     d_->titleLabel = new QLabel(windowTitle(), d_->titleBar);
     d_->titleLabel->setObjectName(QStringLiteral("VMessageDialogTitleLabel"));
-    QFont titleFont = d_->titleLabel->font();
-    titleFont.setWeight(QFont::DemiBold);
-    d_->titleLabel->setFont(titleFont);
+    d_->titleLabel->setFont(VkThemeManager::instance()->theme().typography().bodyEmphasized);
     titleLayout->addWidget(d_->titleLabel, 1, Qt::AlignVCenter);
     surfaceLayout->addWidget(d_->titleBar);
 

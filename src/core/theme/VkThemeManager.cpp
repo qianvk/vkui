@@ -326,10 +326,8 @@ VkTypographyTokens defaultTypography(const QFont& body, const QFont& caption,
     return typography;
 }
 
-qreal canonicalTextScale(const qreal requestedScale) {
-    const qreal clamped = std::clamp(requestedScale, VkMinimumTextScale, VkMaximumTextScale);
-    const qreal step = std::round((clamped - VkMinimumTextScale) / VkTextScaleStep);
-    return VkMinimumTextScale + step * VkTextScaleStep;
+int canonicalTextSizeLevel(const int requestedLevel) {
+    return boundedTextSizeLevel(requestedLevel);
 }
 
 VkMotionTokens defaultMotion() {
@@ -458,12 +456,11 @@ bool motionTokensEqual(const VkMotionTokens& a, const VkMotionTokens& b) {
 
 VkThemeManagerPrivate::VkThemeManagerPrivate(VkThemeManager* manager)
     : q(manager),
-      baseBodyFont(currentGuiApplication() == nullptr ? QFont{}
-                                                      : currentGuiApplication()->font()),
+      baseBodyFont(currentGuiApplication() == nullptr ? QFont{} : currentGuiApplication()->font()),
       baseCaptionFont(currentGuiApplication() == nullptr
                           ? QFont{}
                           : QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont)),
-      resolvedTheme(createTheme(systemAppearance(), requestedAccentColor, requestedTextScale,
+      resolvedTheme(createTheme(systemAppearance(), requestedAccentColor, requestedTextSizeLevel,
                                 baseBodyFont, baseCaptionFont, 1, 1)) {}
 
 VkAppearance VkThemeManagerPrivate::resolveEffectiveAppearance() const {
@@ -471,17 +468,15 @@ VkAppearance VkThemeManagerPrivate::resolveEffectiveAppearance() const {
 }
 
 VkTheme VkThemeManagerPrivate::createTheme(const VkAppearance appearance,
-                                           const VkAccentColor accentColor,
-                                           const qreal textScale,
-                                           const QFont& baseBodyFont,
-                                           const QFont& baseCaptionFont,
+                                           const VkAccentColor accentColor, const int textSizeLevel,
+                                           const QFont& baseBodyFont, const QFont& baseCaptionFont,
                                            const quint64 generation,
                                            const quint64 colorGeneration) {
-    return VkTheme(appearance == VkAppearance::Dark ? darkColors(accentColor)
-                                                    : lightColors(accentColor),
-                   defaultMetrics(textScale),
-                   defaultTypography(baseBodyFont, baseCaptionFont, textScale), defaultMotion(),
-                   textScale, appearance, generation, colorGeneration);
+    const qreal textScale = textScaleForTextSizeLevel(textSizeLevel);
+    return VkTheme(
+        appearance == VkAppearance::Dark ? darkColors(accentColor) : lightColors(accentColor),
+        defaultMetrics(textScale), defaultTypography(baseBodyFont, baseCaptionFont, textScale),
+        defaultMotion(), textSizeLevel, textScale, appearance, generation, colorGeneration);
 }
 
 VkThemeChanges VkThemeManagerPrivate::changedTokenGroups(const VkTheme& previous,
@@ -506,9 +501,8 @@ VkThemeChanges VkThemeManagerPrivate::changedTokenGroups(const VkTheme& previous
 VkThemeChanges VkThemeManagerPrivate::refreshTheme() {
     const VkAppearance effective = resolveEffectiveAppearance();
     const VkTheme candidate =
-        createTheme(effective, requestedAccentColor, requestedTextScale,
-                    baseBodyFont, baseCaptionFont, resolvedTheme.generation_,
-                    resolvedTheme.colorGeneration_);
+        createTheme(effective, requestedAccentColor, requestedTextSizeLevel, baseBodyFont,
+                    baseCaptionFont, resolvedTheme.generation_, resolvedTheme.colorGeneration_);
     const VkThemeChanges changes = changedTokenGroups(resolvedTheme, candidate);
     if (changes == VkThemeChange::None) {
         return {};
@@ -516,9 +510,9 @@ VkThemeChanges VkThemeManagerPrivate::refreshTheme() {
 
     const quint64 colorGeneration =
         resolvedTheme.colorGeneration_ + (changes.testFlag(VkThemeChange::Colors) ? 1U : 0U);
-    resolvedTheme = createTheme(effective, requestedAccentColor, requestedTextScale,
-                                baseBodyFont, baseCaptionFont, resolvedTheme.generation_ + 1,
-                                colorGeneration);
+    resolvedTheme =
+        createTheme(effective, requestedAccentColor, requestedTextSizeLevel, baseBodyFont,
+                    baseCaptionFont, resolvedTheme.generation_ + 1, colorGeneration);
     return changes;
 }
 
@@ -619,17 +613,17 @@ void VkThemeManagerPrivate::setAccentColor(const VkAccentColor accentColor) {
     }
 }
 
-void VkThemeManagerPrivate::setTextScale(const qreal scale) {
-    const qreal canonicalScale = canonicalTextScale(scale);
-    if (qFuzzyCompare(requestedTextScale, canonicalScale)) {
+void VkThemeManagerPrivate::setTextSizeLevel(const int level) {
+    const int canonicalLevel = canonicalTextSizeLevel(level);
+    if (requestedTextSizeLevel == canonicalLevel) {
         return;
     }
 
-    requestedTextScale = canonicalScale;
+    requestedTextSizeLevel = canonicalLevel;
     const VkThemeChanges changes = refreshTheme();
     applyFont();
 
-    Q_EMIT q->textScaleChanged(requestedTextScale);
+    Q_EMIT q->textSizeLevelChanged(requestedTextSizeLevel);
     if (changes != VkThemeChange::None) {
         Q_EMIT q->themeChanged(resolvedTheme.generation_, changes);
     }
@@ -704,21 +698,17 @@ void VkThemeManager::setAccentColor(const VkAccentColor accentColor) {
     d->setAccentColor(accentColor);
 }
 
-qreal VkThemeManager::textScale() const noexcept {
-    return d->requestedTextScale;
+int VkThemeManager::textSizeLevel() const noexcept {
+    return d->requestedTextSizeLevel;
 }
 
-void VkThemeManager::setTextScale(const qreal scale) {
-    if (!std::isfinite(scale)) {
-        qWarning("VkThemeManager::setTextScale received a non-finite value");
-        return;
-    }
+void VkThemeManager::setTextSizeLevel(const int level) {
     d->attachToApplication();
-    d->setTextScale(scale);
+    d->setTextSizeLevel(level);
 }
 
-void VkThemeManager::resetTextScale() {
-    setTextScale(VkDefaultTextScale);
+void VkThemeManager::resetTextSizeLevel() {
+    setTextSizeLevel(VkDefaultTextSizeLevel);
 }
 
 bool VkThemeManager::animationsEnabled() const noexcept {
