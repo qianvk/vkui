@@ -735,6 +735,7 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QCOMPARE(comboGlass->geometry(),
              comboPopup->rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(comboGlass->glassStyle().cornerRadius, metrics.comboBoxPopupCornerRadius);
+    QCOMPARE(comboGlass->glassStyle().backdropUniformity, 1.0);
     QCOMPARE(comboGlass->glassStyle().refractionHeight, 0.0);
     QCOMPARE(comboGlass->glassStyle().opticalEdgeIntensity, 0.0);
 
@@ -796,6 +797,7 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QCOMPARE(menuGlass->geometry(),
              menu.rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(menuGlass->glassStyle().cornerRadius, metrics.menuCornerRadius);
+    QCOMPARE(menuGlass->glassStyle().backdropUniformity, 1.0);
 
     menuGlass->setBackdrop(nullptr);
     const QImage menuSurfaceImage = renderPopupSurface(menu);

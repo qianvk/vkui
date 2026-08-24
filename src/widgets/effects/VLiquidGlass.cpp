@@ -24,6 +24,8 @@ constexpr qsizetype MaximumCaptureEntries = 8;
 VLiquidGlassStyle sanitizedStyle(VLiquidGlassStyle style) noexcept {
     style.cornerRadius = std::max<qreal>(-1.0, style.cornerRadius);
     style.blurRadius = std::clamp(style.blurRadius, 0.0, 64.0);
+    style.backdropScattering = std::clamp(style.backdropScattering, 0.0, 1.0);
+    style.backdropUniformity = std::clamp(style.backdropUniformity, 0.0, 1.0);
     style.refractionHeight = std::clamp(style.refractionHeight, 0.0, 32.0);
     style.refractionAmount = std::clamp(style.refractionAmount, 0.0, 32.0);
     style.chromaticAberration = std::clamp(style.chromaticAberration, 0.0, 8.0);
@@ -72,6 +74,8 @@ VLiquidGlassStyle VLiquidGlassStyle::regular() noexcept {
 VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
     VLiquidGlassStyle style;
     style.blurRadius = 0.0;
+    style.backdropScattering = 0.0;
+    style.backdropUniformity = 0.0;
     style.refractionHeight = 14.0;
     style.refractionAmount = 28.0;
     style.chromaticAberration = 1.5;
@@ -86,12 +90,14 @@ VLiquidGlassStyle VLiquidGlassStyle::popup() noexcept {
     // Popup content and its surrounding padding must share one material. Edge refraction would
     // create a second optical band around the rectangular item region, so floating information
     // surfaces use uniform scattering and tint across their complete rounded shape.
-    style.blurRadius = 10.0;
+    style.blurRadius = 18.0;
+    style.backdropScattering = 1.0;
+    style.backdropUniformity = 1.0;
     style.refractionHeight = 0.0;
     style.refractionAmount = 0.0;
     style.chromaticAberration = 0.0;
-    style.saturation = 0.96;
-    style.tintOpacity = 0.40;
+    style.saturation = 0.90;
+    style.tintOpacity = 0.46;
     style.opticalEdgeIntensity = 0.0;
     return style;
 }
