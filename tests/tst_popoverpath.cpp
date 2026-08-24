@@ -116,6 +116,9 @@ void PopoverPathTest::shadowIsDprCorrectAndSymmetric() {
              cacheKey);
 
     const QImage image = shadow.toImage();
+    const QPoint center(qRound(body.center().x() * devicePixelRatio),
+                        qRound(body.center().y() * devicePixelRatio));
+    QVERIFY(qAlpha(image.pixel(center)) <= 1);
     QRect alphaBounds;
     for (int y = 0; y < image.height(); ++y) {
         for (int x = 0; x < image.width(); ++x) {

@@ -82,6 +82,7 @@ class LiquidGlassTest final : public QObject {
     void switchingSourceDisconnectsOldObservers();
     void disabledSurfaceDoesNotPaintMaterial();
     void materialPresetsHaveDistinctOptics();
+    void popupMaterialHasNoPerimeterBand();
     void regularMaterialRefractsBackdropAtEdge();
     void rimIsHorizontallySymmetric();
     void interiorLightingIsVerticallyBalanced();
@@ -200,10 +201,36 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QVERIFY(clear.refractionAmount > regular.refractionAmount);
     QVERIFY(popup.blurRadius > regular.blurRadius);
     QVERIFY(popup.tintOpacity > regular.tintOpacity);
-    QVERIFY(popup.refractionHeight < regular.refractionHeight);
-    QVERIFY(popup.refractionAmount < regular.refractionAmount);
+    QCOMPARE(popup.refractionHeight, 0.0);
+    QCOMPARE(popup.refractionAmount, 0.0);
+    QCOMPARE(popup.chromaticAberration, 0.0);
     QVERIFY(popup.saturation < regular.saturation);
-    QVERIFY(popup.opticalEdgeIntensity < regular.opticalEdgeIntensity);
+    QCOMPARE(popup.opticalEdgeIntensity, 0.0);
+}
+
+void LiquidGlassTest::popupMaterialHasNoPerimeterBand() {
+    QWidget host;
+    host.resize(240, 96);
+    SplitColorWidget source(&host);
+    source.setColors(Qt::white, Qt::white);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(20, 16, 200, 64);
+    auto style = vkui::VLiquidGlassStyle::popup();
+    style.cornerRadius = 16.0;
+    surface.setGlassStyle(style);
+    surface.setBackdrop(&backdrop);
+    surface.raise();
+    host.show();
+    QCoreApplication::processEvents();
+
+    const QColor perimeter = sampledColor(surface, QPoint(6, surface.height() / 2));
+    const QColor interior = sampledColor(surface, surface.rect().center());
+    QVERIFY(std::abs(perimeter.red() - interior.red()) <= 2);
+    QVERIFY(std::abs(perimeter.green() - interior.green()) <= 2);
+    QVERIFY(std::abs(perimeter.blue() - interior.blue()) <= 2);
+    QVERIFY(std::abs(perimeter.alpha() - interior.alpha()) <= 2);
 }
 
 void LiquidGlassTest::regularMaterialRefractsBackdropAtEdge() {
