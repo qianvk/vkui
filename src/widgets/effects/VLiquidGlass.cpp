@@ -83,15 +83,15 @@ VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
 
 VLiquidGlassStyle VLiquidGlassStyle::popup() noexcept {
     VLiquidGlassStyle style;
-    // Larger floating surfaces need softer scattering, stronger adaptive tint, and a thicker
-    // refractive edge than compact controls so foreground content remains visually separated.
+    // Floating information surfaces use stronger scattering and tint for legibility. Keep the
+    // optical lens inside the popup's content padding so rows sit on one calm, continuous material.
     style.blurRadius = 4.0;
-    style.refractionHeight = 16.0;
-    style.refractionAmount = 28.0;
-    style.chromaticAberration = 1.0;
+    style.refractionHeight = 6.0;
+    style.refractionAmount = 12.0;
+    style.chromaticAberration = 0.5;
     style.saturation = 1.04;
     style.tintOpacity = 0.32;
-    style.opticalEdgeIntensity = 0.78;
+    style.opticalEdgeIntensity = 0.58;
     return style;
 }
 

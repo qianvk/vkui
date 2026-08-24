@@ -749,8 +749,7 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
         QStyleOptionMenuItem copy = *menuItem;
         copy.font = fontWithSizeOf(copy.font, theme.typography().body);
         copy.fontMetrics = QFontMetrics(copy.font);
-        const QColor foreground =
-            popupItemForeground(theme, chrome, enabled, colors.textPrimary);
+        const QColor foreground = popupItemForeground(theme, chrome, enabled, colors.textPrimary);
         copy.state.setFlag(State_Selected, false);
         copy.state.setFlag(State_MouseOver, false);
         copy.state.setFlag(State_HasFocus, false);
@@ -1156,7 +1155,7 @@ int VStyle::pixelMetric(PixelMetric metric, const QStyleOption* option,
         return qRound(tokens.spacing8);
     case PM_MenuHMargin:
     case PM_MenuVMargin:
-        return qRound(tokens.spacing6);
+        return VkPopupSurfaceStyler::layoutMargin(tokens);
     case PM_MenuButtonIndicator:
         return qRound(tokens.controlHeightSmall * 0.60);
     case PM_HeaderMargin:
@@ -1628,7 +1627,8 @@ void VStyle::polish(QWidget* widget) {
         // Breeze uses the same narrow private-container seam. Translucency is a window-system
         // prerequisite for antialiased corners; item painting remains owned by Qt's view/delegate.
         if (QLayout* layout = widget->layout()) {
-            const int margin = qRound(VkThemeManager::instance()->theme().metrics().spacing6);
+            const int margin =
+                VkPopupSurfaceStyler::layoutMargin(VkThemeManager::instance()->theme().metrics());
             layout->setContentsMargins(margin, 0, margin, 0);
         }
     }

@@ -166,6 +166,22 @@ int matchingComponents(const QImage& image, const QRect& area, const QColor& tar
     return components;
 }
 
+QRect matchingColorBounds(const QImage& image, const QColor& target, const int tolerance = 8) {
+    QRect bounds;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor pixel = image.pixelColor(x, y);
+            const int distance = std::abs(pixel.red() - target.red()) +
+                                 std::abs(pixel.green() - target.green()) +
+                                 std::abs(pixel.blue() - target.blue());
+            if (pixel.alpha() > 192 && distance <= tolerance) {
+                bounds = bounds.united(QRect(x, y, 1, 1));
+            }
+        }
+    }
+    return bounds;
+}
+
 } // namespace
 
 class StyleTest final : public QObject {
@@ -615,14 +631,22 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     QImage popupImage(popup->size(), QImage::Format_ARGB32_Premultiplied);
     popupImage.fill(Qt::transparent);
     popup->render(&popupImage);
-    const int cornerMargin = combo.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &combo);
+    const auto& theme = vkui::VkThemeManager::instance()->theme();
+    const int shadowMargin = qCeil(theme.metrics().spacing8 + std::abs(theme.metrics().spacing2));
+    const int contentMargin = qRound(theme.metrics().spacing6);
+    const int layoutMargin = combo.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &combo);
+    QCOMPARE(layoutMargin, shadowMargin + contentMargin);
     QVERIFY(QColor::fromRgba(popupImage.pixel(0, 0)).alpha() < 64);
-    QVERIFY(QColor::fromRgba(popupImage.pixel(0, cornerMargin)).alpha() < 96);
-    QVERIFY(QColor::fromRgba(popupImage.pixel(popupImage.width() - 1, cornerMargin)).alpha() < 96);
+    QVERIFY(QColor::fromRgba(popupImage.pixel(0, shadowMargin)).alpha() < 96);
+    QVERIFY(QColor::fromRgba(popupImage.pixel(popupImage.width() - 1, shadowMargin)).alpha() < 96);
     QVERIFY(QColor::fromRgba(popupImage.pixel(popupImage.rect().center())).alpha() > 192);
 
-    const auto& theme = vkui::VkThemeManager::instance()->theme();
     const QPoint selectedLocal = popup->mapFromGlobal(selectedGlobal.topLeft());
+    QCOMPARE(selectedLocal.x(), layoutMargin);
+    const QRect surfaceRect =
+        popup->rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin);
+    QCOMPARE(selectedLocal.x() - surfaceRect.left(), contentMargin);
+    QCOMPARE(surfaceRect.right() - (selectedLocal.x() + selectedGlobal.width() - 1), contentMargin);
     QCOMPARE(QColor::fromRgba(popupImage.pixel(selectedLocal.x() + 4,
                                                selectedLocal.y() + selectedGlobal.height() / 2)),
              theme.colors().accent);
@@ -642,6 +666,26 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     const QPoint normalBackgroundLocal = popup->mapFromGlobal(normalBackgroundGlobal);
     QCOMPARE(popupImage.pixelColor(normalBackgroundLocal), theme.colors().elevatedBackground);
     QVERIFY(popupImage.pixelColor(normalBackgroundLocal) != hostileBackground);
+
+    combo.view()->selectionModel()->setCurrentIndex(combo.model()->index(0, combo.modelColumn()),
+                                                    QItemSelectionModel::ClearAndSelect);
+    combo.view()->viewport()->update();
+    QCoreApplication::processEvents();
+    const QImage hoveredPopupImage = renderWidget(*popup);
+    const QRect hoverBounds = matchingColorBounds(hoveredPopupImage, theme.colors().accent);
+    QVERIFY(!hoverBounds.isEmpty());
+    const QRect contentRect =
+        surfaceRect.adjusted(contentMargin, contentMargin, -contentMargin, -contentMargin);
+    QVERIFY2(contentRect.contains(hoverBounds),
+             qPrintable(QStringLiteral("Hover bounds %1,%2 %3x%4 escaped content rect %5,%6 %7x%8")
+                            .arg(hoverBounds.x())
+                            .arg(hoverBounds.y())
+                            .arg(hoverBounds.width())
+                            .arg(hoverBounds.height())
+                            .arg(contentRect.x())
+                            .arg(contentRect.y())
+                            .arg(contentRect.width())
+                            .arg(contentRect.height())));
     combo.hidePopup();
     manager->setLiquidGlassEnabled(originalGlassEnabled);
 }
@@ -667,9 +711,15 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(comboGlass->backdrop() != nullptr);
     QCOMPARE(comboGlass->backdrop()->sourceWidget(), &owner);
     QCOMPARE(comboGlass->glassStyle().blurRadius, vkui::VLiquidGlassStyle::popup().blurRadius);
-    const int popupInset = combo.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &combo);
+    const auto& metrics = manager->theme().metrics();
+    const int shadowMargin = qCeil(metrics.spacing8 + std::abs(metrics.spacing2));
+    const int contentMargin = qRound(metrics.spacing6);
+    QCOMPARE(combo.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &combo),
+             shadowMargin + contentMargin);
     QCOMPARE(comboGlass->geometry(),
-             comboPopup->rect().adjusted(popupInset, popupInset, -popupInset, -popupInset));
+             comboPopup->rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
+    QCOMPARE(comboGlass->glassStyle().cornerRadius, metrics.comboBoxPopupCornerRadius);
+    QVERIFY(comboGlass->glassStyle().refractionHeight <= contentMargin);
 
     manager->setLiquidGlassEnabled(false);
     QVERIFY(comboGlass->isHidden());
@@ -690,10 +740,24 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(menuGlass->isHidden());
     QCOMPARE(menuGlass->backdrop()->sourceWidget(), &owner);
     QCOMPARE(menuGlass->glassStyle().blurRadius, vkui::VLiquidGlassStyle::popup().blurRadius);
+    QCOMPARE(menu.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &menu),
+             shadowMargin + contentMargin);
+    QCOMPARE(menuGlass->geometry(),
+             menu.rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
+    QCOMPARE(menuGlass->glassStyle().cornerRadius, metrics.menuCornerRadius);
 
+    menu.setActiveAction(menuAction);
+    menu.update();
+    QCoreApplication::processEvents();
     QImage menuImage(menu.size(), QImage::Format_ARGB32_Premultiplied);
     menuImage.fill(Qt::transparent);
     menu.render(&menuImage);
+    const QRect menuSurface = menuGlass->geometry();
+    const QRect menuContent =
+        menuSurface.adjusted(contentMargin, contentMargin, -contentMargin, -contentMargin);
+    const QRect menuHoverBounds = matchingColorBounds(menuImage, manager->theme().colors().accent);
+    QVERIFY(!menuHoverBounds.isEmpty());
+    QVERIFY(menuContent.contains(menuHoverBounds));
     QCOMPARE(matchingComponents(menuImage, menu.actionGeometry(menuAction), markerColor), 1);
     menu.close();
 }
