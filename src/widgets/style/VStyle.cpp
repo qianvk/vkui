@@ -219,6 +219,49 @@ qreal deviceHairlineWidth(const QPainter& painter) {
     return 1.0 / std::max<qreal>(1.0, device ? device->devicePixelRatioF() : 1.0);
 }
 
+enum class PopupItemChrome : quint8 {
+    Normal,
+    Highlighted,
+    Separator,
+};
+
+PopupItemChrome drawPopupItemChrome(const QStyleOptionMenuItem& option, QPainter& painter,
+                                    const vkui::VkTheme& theme) {
+    const auto& colors = theme.colors();
+    const auto& metrics = theme.metrics();
+
+    painter.save();
+    painter.setClipRect(option.rect);
+    if (option.menuItemType == QStyleOptionMenuItem::Separator) {
+        const qreal y = option.rect.center().y() + 0.5;
+        vkui::VStylePainter::drawHairline(
+            painter, QPointF(option.rect.left() + metrics.spacing8, y),
+            QPointF(option.rect.right() - metrics.spacing8, y), colors.separator);
+        painter.restore();
+        return PopupItemChrome::Separator;
+    }
+
+    const bool highlighted = option.state.testFlag(QStyle::State_Enabled) &&
+                             option.state.testFlag(QStyle::State_Selected);
+    if (highlighted) {
+        vkui::VStylePainter::drawRoundedPanel(painter, insetRect(option.rect, metrics.spacing2),
+                                              metrics.cornerRadiusSmall, colors.accent,
+                                              Qt::transparent, 0.0);
+    }
+    painter.restore();
+    return highlighted ? PopupItemChrome::Highlighted : PopupItemChrome::Normal;
+}
+
+QColor popupItemForeground(const vkui::VkTheme& theme, PopupItemChrome chrome, bool enabled,
+                           const QColor& normalForeground) {
+    if (!enabled) {
+        return theme.colors().textDisabled;
+    }
+    return chrome == PopupItemChrome::Highlighted
+               ? vkui::VStylePainter::contrastingText(theme.colors().accent)
+               : normalForeground;
+}
+
 void drawComboBoxMenuItem(const QStyleOptionMenuItem& sourceOption, QPainter& painter,
                           const vkui::VCombobox& comboBox, const vkui::VkTheme& theme) {
     QStyleOptionMenuItem option(sourceOption);
@@ -227,25 +270,14 @@ void drawComboBoxMenuItem(const QStyleOptionMenuItem& sourceOption, QPainter& pa
     const auto& colors = theme.colors();
     const auto& metrics = theme.metrics();
     const bool enabled = option.state.testFlag(QStyle::State_Enabled);
-    const bool highlighted = enabled && option.state.testFlag(QStyle::State_Selected);
+    const PopupItemChrome chrome = drawPopupItemChrome(option, painter, theme);
+    const bool highlighted = chrome == PopupItemChrome::Highlighted;
 
     painter.save();
     painter.setClipRect(option.rect);
-    painter.fillRect(option.rect, colors.elevatedBackground);
-
-    if (option.menuItemType == QStyleOptionMenuItem::Separator) {
-        const qreal y = option.rect.center().y() + 0.5;
-        vkui::VStylePainter::drawHairline(
-            painter, QPointF(option.rect.left() + metrics.spacing8, y),
-            QPointF(option.rect.right() - metrics.spacing8, y), colors.separator);
+    if (chrome == PopupItemChrome::Separator) {
         painter.restore();
         return;
-    }
-
-    if (highlighted) {
-        vkui::VStylePainter::drawRoundedPanel(painter, insetRect(option.rect, metrics.spacing2),
-                                              metrics.cornerRadiusSmall, colors.accent,
-                                              Qt::transparent, 0.0);
     }
 
     const ComboBoxMenuMetrics itemMetrics =
@@ -265,10 +297,9 @@ void drawComboBoxMenuItem(const QStyleOptionMenuItem& sourceOption, QPainter& pa
         option.rect.height());
 
     const bool checked = option.checked || option.state.testFlag(QStyle::State_On);
-    const QColor highlightedForeground = vkui::VStylePainter::contrastingText(colors.accent);
-    const QColor foreground =
-        highlighted ? highlightedForeground
-                    : option.palette.color(option.palette.currentColorGroup(), QPalette::Text);
+    const QColor foreground = popupItemForeground(
+        theme, chrome, enabled,
+        option.palette.color(option.palette.currentColorGroup(), QPalette::Text));
     if (checked) {
         const qreal markExtent =
             std::min<qreal>(itemMetrics.checkmarkExtent, option.rect.height() - metrics.spacing8);
@@ -277,7 +308,7 @@ void drawComboBoxMenuItem(const QStyleOptionMenuItem& sourceOption, QPainter& pa
             QStyle::visualRect(option.direction, option.rect, logicalLeadingColumn);
         markRect.moveCenter(QRectF(visualLeadingColumn).center());
         const QColor checkmarkColor = !enabled      ? colors.textDisabled
-                                      : highlighted ? highlightedForeground
+                                      : highlighted ? foreground
                                                     : colors.accent;
         vkui::VStylePainter::drawCheckmark(painter, markRect, checkmarkColor,
                                            itemMetrics.checkmarkStrokeWidth);
@@ -343,10 +374,8 @@ void VStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option,
             const bool comboBoxPopup = VkPopupSurfaceStyler::isVComboboxPopup(widget);
             const qreal radius =
                 comboBoxPopup ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
-            const QColor border =
-                comboBoxPopup ? VStylePainter::multiplyAlpha(colors.border, 0.68) : colors.border;
-            const qreal borderWidth =
-                comboBoxPopup ? deviceHairlineWidth(*painter) : metrics.borderWidth;
+            const QColor border = VStylePainter::multiplyAlpha(colors.border, 0.68);
+            const qreal borderWidth = deviceHairlineWidth(*painter);
             VStylePainter::drawRoundedPanel(*painter, QRectF(option->rect), radius,
                                             colors.elevatedBackground, border, borderWidth);
         }
@@ -724,30 +753,22 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
             drawComboBoxMenuItem(*menuItem, *painter, *comboBox, theme);
             return;
         }
-        if (menuItem->menuItemType == QStyleOptionMenuItem::Separator) {
-            const qreal y = option->rect.center().y() + 0.5;
-            VStylePainter::drawHairline(
-                *painter, QPointF(option->rect.left() + metrics.spacing8, y),
-                QPointF(option->rect.right() - metrics.spacing8, y), colors.separator);
+        const PopupItemChrome chrome = drawPopupItemChrome(*menuItem, *painter, theme);
+        if (chrome == PopupItemChrome::Separator) {
             return;
         }
         QStyleOptionMenuItem copy = *menuItem;
         copy.font = fontWithSizeOf(copy.font, theme.typography().body);
         copy.fontMetrics = QFontMetrics(copy.font);
-        if (selected && enabled) {
-            VStylePainter::drawRoundedPanel(*painter, insetRect(option->rect, metrics.spacing2),
-                                            metrics.cornerRadiusSmall, colors.controlFillHovered,
-                                            Qt::transparent, 0.0);
-        }
+        const QColor foreground =
+            popupItemForeground(theme, chrome, enabled, colors.textPrimary);
         copy.state.setFlag(State_Selected, false);
         copy.state.setFlag(State_MouseOver, false);
         copy.state.setFlag(State_HasFocus, false);
-        copy.palette.setColor(QPalette::Text, enabled ? colors.textPrimary : colors.textDisabled);
-        copy.palette.setColor(QPalette::ButtonText,
-                              enabled ? colors.textPrimary : colors.textDisabled);
+        copy.palette.setColor(QPalette::Text, foreground);
+        copy.palette.setColor(QPalette::ButtonText, foreground);
         copy.palette.setColor(QPalette::Highlight, Qt::transparent);
-        copy.palette.setColor(QPalette::HighlightedText,
-                              enabled ? colors.textPrimary : colors.textDisabled);
+        copy.palette.setColor(QPalette::HighlightedText, foreground);
         QProxyStyle::drawControl(element, &copy, painter, widget);
         return;
     }

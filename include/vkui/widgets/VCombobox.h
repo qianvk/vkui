@@ -21,10 +21,14 @@ class VKUI_WIDGETS_EXPORT VCombobox : public QComboBox {
     void setElideMode(Qt::TextElideMode mode);
     [[nodiscard]] Qt::TextElideMode elideMode() const noexcept;
 
+    void showPopup() override;
+
   signals:
     void elideModeChanged(Qt::TextElideMode mode);
 
   private:
+    void synchronizePopupCurrentIndex();
+
     Qt::TextElideMode elideMode_ = Qt::ElideRight;
 };
 

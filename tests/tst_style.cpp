@@ -181,6 +181,8 @@ class StyleTest final : public QObject {
     void comboBoxCollapsedUsesOwnerTypography();
     void comboBoxPopupUsesOwnerTypography();
     void comboPopupUsesMacStyleItems();
+    void popupItemsShareTransparentMacStyleChrome();
+    void comboPopupRealignsCommittedItemAfterHover();
     void comboPopupUsesOneRoundedSurface();
     void popupSurfacesFollowLiquidGlassPolicy();
     void menuRenderingUsesThemeTypography();
@@ -476,6 +478,74 @@ void StyleTest::comboPopupUsesMacStyleItems() {
             QCOMPARE(checked.pixel(x, y), unchecked.pixel(x, y));
         }
     }
+}
+
+void StyleTest::popupItemsShareTransparentMacStyleChrome() {
+    InspectableComboBox combo;
+    QMenu menu;
+    const auto renderItem = [](QWidget& owner, const bool highlighted) {
+        QImage image(QSize(180, 32), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QStyleOptionMenuItem option;
+        option.initFrom(&owner);
+        option.rect = image.rect();
+        option.state |= QStyle::State_Enabled | QStyle::State_Active;
+        option.state.setFlag(QStyle::State_Selected, highlighted);
+        option.menuItemType = QStyleOptionMenuItem::Normal;
+        option.text = QStringLiteral("Popup item");
+        option.font = owner.font();
+        option.fontMetrics = QFontMetrics(option.font);
+
+        QPainter painter(&image);
+        owner.style()->drawControl(QStyle::CE_MenuItem, &option, &painter, &owner);
+        return image;
+    };
+
+    const QPoint chromePoint(4, 16);
+    QCOMPARE(renderItem(combo, false).pixelColor(chromePoint), QColor(Qt::transparent));
+    QCOMPARE(renderItem(menu, false).pixelColor(chromePoint), QColor(Qt::transparent));
+
+    const QColor accent = vkui::VkThemeManager::instance()->theme().colors().accent;
+    QCOMPARE(renderItem(combo, true).pixelColor(chromePoint), accent);
+    QCOMPARE(renderItem(menu, true).pixelColor(chromePoint), accent);
+}
+
+void StyleTest::comboPopupRealignsCommittedItemAfterHover() {
+    InspectableComboBox combo;
+    combo.addItems({QStringLiteral("Zero"), QStringLiteral("One"), QStringLiteral("Two"),
+                    QStringLiteral("Three")});
+    combo.setCurrentIndex(1);
+    combo.resize(180, 30);
+    combo.move(240, 180);
+    combo.show();
+    combo.showPopup();
+    QTRY_VERIFY(combo.view()->isVisible());
+
+    const QModelIndex hoveredIndex = combo.model()->index(3, combo.modelColumn());
+    combo.view()->selectionModel()->setCurrentIndex(hoveredIndex, QItemSelectionModel::NoUpdate);
+    QCOMPARE(combo.view()->currentIndex(), hoveredIndex);
+    QCOMPARE(combo.currentIndex(), 1);
+
+    combo.hidePopup();
+    combo.showPopup();
+    QTRY_VERIFY(combo.view()->isVisible());
+    const QModelIndex committedIndex = combo.model()->index(1, combo.modelColumn());
+    QCOMPARE(combo.view()->currentIndex(), committedIndex);
+
+    const QRect selectedGlobal(combo.view()->viewport()->mapToGlobal(
+                                   combo.view()->visualRect(committedIndex).topLeft()),
+                               combo.view()->visualRect(committedIndex).size());
+    const QRect comboGlobal(combo.mapToGlobal(QPoint(0, 0)), combo.size());
+    QCOMPARE(selectedGlobal.top(), comboGlobal.top());
+    combo.hidePopup();
+
+    combo.setPlaceholderText(QStringLiteral("Choose an item"));
+    combo.setCurrentIndex(-1);
+    combo.view()->selectionModel()->setCurrentIndex(hoveredIndex, QItemSelectionModel::NoUpdate);
+    combo.showPopup();
+    QTRY_VERIFY(combo.view()->isVisible());
+    QVERIFY(!combo.view()->currentIndex().isValid());
+    combo.hidePopup();
 }
 
 void StyleTest::comboPopupUsesOneRoundedSurface() {
