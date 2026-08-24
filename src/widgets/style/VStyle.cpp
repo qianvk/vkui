@@ -760,6 +760,13 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
         QProxyStyle::drawControl(element, &copy, painter, widget);
         return;
     }
+    case CE_MenuEmptyArea:
+        // The popup container already paints the complete material. Qt's combo list view asks the
+        // base style to paint its empty area separately, which would create a rectangular layer.
+        if (d->popupSurfaces->isPopupPart(widget)) {
+            return;
+        }
+        break;
     case CE_HeaderSection: {
         QColor fill = hovered ? colors.controlFillHovered : colors.controlFill;
         if (hasState(option, State_Sunken)) {

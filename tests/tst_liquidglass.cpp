@@ -202,6 +202,7 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QVERIFY(popup.tintOpacity > regular.tintOpacity);
     QVERIFY(popup.refractionHeight < regular.refractionHeight);
     QVERIFY(popup.refractionAmount < regular.refractionAmount);
+    QVERIFY(popup.saturation < regular.saturation);
     QVERIFY(popup.opticalEdgeIntensity < regular.opticalEdgeIntensity);
 }
 
