@@ -9,25 +9,34 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGroupBox>
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
 #include <QMenu>
 #include <QPainter>
+#include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QProxyStyle>
 #include <QPushButton>
 #include <QQueue>
 #include <QRadioButton>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QStyleOptionComboBox>
 #include <QStyleOptionFrame>
 #include <QStyleOptionMenuItem>
 #include <QStyleOptionSlider>
 #include <QStyleOptionToolButton>
 #include <QStyledItemDelegate>
+#include <QTabBar>
+#include <QTableView>
+#include <QTextEdit>
+#include <QToolBar>
 #include <QToolButton>
 #include <QtTest>
 #include <cmath>
@@ -39,6 +48,7 @@
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
 #include <vkui/widgets/style/VStyle.h>
+#include <vkui/widgets/views/VTreeView.h>
 
 #if defined(Q_OS_MACOS)
 #include "private/MacWindowStackProbe.h"
@@ -166,6 +176,7 @@ class StyleTest final : public QObject {
     void comboBoxUsesTwoChevronGlyphs();
     void comboBoxCollapsedSurfaceAppearsOnlyOnHover();
     void comboBoxUsesQtMenuDelegateAndPreservesCustomDelegates();
+    void comboBoxCollapsedUsesOwnerTypography();
     void comboBoxPopupUsesOwnerTypography();
     void comboPopupUsesMacStyleItems();
     void comboPopupUsesOneRoundedSurface();
@@ -177,6 +188,7 @@ class StyleTest final : public QObject {
     void comboBoxSizingAndElisionProtectTheChevronColumn();
     void fixedControlsHonorSizeClasses();
     void textSizeLevelResizesAllInheritedTextControlsAndIcons();
+    void responsiveTypographyCoversEveryWidgetCategory();
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
@@ -314,6 +326,12 @@ void StyleTest::comboBoxPopupUsesOwnerTypography() {
     QFont ownerFont = combo.font();
     ownerFont.setPointSizeF(19.0);
     combo.setFont(ownerFont);
+    combo.resize(240, 36);
+    combo.show();
+    combo.showPopup();
+    QTRY_VERIFY(combo.view()->isVisible());
+    QWidget* popupViewport = combo.view()->viewport();
+    QVERIFY(popupViewport != nullptr);
 
     QStyleOptionMenuItem ownerOption;
     ownerOption.initFrom(&combo);
@@ -330,19 +348,51 @@ void StyleTest::comboBoxPopupUsesOwnerTypography() {
     staleOption.font = staleMenuFont;
     staleOption.fontMetrics = QFontMetrics(staleMenuFont);
 
-    const auto renderItem = [&combo](const QStyleOptionMenuItem& option) {
+    const auto renderItem = [&combo, popupViewport](const QStyleOptionMenuItem& option) {
         QImage image(option.rect.size(), QImage::Format_ARGB32_Premultiplied);
         image.fill(Qt::transparent);
         QPainter painter(&image);
-        combo.style()->drawControl(QStyle::CE_MenuItem, &option, &painter, &combo);
+        combo.style()->drawControl(QStyle::CE_MenuItem, &option, &painter, popupViewport);
         return image;
     };
     QCOMPARE(renderItem(staleOption), renderItem(ownerOption));
 
+    const QSize staleSize = combo.style()->sizeFromContents(QStyle::CT_MenuItem, &staleOption,
+                                                            QSize(40, 10), popupViewport);
+    const QSize ownerSize = combo.style()->sizeFromContents(QStyle::CT_MenuItem, &ownerOption,
+                                                            QSize(40, 10), popupViewport);
+    QCOMPARE(staleSize, ownerSize);
+    combo.hidePopup();
+}
+
+void StyleTest::comboBoxCollapsedUsesOwnerTypography() {
+    InspectableComboBox combo;
+    combo.addItem(QStringLiteral("A label long enough to expose stale font metrics"));
+    combo.resize(170, 44);
+    QFont ownerFont = combo.font();
+    ownerFont.setPointSizeF(19.0);
+    combo.setFont(ownerFont);
+
+    QStyleOptionComboBox ownerOption;
+    combo.initStyleOption(&ownerOption);
+    QStyleOptionComboBox staleOption(ownerOption);
+    QFont staleFont(ownerFont);
+    staleFont.setPointSizeF(9.0);
+    staleOption.fontMetrics = QFontMetrics(staleFont);
+
+    const auto renderLabel = [&combo](const QStyleOptionComboBox& option) {
+        QImage image(combo.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        combo.style()->drawControl(QStyle::CE_ComboBoxLabel, &option, &painter, &combo);
+        return image;
+    };
+    QCOMPARE(renderLabel(staleOption), renderLabel(ownerOption));
+
     const QSize staleSize =
-        combo.style()->sizeFromContents(QStyle::CT_MenuItem, &staleOption, QSize(40, 10), &combo);
+        combo.style()->sizeFromContents(QStyle::CT_ComboBox, &staleOption, QSize(80, 12), &combo);
     const QSize ownerSize =
-        combo.style()->sizeFromContents(QStyle::CT_MenuItem, &ownerOption, QSize(40, 10), &combo);
+        combo.style()->sizeFromContents(QStyle::CT_ComboBox, &ownerOption, QSize(80, 12), &combo);
     QCOMPARE(staleSize, ownerSize);
 }
 
@@ -817,13 +867,107 @@ void StyleTest::textSizeLevelResizesAllInheritedTextControlsAndIcons() {
             defaultIconExtent);
     QVERIFY(title.font().pointSizeF() > defaultTitleSize);
     QCOMPARE(title.font(), vkui::textStyleFont(vkui::VTextStyle::Title));
-    QCOMPARE(exactCheckBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr,
-                                                 &exactCheckBox),
+    QCOMPARE(exactCheckBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &exactCheckBox),
              27);
 
     vkui::resetTextStyle(title);
     QVERIFY(!vkui::textStyle(title));
     manager->setTextSizeLevel(originalLevel);
+}
+
+void StyleTest::responsiveTypographyCoversEveryWidgetCategory() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int originalLevel = manager->textSizeLevel();
+    manager->setTextSizeLevel(vkui::VkMinimumTextSizeLevel);
+
+    QWidget window;
+    QPushButton button(QStringLiteral("Button"), &window);
+    QToolButton toolButton(&window);
+    toolButton.setText(QStringLiteral("Tool"));
+    QCheckBox checkBox(QStringLiteral("Check"), &window);
+    QRadioButton radioButton(QStringLiteral("Radio"), &window);
+    QLabel label(QStringLiteral("Label"), &window);
+    QGroupBox groupBox(QStringLiteral("Group"), &window);
+    QLineEdit lineEdit(QStringLiteral("Line edit"), &window);
+    QSpinBox spinBox(&window);
+    QDoubleSpinBox doubleSpinBox(&window);
+    QProgressBar progressBar(&window);
+    QPlainTextEdit plainTextEdit(QStringLiteral("Plain text"), &window);
+    QTextEdit textEdit(QStringLiteral("Rich text"), &window);
+    QTabBar tabBar(&window);
+    tabBar.addTab(QStringLiteral("Tab"));
+    QListView listView(&window);
+    QTableView tableView(&window);
+    QToolBar toolBar(&window);
+    toolBar.addAction(QStringLiteral("Toolbar action"));
+    InspectableComboBox comboBox;
+    comboBox.setParent(&window);
+    comboBox.addItems({QStringLiteral("One"), QStringLiteral("Two")});
+    vkui::VSegmentedControl segmented(&window);
+    segmented.addSegment(QStringLiteral("Segment"));
+    vkui::VTreeView treeView(&window);
+    QStandardItemModel treeModel;
+    treeModel.appendRow(new QStandardItem(QStringLiteral("Tree item")));
+    treeView.setModel(&treeModel);
+
+    QLabel semanticTitle(QStringLiteral("Semantic title"), &window);
+    vkui::setTextStyle(semanticTitle, vkui::VTextStyle::Title);
+    QLabel explicitLabel(QStringLiteral("Explicit application font"), &window);
+    QFont explicitFont = explicitLabel.font();
+    explicitFont.setPointSizeF(9.0);
+    explicitLabel.setFont(explicitFont);
+    QLabel runtimeExplicitLabel(QStringLiteral("Runtime application font"), &window);
+
+    QMenu menu(&button);
+    menu.addAction(QStringLiteral("Menu action"));
+
+    window.resize(640, 480);
+    window.show();
+    menu.ensurePolished();
+    QCoreApplication::processEvents();
+    QFont runtimeExplicitFont = runtimeExplicitLabel.font();
+    runtimeExplicitFont.setPointSizeF(10.0);
+    runtimeExplicitLabel.setFont(runtimeExplicitFont);
+
+    const QList<QWidget*> bodyWidgets{
+        &button,    &toolButton,    &checkBox,    &radioButton,   &label,    &groupBox, &lineEdit,
+        &spinBox,   &doubleSpinBox, &progressBar, &plainTextEdit, &textEdit, &tabBar,   &listView,
+        &tableView, &toolBar,       &comboBox,    &segmented,     &treeView, &menu,
+    };
+    const int smallBodyHeight = label.fontMetrics().height();
+    const int smallRadioIndicator = radioButton.style()->pixelMetric(
+        QStyle::PM_ExclusiveIndicatorHeight, nullptr, &radioButton);
+    QStyleOptionViewItem smallTreeOption;
+    smallTreeOption.initFrom(&treeView);
+    smallTreeOption.widget = &treeView;
+    const QSize smallTreeRow =
+        treeView.itemDelegate()->sizeHint(smallTreeOption, treeModel.index(0, 0));
+    const qreal smallTitleSize = semanticTitle.font().pointSizeF();
+
+    manager->setTextSizeLevel(vkui::VkMaximumTextSizeLevel);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.font(), manager->theme().typography().body);
+    for (QWidget* widget : bodyWidgets) {
+        QCOMPARE(widget->font(), window.font());
+        QVERIFY2(widget->fontMetrics().height() > smallBodyHeight,
+                 widget->metaObject()->className());
+    }
+    QVERIFY(radioButton.style()->pixelMetric(QStyle::PM_ExclusiveIndicatorHeight, nullptr,
+                                             &radioButton) > smallRadioIndicator);
+    QStyleOptionViewItem largeTreeOption;
+    largeTreeOption.initFrom(&treeView);
+    largeTreeOption.widget = &treeView;
+    const QSize largeTreeRow =
+        treeView.itemDelegate()->sizeHint(largeTreeOption, treeModel.index(0, 0));
+    QVERIFY(largeTreeRow.height() > smallTreeRow.height());
+    QVERIFY(semanticTitle.font().pointSizeF() > smallTitleSize);
+    QCOMPARE(semanticTitle.font(), vkui::textStyleFont(vkui::VTextStyle::Title));
+    QCOMPARE(explicitLabel.font().pointSizeF(), 9.0);
+    QCOMPARE(runtimeExplicitLabel.font().pointSizeF(), 10.0);
+
+    manager->setTextSizeLevel(originalLevel);
+    QCoreApplication::processEvents();
 }
 
 void StyleTest::selectedIndicatorsUseWhiteMarks() {

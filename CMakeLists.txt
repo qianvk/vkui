@@ -182,6 +182,8 @@ target_sources(vkui_widgets
         src/widgets/style/private/VkPopupSurfaceStyler.cpp
         src/widgets/style/private/VkThemeRefreshCoordinator_p.h
         src/widgets/style/private/VkThemeRefreshCoordinator.cpp
+        src/widgets/style/private/VkWidgetTypographyController_p.h
+        src/widgets/style/private/VkWidgetTypographyController.cpp
         src/widgets/style/private/VStylePainter_p.h
         src/widgets/style/private/VStylePainter.cpp
         src/widgets/controls/VSplitter.cpp

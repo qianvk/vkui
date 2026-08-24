@@ -12,6 +12,8 @@ class QWidget;
 
 namespace vkui {
 
+class VCombobox;
+
 class VkPopupSurfaceStyler final : public QObject {
   public:
     explicit VkPopupSurfaceStyler(QObject* parent);
@@ -19,6 +21,7 @@ class VkPopupSurfaceStyler final : public QObject {
 
     [[nodiscard]] static bool isComboBoxPopup(const QWidget* widget);
     [[nodiscard]] static bool isVComboboxPopup(const QWidget* widget);
+    [[nodiscard]] static const VCombobox* owningVCombobox(const QWidget* widget);
     [[nodiscard]] static bool isMenuPopup(const QWidget* widget);
     [[nodiscard]] static bool isPopupContainer(const QWidget* widget);
     [[nodiscard]] bool isPopupPart(const QWidget* widget) const;

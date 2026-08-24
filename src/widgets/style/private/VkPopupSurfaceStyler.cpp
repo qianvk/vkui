@@ -30,15 +30,16 @@ bool VkPopupSurfaceStyler::isComboBoxPopup(const QWidget* widget) {
 }
 
 bool VkPopupSurfaceStyler::isVComboboxPopup(const QWidget* widget) {
-    if (!isComboBoxPopup(widget)) {
-        return false;
-    }
-    for (const QObject* owner = widget->parent(); owner; owner = owner->parent()) {
-        if (qobject_cast<const VCombobox*>(owner)) {
-            return true;
+    return isComboBoxPopup(widget) && owningVCombobox(widget) != nullptr;
+}
+
+const VCombobox* VkPopupSurfaceStyler::owningVCombobox(const QWidget* widget) {
+    for (const QWidget* candidate = widget; candidate; candidate = candidate->parentWidget()) {
+        if (const auto* comboBox = qobject_cast<const VCombobox*>(candidate)) {
+            return comboBox;
         }
     }
-    return false;
+    return nullptr;
 }
 
 bool VkPopupSurfaceStyler::isMenuPopup(const QWidget* widget) {

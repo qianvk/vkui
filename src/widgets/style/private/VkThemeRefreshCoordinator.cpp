@@ -66,9 +66,9 @@ void VkThemeRefreshCoordinator::refreshWidgets() {
     }
 
     if (!changes.testFlag(VkThemeChange::Metrics)) {
-        // VkThemeManager applies the resolved body font through QGuiApplication. Qt then owns
-        // inherited-font resolution, FontChange delivery, size-hint invalidation, and layout
-        // activation. Color-only changes use the same cheap top-level repaint path.
+        // Color-only changes use the cheap top-level repaint path. Responsive typography changes
+        // also carry metrics, so the widget-font normalization below runs only when geometry must
+        // be refreshed anyway.
         updateVisibleWindows();
         return;
     }
@@ -85,10 +85,9 @@ void VkThemeRefreshCoordinator::refreshWidgets() {
         widgets.append({widget, widgetDepth(widget)});
     }
 
-    // Responsive metrics change geometry independently of QWidget fonts. Preserve Qt's
-    // parent/child polish ordering so style size hints and cached layouts rebuild
-    // deterministically. Discrete text levels and the queued coalescing above bound this more
-    // expensive path.
+    // Preserve Qt's parent/child polish ordering so responsive fonts, style size hints, and cached
+    // layouts rebuild deterministically. Discrete text levels and the queued coalescing above bound
+    // this more expensive path.
     std::ranges::sort(widgets, [](const WidgetEntry& left, const WidgetEntry& right) {
         return left.depth > right.depth;
     });

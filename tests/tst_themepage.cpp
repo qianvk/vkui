@@ -3,12 +3,16 @@
 #include "ThemePage.h"
 
 #include <QAbstractButton>
+#include <QGroupBox>
 #include <QLabel>
+#include <QRadioButton>
 #include <QStyleOptionSlider>
 #include <QtTest/QTest>
 #include <cmath>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/controls/VSlider.h>
+#include <vkui/widgets/style/VStyle.h>
 
 class ThemePageTest final : public QObject {
     Q_OBJECT
@@ -23,6 +27,7 @@ class ThemePageTest final : public QObject {
 };
 
 void ThemePageTest::initTestCase() {
+    vkui::installVkUi(*qApp);
     originalTextSizeLevel_ = vkui::VkThemeManager::instance()->textSizeLevel();
 }
 
@@ -49,8 +54,26 @@ void ThemePageTest::textSizeSliderMatchesThingsLevelsAndUpdatesLive() {
     QCOMPARE(slider->tickPosition(), QSlider::TicksBelow);
     QVERIFY(slider->hasTracking());
 
+    const auto radios = page.findChildren<QRadioButton*>();
+    auto* previewCombo = page.findChild<vkui::VCombobox*>();
+    const auto groups = page.findChildren<QGroupBox*>();
+    QVERIFY(!radios.isEmpty());
+    QVERIFY(previewCombo != nullptr);
+    QVERIFY(!groups.isEmpty());
+    const int defaultRadioFontHeight = radios.constFirst()->fontMetrics().height();
+    const int defaultComboFontHeight = previewCombo->fontMetrics().height();
+    const int defaultGroupFontHeight = groups.constFirst()->fontMetrics().height();
+
     slider->setValue(8);
     QCOMPARE(vkui::VkThemeManager::instance()->textSizeLevel(), 8);
+    QCoreApplication::processEvents();
+    for (QRadioButton* radio : radios) {
+        QVERIFY(radio->fontMetrics().height() > defaultRadioFontHeight);
+    }
+    QVERIFY(previewCombo->fontMetrics().height() > defaultComboFontHeight);
+    for (QGroupBox* group : groups) {
+        QVERIFY(group->fontMetrics().height() > defaultGroupFontHeight);
+    }
 
     vkui::VkThemeManager::instance()->setTextSizeLevel(11);
     QCOMPARE(slider->value(), 11);
