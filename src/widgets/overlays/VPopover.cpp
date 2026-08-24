@@ -96,6 +96,8 @@ VPopoverPrivate::VPopoverPrivate(VPopover* popover) : q(popover), animation(popo
             syncLiquidGlassSurface();
             q->update();
         });
+    liquidGlassTintConnection =
+        connect(manager, &VkThemeManager::liquidGlassTintLevelChanged, q, [this] { q->update(); });
     syncTypography();
 }
 
@@ -432,6 +434,10 @@ void VPopoverPrivate::shutdown() {
     if (liquidGlassEnabledConnection) {
         disconnect(liquidGlassEnabledConnection);
         liquidGlassEnabledConnection = {};
+    }
+    if (liquidGlassTintConnection) {
+        disconnect(liquidGlassTintConnection);
+        liquidGlassTintConnection = {};
     }
     if (contentDestroyedConnection) {
         disconnect(contentDestroyedConnection);
@@ -1120,7 +1126,11 @@ void VPopoverPrivate::paint(QPaintEvent* event) {
 
     QColor surface = colors.popoverBackground;
     if (VkThemeManager::instance()->liquidGlassEnabled()) {
-        surface.setAlpha(theme.effectiveAppearance() == VkAppearance::Dark ? 108 : 76);
+        const qreal tint =
+            normalizedLiquidGlassTintLevel(VkThemeManager::instance()->liquidGlassTintLevel());
+        const int clearAlpha = theme.effectiveAppearance() == VkAppearance::Dark ? 108 : 76;
+        const int tintedAlpha = theme.effectiveAppearance() == VkAppearance::Dark ? 224 : 208;
+        surface.setAlpha(qRound(std::lerp(clearAlpha, tintedAlpha, tint)));
     }
     painter.fillPath(finalPath, surface);
     QPen borderPen(colors.border);

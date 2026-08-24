@@ -125,7 +125,8 @@ hit target. See the [tree-view guide](docs/tree-view.md) and [file-tree guide](d
 cross-platform glass compositions without replacing child-widget behavior. The cached QPainter
 renderer is shared by every platform. `VkThemeManager::setLiquidGlassEnabled()` switches all
 supported surfaces between the optical material and their opaque semantic fallback without
-rebuilding the theme. See the [liquid-glass guide](docs/liquid-glass.md).
+rebuilding the theme. `setLiquidGlassTintLevel()` exposes the system-style Clear-to-Tinted
+preference without leaking renderer parameters. See the [liquid-glass guide](docs/liquid-glass.md).
 
 ## Status
 

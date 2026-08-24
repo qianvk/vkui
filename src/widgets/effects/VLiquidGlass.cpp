@@ -53,6 +53,15 @@ QColor glassTint() {
                                                              : QColor(235, 238, 244);
 }
 
+VLiquidGlassStyle styleForThemePreference(VLiquidGlassStyle style) noexcept {
+    constexpr qreal FullyTintedOpacity = 0.62;
+    const qreal tint =
+        normalizedLiquidGlassTintLevel(VkThemeManager::instance()->liquidGlassTintLevel());
+    style.tintOpacity =
+        std::lerp(style.tintOpacity, std::max(style.tintOpacity, FullyTintedOpacity), tint);
+    return style;
+}
+
 } // namespace
 
 VLiquidGlassStyle VLiquidGlassStyle::regular() noexcept {
@@ -298,11 +307,12 @@ class VLiquidGlassSurfacePrivate final {
             q->size().isEmpty()) {
             return;
         }
-        const int padding = VkLiquidGlassRenderer::capturePadding(style);
+        const VLiquidGlassStyle effectiveStyle = styleForThemePreference(style);
+        const int padding = VkLiquidGlassRenderer::capturePadding(effectiveStyle);
         const qreal scale =
-            VkLiquidGlassRenderer::sampleScale(style.quality, q->devicePixelRatioF());
+            VkLiquidGlassRenderer::sampleScale(effectiveStyle.quality, q->devicePixelRatioF());
         const VkLiquidGlassFrame frame = backdrop->d->capture(*q, padding, scale);
-        material = VkLiquidGlassRenderer::render(frame, q->size(), style, glassTint());
+        material = VkLiquidGlassRenderer::render(frame, q->size(), effectiveStyle, glassTint());
     }
 
     void paint() {
@@ -327,9 +337,11 @@ class VLiquidGlassSurfacePrivate final {
         if (!manager->liquidGlassEnabled()) {
             const VkTheme& theme = manager->theme();
             painter.fillPath(path, theme.colors().elevatedBackground);
-            painter.setPen(QPen(theme.colors().border, theme.metrics().borderWidth));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawPath(path);
+            if (style.drawsBorder) {
+                painter.setPen(QPen(theme.colors().border, theme.metrics().borderWidth));
+                painter.setBrush(Qt::NoBrush);
+                painter.drawPath(path);
+            }
             return;
         }
         painter.save();
@@ -364,9 +376,11 @@ class VLiquidGlassSurfacePrivate final {
         painter.setPen(QPen(specular, 1.0));
         painter.drawPath(path);
 
-        // Draw the neutral rim last so directional highlights never erase one side.
-        painter.setPen(QPen(dark ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 32), 1.0));
-        painter.drawPath(path);
+        if (style.drawsBorder) {
+            // Draw the neutral rim last so directional highlights never erase one side.
+            painter.setPen(QPen(dark ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 32), 1.0));
+            painter.drawPath(path);
+        }
 
         const QRectF innerBounds = bounds.adjusted(1.0, 1.0, -1.0, -1.0);
         if (!innerBounds.isEmpty()) {
@@ -399,6 +413,8 @@ VLiquidGlassSurface::VLiquidGlassSurface(QWidget* parent)
                 }
             });
     connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassEnabledChanged, this,
+            [this] { d->invalidate(); });
+    connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassTintLevelChanged, this,
             [this] { d->invalidate(); });
 }
 

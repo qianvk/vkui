@@ -28,17 +28,20 @@ class ThemePageTest final : public QObject {
   private:
     int originalTextSizeLevel_ = vkui::VkDefaultTextSizeLevel;
     bool originalLiquidGlassEnabled_ = true;
+    int originalLiquidGlassTintLevel_ = vkui::VkDefaultLiquidGlassTintLevel;
 };
 
 void ThemePageTest::initTestCase() {
     vkui::installVkUi(*qApp);
     originalTextSizeLevel_ = vkui::VkThemeManager::instance()->textSizeLevel();
     originalLiquidGlassEnabled_ = vkui::VkThemeManager::instance()->liquidGlassEnabled();
+    originalLiquidGlassTintLevel_ = vkui::VkThemeManager::instance()->liquidGlassTintLevel();
 }
 
 void ThemePageTest::cleanupTestCase() {
     vkui::VkThemeManager::instance()->setTextSizeLevel(originalTextSizeLevel_);
     vkui::VkThemeManager::instance()->setLiquidGlassEnabled(originalLiquidGlassEnabled_);
+    vkui::VkThemeManager::instance()->setLiquidGlassTintLevel(originalLiquidGlassTintLevel_);
 }
 
 void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
@@ -51,10 +54,24 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
 
     auto* toggle = page.findChild<vkui::VSwitch*>(QStringLiteral("liquidGlassEnabledSwitch"));
     auto* preview = page.findChild<QWidget*>(QStringLiteral("liquidGlassPreview"));
+    auto* appearanceControls =
+        page.findChild<QWidget*>(QStringLiteral("liquidGlassAppearanceControls"));
+    auto* tintSlider = page.findChild<vkui::VSlider*>(QStringLiteral("liquidGlassTintSlider"));
     QVERIFY(toggle != nullptr);
     QVERIFY(preview != nullptr);
+    QVERIFY(appearanceControls != nullptr);
+    QVERIFY(tintSlider != nullptr);
     QCOMPARE(preview->findChildren<vkui::VLiquidGlassSurface*>().size(), 2);
     QVERIFY(toggle->isChecked());
+    QVERIFY(appearanceControls->isVisible());
+    QCOMPARE(tintSlider->minimum(), vkui::VkMinimumLiquidGlassTintLevel);
+    QCOMPARE(tintSlider->maximum(), vkui::VkMaximumLiquidGlassTintLevel);
+    QCOMPARE(tintSlider->value(), manager->liquidGlassTintLevel());
+
+    tintSlider->setValue(72);
+    QCOMPARE(manager->liquidGlassTintLevel(), 72);
+    manager->setLiquidGlassTintLevel(41);
+    QCOMPARE(tintSlider->value(), 41);
 
     QImage enabledPreview(preview->size(), QImage::Format_ARGB32_Premultiplied);
     enabledPreview.fill(Qt::transparent);
@@ -62,6 +79,7 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
 
     toggle->click();
     QCOMPARE(manager->liquidGlassEnabled(), false);
+    QVERIFY(!appearanceControls->isVisible());
     QCoreApplication::processEvents();
     QImage disabledPreview(preview->size(), QImage::Format_ARGB32_Premultiplied);
     disabledPreview.fill(Qt::transparent);
@@ -69,6 +87,7 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
     QVERIFY(enabledPreview != disabledPreview);
     manager->setLiquidGlassEnabled(true);
     QCOMPARE(toggle->isChecked(), true);
+    QVERIFY(appearanceControls->isVisible());
 }
 
 void ThemePageTest::textSizeSliderMatchesThingsLevelsAndUpdatesLive() {

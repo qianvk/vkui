@@ -395,11 +395,47 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
         glassGroup);
     glassExplanation->setWordWrap(true);
     glassLayout->addWidget(glassExplanation);
+
+    auto* glassAppearanceControls = new QWidget(glassGroup);
+    glassAppearanceControls->setObjectName(QStringLiteral("liquidGlassAppearanceControls"));
+    auto* glassAppearanceLayout = new QHBoxLayout(glassAppearanceControls);
+    glassAppearanceLayout->setContentsMargins(0, 0, 0, 0);
+    glassAppearanceLayout->setSpacing(8);
+    auto* clearLabel = new QLabel(tr("Clear"), glassAppearanceControls);
+    vkui::setTextStyle(*clearLabel, vkui::VTextStyle::Caption);
+    auto* glassTintSlider = new vkui::VSlider(Qt::Horizontal, glassAppearanceControls);
+    glassTintSlider->setObjectName(QStringLiteral("liquidGlassTintSlider"));
+    glassTintSlider->setAccessibleName(tr("Liquid Glass appearance"));
+    glassTintSlider->setRange(vkui::VkMinimumLiquidGlassTintLevel,
+                              vkui::VkMaximumLiquidGlassTintLevel);
+    glassTintSlider->setSingleStep(1);
+    glassTintSlider->setPageStep(10);
+    glassTintSlider->setTracking(true);
+    glassTintSlider->setValue(vkui::VkThemeManager::instance()->liquidGlassTintLevel());
+    auto* tintedLabel = new QLabel(tr("Tinted"), glassAppearanceControls);
+    vkui::setTextStyle(*tintedLabel, vkui::VTextStyle::Caption);
+    glassAppearanceLayout->addWidget(clearLabel);
+    glassAppearanceLayout->addWidget(glassTintSlider, 1);
+    glassAppearanceLayout->addWidget(tintedLabel);
+    glassLayout->addWidget(glassAppearanceControls);
     glassLayout->addWidget(new LiquidGlassPreview(glassGroup));
     connect(glassSwitch, &vkui::VSwitch::toggled, vkui::VkThemeManager::instance(),
             &vkui::VkThemeManager::setLiquidGlassEnabled);
     connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::liquidGlassEnabledChanged,
             glassSwitch, &vkui::VSwitch::setChecked);
+    connect(glassTintSlider, &QSlider::valueChanged, vkui::VkThemeManager::instance(),
+            &vkui::VkThemeManager::setLiquidGlassTintLevel);
+    connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::liquidGlassTintLevelChanged,
+            glassTintSlider, [glassTintSlider](const int level) {
+                const QSignalBlocker blocker(glassTintSlider);
+                glassTintSlider->setValue(level);
+            });
+    const auto updateGlassOptionVisibility = [glassAppearanceControls](const bool enabled) {
+        glassAppearanceControls->setVisible(enabled);
+    };
+    connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::liquidGlassEnabledChanged,
+            glassAppearanceControls, updateGlassOptionVisibility);
+    updateGlassOptionVisibility(vkui::VkThemeManager::instance()->liquidGlassEnabled());
     layout->addWidget(glassGroup);
 
     auto* textSizeGroup = new QGroupBox(tr("Text Size"), this);

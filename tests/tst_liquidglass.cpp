@@ -5,6 +5,7 @@
 #include <QtTest>
 #include <cstdlib>
 #include <memory>
+#include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/effects/VLiquidGlass.h>
 
 namespace {
@@ -83,6 +84,7 @@ class LiquidGlassTest final : public QObject {
     void materialPresetsHaveDistinctOptics();
     void regularMaterialRefractsBackdropAtEdge();
     void rimIsHorizontallySymmetric();
+    void themeTintPreferenceChangesRenderedMaterial();
     void styleValuesAreSanitized();
 };
 
@@ -238,6 +240,36 @@ void LiquidGlassTest::rimIsHorizontallySymmetric() {
     QVERIFY(std::abs(leading.red() - trailing.red()) <= 2);
     QVERIFY(std::abs(leading.green() - trailing.green()) <= 2);
     QVERIFY(std::abs(leading.blue() - trailing.blue()) <= 2);
+}
+
+void LiquidGlassTest::themeTintPreferenceChangesRenderedMaterial() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool originalEnabled = manager->liquidGlassEnabled();
+    const int originalTint = manager->liquidGlassTintLevel();
+    manager->setLiquidGlassEnabled(true);
+    manager->setLiquidGlassTintLevel(vkui::VkMinimumLiquidGlassTintLevel);
+
+    QWidget host;
+    host.resize(220, 70);
+    SplitColorWidget source(&host);
+    source.setColors(QColor(20, 80, 220), QColor(245, 90, 30));
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(20, 14, 180, 42);
+    surface.setBackdrop(&backdrop);
+    surface.raise();
+    host.show();
+    QCoreApplication::processEvents();
+    const QImage clearImage = surface.grab().toImage();
+
+    manager->setLiquidGlassTintLevel(vkui::VkMaximumLiquidGlassTintLevel);
+    QCoreApplication::processEvents();
+    const QImage tintedImage = surface.grab().toImage();
+    QVERIFY(clearImage != tintedImage);
+
+    manager->setLiquidGlassTintLevel(originalTint);
+    manager->setLiquidGlassEnabled(originalEnabled);
 }
 
 void LiquidGlassTest::styleValuesAreSanitized() {

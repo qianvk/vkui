@@ -5,6 +5,8 @@
 
 int main(int argc, char* argv[]) {
     QGuiApplication application(argc, argv);
-    const vkui::VkTheme& theme = vkui::VkThemeManager::instance()->theme();
-    return theme.colors().textPrimary.isValid() ? 0 : 1;
+    auto* manager = vkui::VkThemeManager::instance();
+    manager->setLiquidGlassTintLevel(37);
+    const vkui::VkTheme& theme = manager->theme();
+    return theme.colors().textPrimary.isValid() && manager->liquidGlassTintLevel() == 37 ? 0 : 1;
 }

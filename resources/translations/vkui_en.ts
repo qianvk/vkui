@@ -1421,6 +1421,14 @@
         <translation>Maximum backdrop detail</translation>
     </message>
     <message>
+        <source>Liquid Glass appearance</source>
+        <translation>Liquid Glass appearance</translation>
+    </message>
+    <message>
+        <source>Tinted</source>
+        <translation>Tinted</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="49"/>
         <source>Theme and Appearance</source>
         <translation>Theme and Appearance</translation>

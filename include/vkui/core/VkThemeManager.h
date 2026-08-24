@@ -8,6 +8,7 @@
 #include <vkui/VkUiGlobal.h>
 #include <vkui/core/VkAccentColor.h>
 #include <vkui/core/VkAppearance.h>
+#include <vkui/core/VkLiquidGlassPreference.h>
 #include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeChange.h>
@@ -23,6 +24,8 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
                    NOTIFY textSizeLevelChanged)
     Q_PROPERTY(bool liquidGlassEnabled READ liquidGlassEnabled WRITE setLiquidGlassEnabled NOTIFY
                    liquidGlassEnabledChanged)
+    Q_PROPERTY(int liquidGlassTintLevel READ liquidGlassTintLevel WRITE setLiquidGlassTintLevel
+                   RESET resetLiquidGlassTintLevel NOTIFY liquidGlassTintLevelChanged)
 
   public:
     /**
@@ -61,6 +64,13 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     /** Enables or disables Liquid Glass without rebuilding the semantic theme. */
     void setLiquidGlassEnabled(bool enabled);
 
+    /** Returns the process-wide Clear-to-Tinted preference in the inclusive range 0...100. */
+    [[nodiscard]] int liquidGlassTintLevel() const noexcept;
+    /** Applies a clamped Clear-to-Tinted preference without rebuilding the semantic theme. */
+    void setLiquidGlassTintLevel(int level);
+    /** Restores the clear Liquid Glass appearance. */
+    void resetLiquidGlassTintLevel();
+
   Q_SIGNALS:
     void appearanceChanged(vkui::VkAppearance appearance);
     void effectiveAppearanceChanged(vkui::VkAppearance appearance);
@@ -70,6 +80,7 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     void textSizeLevelChanged(int level);
     void animationsEnabledChanged(bool enabled);
     void liquidGlassEnabledChanged(bool enabled);
+    void liquidGlassTintLevelChanged(int level);
 
   private:
     explicit VkThemeManager(QObject* parent = nullptr);

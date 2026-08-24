@@ -1421,6 +1421,14 @@
         <translation>最大化保留背景细节</translation>
     </message>
     <message>
+        <source>Liquid Glass appearance</source>
+        <translation>液态玻璃外观</translation>
+    </message>
+    <message>
+        <source>Tinted</source>
+        <translation>着色</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="49"/>
         <source>Theme and Appearance</source>
         <translation>主题与外观</translation>

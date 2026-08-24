@@ -29,6 +29,8 @@ struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
     qreal saturation = 1.12;
     qreal tintOpacity = 0.10;
     bool adaptiveLuminance = true;
+    /** Draws the neutral semantic outline in addition to the optical edge highlights. */
+    bool drawsBorder = true;
     VLiquidGlassQuality quality = VLiquidGlassQuality::Automatic;
 
     /** Returns the balanced material intended for controls and compact panels. */

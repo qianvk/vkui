@@ -178,7 +178,10 @@ void GalleryWindow::rebuildCentralWidget() {
         auto* surface = new vkui::VLiquidGlassSurface(pages_);
         surface->setObjectName(objectName);
         surface->setBackdrop(pages_->liquidGlassBackdrop());
-        surface->setGlassStyle(vkui::VLiquidGlassStyle::regular());
+        vkui::VLiquidGlassStyle style = vkui::VLiquidGlassStyle::regular();
+        // Compact title-bar controls rely on lensing and specular edges, not a semantic outline.
+        style.drawsBorder = false;
+        surface->setGlassStyle(style);
         surface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         auto* layout = new QHBoxLayout(surface);
         layout->setContentsMargins(10, 3, 5, 3);
