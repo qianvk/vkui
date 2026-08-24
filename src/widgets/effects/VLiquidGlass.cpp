@@ -50,7 +50,7 @@ qreal resolvedCornerRadius(const VLiquidGlassStyle& style, const QRectF& bounds)
 QColor glassTint() {
     const VkTheme& theme = VkThemeManager::instance()->theme();
     return theme.effectiveAppearance() == VkAppearance::Dark ? QColor(43, 44, 49)
-                                                             : QColor(255, 255, 255);
+                                                             : QColor(235, 238, 244);
 }
 
 } // namespace
@@ -61,12 +61,12 @@ VLiquidGlassStyle VLiquidGlassStyle::regular() noexcept {
 
 VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
     VLiquidGlassStyle style;
-    style.blurRadius = 7.0;
-    style.refractionHeight = 6.0;
-    style.refractionAmount = 4.5;
-    style.chromaticAberration = 0.8;
-    style.saturation = 1.12;
-    style.tintOpacity = 0.13;
+    style.blurRadius = 0.0;
+    style.refractionHeight = 14.0;
+    style.refractionAmount = 28.0;
+    style.chromaticAberration = 1.5;
+    style.saturation = 1.16;
+    style.tintOpacity = 0.04;
     style.quality = VLiquidGlassQuality::High;
     return style;
 }
@@ -89,7 +89,6 @@ class VLiquidGlassBackdropPrivate final : public QObject {
         QObject::disconnect(sourceDestroyedConnection);
         sourceWidget = source;
         if (sourceWidget) {
-            observeWidgetTree(sourceWidget);
             sourceDestroyedConnection = connect(sourceWidget, &QObject::destroyed, q, [this] {
                 sourceWidget = nullptr;
                 clearObservedWidgets();
@@ -121,6 +120,9 @@ class VLiquidGlassBackdropPrivate final : public QObject {
             sampleScale <= 0.0 || sourceWidget == &surface ||
             sourceWidget->isAncestorOf(&surface)) {
             return {};
+        }
+        if (observedWidgets.isEmpty()) {
+            observeWidgetTree(sourceWidget);
         }
 
         const QPoint surfaceOrigin = sourceWidget->mapFromGlobal(surface.mapToGlobal(QPoint(0, 0)));
@@ -335,12 +337,24 @@ class VLiquidGlassSurfacePrivate final {
 
         const bool dark =
             VkThemeManager::instance()->theme().effectiveAppearance() == VkAppearance::Dark;
-        QLinearGradient rim(bounds.topLeft(), bounds.bottomRight());
-        rim.setColorAt(0.0, QColor(255, 255, 255, dark ? 150 : 215));
-        rim.setColorAt(0.48, QColor(255, 255, 255, dark ? 38 : 72));
-        rim.setColorAt(1.0, QColor(0, 0, 0, dark ? 92 : 52));
+        QLinearGradient depth(bounds.topLeft(), bounds.bottomLeft());
+        depth.setColorAt(0.0, QColor(255, 255, 255, dark ? 45 : 58));
+        depth.setColorAt(0.42, QColor(255, 255, 255, 8));
+        depth.setColorAt(0.62, QColor(0, 0, 0, 0));
+        depth.setColorAt(1.0, QColor(20, 24, 32, dark ? 35 : 18));
+        painter.fillPath(path, depth);
+
         painter.setBrush(Qt::NoBrush);
-        painter.setPen(QPen(rim, 1.0));
+        QLinearGradient specular(bounds.topLeft(), bounds.bottomLeft());
+        specular.setColorAt(0.0, QColor(255, 255, 255, dark ? 155 : 205));
+        specular.setColorAt(0.48, QColor(255, 255, 255, dark ? 48 : 76));
+        specular.setColorAt(0.72, QColor(255, 255, 255, 0));
+        specular.setColorAt(1.0, QColor(255, 255, 255, 0));
+        painter.setPen(QPen(specular, 1.0));
+        painter.drawPath(path);
+
+        // Draw the neutral rim last so directional highlights never erase one side.
+        painter.setPen(QPen(dark ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 32), 1.0));
         painter.drawPath(path);
 
         const QRectF innerBounds = bounds.adjusted(1.0, 1.0, -1.0, -1.0);
@@ -348,7 +362,7 @@ class VLiquidGlassSurfacePrivate final {
             QPainterPath innerPath;
             innerPath.addRoundedRect(innerBounds, std::max<qreal>(0.0, radius - 1.0),
                                      std::max<qreal>(0.0, radius - 1.0));
-            painter.setPen(QPen(QColor(255, 255, 255, dark ? 18 : 42), 1.0));
+            painter.setPen(QPen(QColor(255, 255, 255, dark ? 30 : 62), 1.0));
             painter.drawPath(innerPath);
         }
     }

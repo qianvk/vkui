@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QSignalSpy>
 #include <QtTest>
+#include <cstdlib>
 #include <memory>
 #include <vkui/widgets/effects/VLiquidGlass.h>
 
@@ -29,6 +30,22 @@ class SplitColorWidget final : public QWidget {
   private:
     QColor leading_{Qt::red};
     QColor trailing_{Qt::blue};
+};
+
+class StripeWidget final : public QWidget {
+  public:
+    explicit StripeWidget(QWidget* parent = nullptr) : QWidget(parent) {}
+
+  protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        constexpr int stripeWidth = 8;
+        for (int x = 0; x < width(); x += stripeWidth) {
+            const bool light = (x / stripeWidth) % 2 != 0;
+            painter.fillRect(QRect(x, 0, stripeWidth, height()),
+                             light ? QColor(235, 235, 235) : QColor(24, 24, 24));
+        }
+    }
 };
 
 vkui::VLiquidGlassStyle exactBackdropStyle() {
@@ -63,6 +80,9 @@ class LiquidGlassTest final : public QObject {
     void sourceLifetimeIsSafe();
     void switchingSourceDisconnectsOldObservers();
     void disabledSurfaceDoesNotPaintMaterial();
+    void materialPresetsHaveDistinctOptics();
+    void regularMaterialRefractsBackdropAtEdge();
+    void rimIsHorizontallySymmetric();
     void styleValuesAreSanitized();
 };
 
@@ -161,6 +181,63 @@ void LiquidGlassTest::disabledSurfaceDoesNotPaintMaterial() {
 
     const QImage image = surface.grab().toImage().convertToFormat(QImage::Format_ARGB32);
     QCOMPARE(image.pixelColor(image.rect().center()).alpha(), 0);
+}
+
+void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
+    const vkui::VLiquidGlassStyle regular = vkui::VLiquidGlassStyle::regular();
+    const vkui::VLiquidGlassStyle clear = vkui::VLiquidGlassStyle::clear();
+
+    QCOMPARE(regular.blurRadius, 1.0);
+    QCOMPARE(regular.refractionHeight, 12.0);
+    QCOMPARE(regular.refractionAmount, 24.0);
+    QVERIFY(clear.blurRadius < regular.blurRadius);
+    QVERIFY(clear.refractionHeight > regular.refractionHeight);
+    QVERIFY(clear.refractionAmount > regular.refractionAmount);
+}
+
+void LiquidGlassTest::regularMaterialRefractsBackdropAtEdge() {
+    QWidget host;
+    host.resize(240, 70);
+    StripeWidget source(&host);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(20, 14, 200, 42);
+    surface.setBackdrop(&backdrop);
+    surface.setGlassStyle(exactBackdropStyle());
+    surface.raise();
+    host.show();
+    QCoreApplication::processEvents();
+
+    const QColor unrefracted = sampledColor(surface, QPoint(3, surface.height() / 2));
+    surface.setGlassStyle(vkui::VLiquidGlassStyle::regular());
+    backdrop.invalidate();
+    QCoreApplication::processEvents();
+    const QColor refracted = sampledColor(surface, QPoint(3, surface.height() / 2));
+
+    QVERIFY(std::abs(unrefracted.lightness() - refracted.lightness()) > 40);
+}
+
+void LiquidGlassTest::rimIsHorizontallySymmetric() {
+    QWidget host;
+    host.resize(220, 70);
+    SplitColorWidget source(&host);
+    source.setColors(Qt::white, Qt::white);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(20, 14, 180, 42);
+    surface.setBackdrop(&backdrop);
+    surface.raise();
+    host.show();
+    QCoreApplication::processEvents();
+
+    const QColor leading = sampledColor(surface, QPoint(1, surface.height() / 2));
+    const QColor trailing =
+        sampledColor(surface, QPoint(surface.width() - 2, surface.height() / 2));
+    QVERIFY(std::abs(leading.red() - trailing.red()) <= 2);
+    QVERIFY(std::abs(leading.green() - trailing.green()) <= 2);
+    QVERIFY(std::abs(leading.blue() - trailing.blue()) <= 2);
 }
 
 void LiquidGlassTest::styleValuesAreSanitized() {

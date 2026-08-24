@@ -5,6 +5,8 @@ releases are tagged.
 
 ## Unreleased
 
+- Retuned liquid glass around low-blur, high-displacement lensing, added distinct Regular and Clear
+  materials, lazy backdrop observation, and symmetric edge/specular rendering.
 - Added cross-platform `VLiquidGlassBackdrop` and `VLiquidGlassSurface` with shared local backdrop
   capture, cached downsampled blur, rounded-edge refraction, adaptive tint, dispersion, rim
   highlights, and quality fallbacks; applied the material to both Gallery title-bar settings.
