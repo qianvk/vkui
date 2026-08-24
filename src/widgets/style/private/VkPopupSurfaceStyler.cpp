@@ -7,6 +7,7 @@
 #include <QtCore/QTimer>
 #include <QtGui/QPainter>
 #include <QtGui/QWindow>
+#include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QWidget>
@@ -16,17 +17,41 @@
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/effects/VLiquidGlass.h>
 
+#include "VStylePainter_p.h"
+
+namespace {
+
+qreal deviceHairlineWidth(const QPainter& painter) {
+    const QPaintDevice* device = painter.device();
+    return 1.0 / std::max<qreal>(1.0, device ? device->devicePixelRatioF() : 1.0);
+}
+
+} // namespace
+
 namespace vkui {
 
 VkPopupSurfaceStyler::VkPopupSurfaceStyler(QObject* parent) : QObject(parent) {
-    connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassEnabledChanged, this, [this] {
+    const auto refreshGlassMaterials = [this](const bool synchronizeSurfaces) {
         const auto popups = popups_.keys();
         for (QWidget* popup : popups) {
-            if (popup) {
+            if (!popup) {
+                continue;
+            }
+            if (synchronizeSurfaces) {
                 syncLiquidGlassSurface(*popup);
             }
+            const auto iterator = popups_.find(popup);
+            if (iterator != popups_.end() && iterator->glassBackdrop) {
+                iterator->glassBackdrop->invalidate();
+            } else {
+                popup->update();
+            }
         }
-    });
+    };
+    connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassEnabledChanged, this,
+            [refreshGlassMaterials](bool) { refreshGlassMaterials(true); });
+    connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassTintLevelChanged, this,
+            [refreshGlassMaterials](int) { refreshGlassMaterials(false); });
 }
 
 VkPopupSurfaceStyler::~VkPopupSurfaceStyler() {
@@ -70,6 +95,26 @@ bool VkPopupSurfaceStyler::isPopupPart(const QWidget* widget) const {
     return false;
 }
 
+void VkPopupSurfaceStyler::drawPopupSurface(const QWidget& popup, QPainter& painter) const {
+    const VkTheme& theme = VkThemeManager::instance()->theme();
+    const VkMetricTokens& metrics = theme.metrics();
+    const bool comboBoxPopup = isVComboboxPopup(&popup);
+    const qreal radius =
+        comboBoxPopup ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
+
+    const auto iterator = popups_.constFind(const_cast<QWidget*>(&popup));
+    if (VkThemeManager::instance()->liquidGlassEnabled() && iterator != popups_.cend() &&
+        iterator->glassSurface) {
+        iterator->glassSurface->paintMaterial(painter);
+        return;
+    }
+
+    const QColor border = VStylePainter::multiplyAlpha(theme.colors().border, 0.68);
+    VStylePainter::drawRoundedPanel(painter, QRectF(popup.rect()), radius,
+                                    theme.colors().elevatedBackground, border,
+                                    deviceHairlineWidth(painter));
+}
+
 void VkPopupSurfaceStyler::polish(QWidget* widget) {
     if (!isPopupContainer(widget) || popups_.contains(widget)) {
         return;
@@ -85,6 +130,7 @@ void VkPopupSurfaceStyler::polish(QWidget* widget) {
     state.mask = widget->mask();
     state.windowFlags = widget->windowFlags();
     popups_.insert(widget, state);
+    PopupState& storedState = popups_[widget];
 
     widget->setAttribute(Qt::WA_TranslucentBackground, true);
     widget->setAttribute(Qt::WA_NoSystemBackground, true);
@@ -92,6 +138,7 @@ void VkPopupSurfaceStyler::polish(QWidget* widget) {
     widget->setAttribute(Qt::WA_StyledBackground, false);
     widget->setAutoFillBackground(false);
     applyTransparentPalette(*widget);
+    syncTransparentContent(*widget, storedState);
     widget->clearMask();
 #if defined(Q_OS_WIN)
     // Qt requires a frameless top-level window for translucent QWidget backgrounds on Windows.
@@ -114,6 +161,7 @@ void VkPopupSurfaceStyler::unpolish(QWidget* widget) {
 
     delete state.glassSurface;
     delete state.glassBackdrop;
+    restoreContentWidgets(state);
     widget->removeEventFilter(this);
     widget->setAttribute(Qt::WA_TranslucentBackground, state.translucentBackground);
     widget->setAttribute(Qt::WA_NoSystemBackground, state.noSystemBackground);
@@ -149,6 +197,7 @@ bool VkPopupSurfaceStyler::eventFilter(QObject* watched, QEvent* event) {
     case QEvent::StyleChange:
     case QEvent::PaletteChange:
         applyTransparentPalette(*popup);
+        syncTransparentContent(*popup, popups_[popup]);
         popup->clearMask();
         syncLiquidGlassSurface(*popup);
         popup->update();
@@ -159,6 +208,7 @@ bool VkPopupSurfaceStyler::eventFilter(QObject* watched, QEvent* event) {
         const QPointer<QWidget> guardedPopup(popup);
         QTimer::singleShot(0, this, [this, guardedPopup] {
             if (guardedPopup && popups_.contains(guardedPopup)) {
+                syncTransparentContent(*guardedPopup, popups_[guardedPopup]);
                 syncLiquidGlassSurface(*guardedPopup);
                 guardedPopup->update();
             }
@@ -167,6 +217,7 @@ bool VkPopupSurfaceStyler::eventFilter(QObject* watched, QEvent* event) {
     }
     case QEvent::Show:
         applyTransparentPalette(*popup);
+        syncTransparentContent(*popup, popups_[popup]);
         popup->clearMask();
         syncLiquidGlassSurface(*popup);
         popup->update();
@@ -236,6 +287,60 @@ void VkPopupSurfaceStyler::applyTransparentPalette(QWidget& widget) {
     widget.setPalette(transparent);
 }
 
+void VkPopupSurfaceStyler::makeContentWidgetTransparent(QWidget& widget, PopupState& state) {
+    const auto alreadyStored = std::ranges::any_of(
+        state.contentWidgets,
+        [&widget](const ContentWidgetState& item) { return item.widget == &widget; });
+    if (!alreadyStored) {
+        state.contentWidgets.append({
+            &widget,
+            widget.testAttribute(Qt::WA_NoSystemBackground),
+            widget.testAttribute(Qt::WA_OpaquePaintEvent),
+            widget.testAttribute(Qt::WA_StyledBackground),
+            widget.autoFillBackground(),
+            widget.backgroundRole(),
+            widget.palette(),
+        });
+    }
+
+    // QAbstractItemView assigns QPalette::Base to its viewport. Disable every erase path so the
+    // popup's single rounded surface remains visible through the complete list rectangle.
+    widget.setAttribute(Qt::WA_NoSystemBackground, true);
+    widget.setAttribute(Qt::WA_OpaquePaintEvent, false);
+    widget.setAttribute(Qt::WA_StyledBackground, false);
+    widget.setAutoFillBackground(false);
+    widget.setBackgroundRole(QPalette::NoRole);
+    applyTransparentPalette(widget);
+}
+
+void VkPopupSurfaceStyler::syncTransparentContent(QWidget& popup, PopupState& state) {
+    if (!isVComboboxPopup(&popup)) {
+        return;
+    }
+    const auto views = popup.findChildren<QAbstractItemView*>();
+    for (QAbstractItemView* view : views) {
+        makeContentWidgetTransparent(*view, state);
+        if (QWidget* viewport = view->viewport()) {
+            makeContentWidgetTransparent(*viewport, state);
+        }
+    }
+}
+
+void VkPopupSurfaceStyler::restoreContentWidgets(const PopupState& state) {
+    for (const ContentWidgetState& item : state.contentWidgets) {
+        QWidget* widget = item.widget;
+        if (!widget) {
+            continue;
+        }
+        widget->setAttribute(Qt::WA_NoSystemBackground, item.noSystemBackground);
+        widget->setAttribute(Qt::WA_OpaquePaintEvent, item.opaquePaintEvent);
+        widget->setAttribute(Qt::WA_StyledBackground, item.styledBackground);
+        widget->setAutoFillBackground(item.autoFillBackground);
+        widget->setBackgroundRole(item.backgroundRole);
+        widget->setPalette(item.palette);
+    }
+}
+
 QWidget* VkPopupSurfaceStyler::backdropSourceFor(QWidget& popup) {
     if (const auto* comboBox = owningVCombobox(&popup)) {
         return comboBox->window();
@@ -272,6 +377,8 @@ void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
     QWidget* source = backdropSourceFor(popup);
     if (!state.glassBackdrop) {
         state.glassBackdrop = new VLiquidGlassBackdrop(source, &popup);
+        connect(state.glassBackdrop, &VLiquidGlassBackdrop::invalidated, &popup,
+                [&popup] { popup.update(); });
     } else {
         state.glassBackdrop->setSourceWidget(source);
     }
@@ -281,6 +388,9 @@ void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
         state.glassSurface->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         state.glassSurface->setFocusPolicy(Qt::NoFocus);
         state.glassSurface->setBackdrop(state.glassBackdrop);
+        // This widget only owns the cached material. PE_PanelMenu composites it before Qt paints
+        // menu actions or item-view children, so it must never become a visual child overlay.
+        state.glassSurface->hide();
     }
 
     VLiquidGlassStyle style = VLiquidGlassStyle::regular();
@@ -289,8 +399,7 @@ void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
         isVComboboxPopup(&popup) ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
     state.glassSurface->setGlassStyle(style);
     state.glassSurface->setGeometry(popup.rect());
-    state.glassSurface->show();
-    state.glassSurface->lower();
+    state.glassSurface->hide();
 }
 
 } // namespace vkui

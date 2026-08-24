@@ -214,11 +214,6 @@ QFont fontWithSizeOf(QFont font, const QFont& sizeSource) {
     return font;
 }
 
-qreal deviceHairlineWidth(const QPainter& painter) {
-    const QPaintDevice* device = painter.device();
-    return 1.0 / std::max<qreal>(1.0, device ? device->devicePixelRatioF() : 1.0);
-}
-
 enum class PopupItemChrome : quint8 {
     Normal,
     Highlighted,
@@ -371,13 +366,7 @@ void VStyle::drawPrimitive(PrimitiveElement element, const QStyleOption* option,
     if (isStyledPopupPart &&
         (element == PE_Frame || element == PE_FrameMenu || element == PE_PanelMenu)) {
         if (element == PE_PanelMenu && VkPopupSurfaceStyler::isPopupContainer(widget)) {
-            const bool comboBoxPopup = VkPopupSurfaceStyler::isVComboboxPopup(widget);
-            const qreal radius =
-                comboBoxPopup ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
-            const QColor border = VStylePainter::multiplyAlpha(colors.border, 0.68);
-            const qreal borderWidth = deviceHairlineWidth(*painter);
-            VStylePainter::drawRoundedPanel(*painter, QRectF(option->rect), radius,
-                                            colors.elevatedBackground, border, borderWidth);
+            d->popupSurfaces->drawPopupSurface(*widget, *painter);
         }
         // PE_PanelMenu owns the surface. Suppressing QFrame's frame primitives prevents a
         // second border from being composited over the same popup window.

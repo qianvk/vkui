@@ -5,8 +5,9 @@ releases are tagged.
 
 ## Unreleased
 
-- Unified ComboBox and action-menu popup chrome, kept normal Liquid Glass rows transparent, and
-  restored popup alignment to the committed ComboBox selection after transient row hover.
+- Unified ComboBox and action-menu popup chrome, made complete item-view layers transparent over
+  both glass and opaque popup surfaces, kept menu actions above the glass material, and restored
+  popup alignment to the committed ComboBox selection after transient row hover.
 - Removed the fixed dark lower-half overlay and default semantic outline from Liquid Glass surfaces,
   and replaced the static Gallery sample with scrollable content moving beneath fixed previews.
 - Added a macOS-style Clear-to-Tinted Liquid Glass preference with a conditional live Gallery
