@@ -29,7 +29,6 @@ VLiquidGlassStyle sanitizedStyle(VLiquidGlassStyle style) noexcept {
     style.chromaticAberration = std::clamp(style.chromaticAberration, 0.0, 8.0);
     style.saturation = std::clamp(style.saturation, 0.0, 2.0);
     style.tintOpacity = std::clamp(style.tintOpacity, 0.0, 1.0);
-    style.materialOpacity = std::clamp(style.materialOpacity, 0.0, 1.0);
     style.opticalEdgeIntensity = std::clamp(style.opticalEdgeIntensity, 0.0, 1.0);
     switch (style.quality) {
     case VLiquidGlassQuality::Automatic:
@@ -61,8 +60,6 @@ VLiquidGlassStyle styleForThemePreference(VLiquidGlassStyle style) noexcept {
         normalizedLiquidGlassTintLevel(VkThemeManager::instance()->liquidGlassTintLevel());
     style.tintOpacity =
         std::lerp(style.tintOpacity, std::max(style.tintOpacity, FullyTintedOpacity), tint);
-    style.materialOpacity =
-        std::lerp(style.materialOpacity, std::max(style.materialOpacity, 0.94), tint);
     return style;
 }
 
@@ -80,23 +77,7 @@ VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
     style.chromaticAberration = 1.5;
     style.saturation = 1.16;
     style.tintOpacity = 0.04;
-    style.materialOpacity = 0.56;
     style.quality = VLiquidGlassQuality::High;
-    return style;
-}
-
-VLiquidGlassStyle VLiquidGlassStyle::popup() noexcept {
-    VLiquidGlassStyle style;
-    // Popup content and its surrounding padding share one continuous blurred material. Disable
-    // local edge refraction because information surfaces prioritize legibility over lens optics.
-    style.blurRadius = 18.0;
-    style.refractionHeight = 0.0;
-    style.refractionAmount = 0.0;
-    style.chromaticAberration = 0.0;
-    style.saturation = 0.92;
-    style.tintOpacity = 0.30;
-    style.materialOpacity = 0.90;
-    style.opticalEdgeIntensity = 0.0;
     return style;
 }
 
@@ -372,8 +353,9 @@ class VLiquidGlassSurfacePrivate final {
             painter.drawImage(bounds, material);
         } else {
             QColor fallback = glassTint();
-            fallback.setAlphaF(
-                static_cast<float>(styleForThemePreference(style).materialOpacity));
+            const bool dark =
+                VkThemeManager::instance()->theme().effectiveAppearance() == VkAppearance::Dark;
+            fallback.setAlphaF(dark ? 0.68F : 0.76F);
             painter.fillPath(path, fallback);
         }
         painter.restore();

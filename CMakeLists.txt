@@ -224,6 +224,7 @@ target_sources(vkui_widgets
         src/widgets/effects/VLiquidGlass.cpp
         src/widgets/effects/private/VkLiquidGlassRenderer_p.h
         src/widgets/effects/private/VkLiquidGlassRenderer.cpp
+        src/widgets/effects/private/VkPopupGlassStyle_p.h
         src/widgets/effects/private/VkShadowCache_p.h
         src/widgets/effects/private/VkShadowCache.cpp
         src/widgets/overlays/VPopover.cpp
