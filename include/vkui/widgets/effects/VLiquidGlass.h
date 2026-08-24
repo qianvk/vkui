@@ -46,8 +46,9 @@ class VLiquidGlassSurfacePrivate;
 /**
  * Observes a backdrop source and shares local captures between glass surfaces.
  *
- * The source and glass surfaces should be overlapping siblings, not ancestors of one another.
- * This mirrors retained-layer compositors and prevents recursive self-capture.
+ * The source and glass surfaces should normally be overlapping siblings. A top-level popup may
+ * sample its transient owner because Qt renders popup windows independently. Same-window ancestor
+ * captures are rejected to prevent recursive self-capture.
  */
 class VKUI_WIDGETS_EXPORT VLiquidGlassBackdrop final : public QObject {
     Q_OBJECT
@@ -76,7 +77,12 @@ class VKUI_WIDGETS_EXPORT VLiquidGlassBackdrop final : public QObject {
     std::unique_ptr<VLiquidGlassBackdropPrivate> d;
 };
 
-/** A QWidget container that renders a live, rounded liquid-glass material behind its children. */
+/**
+ * A QWidget container that renders a live, rounded liquid-glass material behind its children.
+ *
+ * The process-wide VkThemeManager policy selects Liquid Glass or the opaque semantic fallback.
+ * setGlassEnabled(false) keeps the surface fully unpainted for application-controlled composition.
+ */
 class VKUI_WIDGETS_EXPORT VLiquidGlassSurface final : public QWidget {
     Q_OBJECT
     Q_PROPERTY(

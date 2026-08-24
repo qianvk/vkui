@@ -7,6 +7,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QWidget>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 #include <vkui/widgets/overlays/VPopover.h>
 #include <vkui/widgets/style/VStyle.h>
 
@@ -18,6 +19,7 @@ class PopoverInteractionTest : public QObject {
     void currentAnchorClickTogglesClosed();
     void anotherAnchorClickSurvivesOldPopoverClose();
     void popupContentInheritsResponsiveFont();
+    void popoverUsesSharedLiquidGlassPolicy();
 };
 
 namespace {
@@ -120,6 +122,37 @@ void PopoverInteractionTest::popupContentInheritsResponsiveFont() {
 
     manager->setTextSizeLevel(originalLevel);
     QCoreApplication::processEvents();
+}
+
+void PopoverInteractionTest::popoverUsesSharedLiquidGlassPolicy() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool original = manager->liquidGlassEnabled();
+    manager->setLiquidGlassEnabled(true);
+
+    QWidget window;
+    window.resize(480, 320);
+    QPushButton anchor(QStringLiteral("Anchor"), &window);
+    anchor.setGeometry(180, 120, 100, 32);
+    window.show();
+
+    vkui::VPopover popover(&window);
+    auto* content = new QLabel(QStringLiteral("Glass content"));
+    content->setMinimumSize(220, 100);
+    popover.setContentWidget(content);
+    popover.openFor(&anchor);
+    QTRY_VERIFY(popover.isOpen());
+
+    auto* surface = popover.findChild<vkui::VLiquidGlassSurface*>(
+        QStringLiteral("vkuiPopoverLiquidGlassSurface"));
+    QVERIFY(surface != nullptr);
+    QVERIFY(surface->isVisible());
+    QVERIFY(surface->backdrop() != nullptr);
+    QCOMPARE(surface->backdrop()->sourceWidget(), &window);
+
+    manager->setLiquidGlassEnabled(false);
+    QCoreApplication::processEvents();
+    QVERIFY(!surface->isVisible());
+    manager->setLiquidGlassEnabled(original);
 }
 
 QTEST_MAIN(PopoverInteractionTest)

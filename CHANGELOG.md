@@ -5,6 +5,9 @@ releases are tagged.
 
 ## Unreleased
 
+- Added a process-wide Liquid Glass policy, a live Regular/Clear Gallery preview, and automatic
+  Qt-rendered glass materials for `QMenu`, `VCombobox` popups, and `VPopover`, with efficient opaque
+  fallbacks when disabled.
 - Retuned liquid glass around low-blur, high-displacement lensing, added distinct Regular and Clear
   materials, lazy backdrop observation, and symmetric edge/specular rendering.
 - Added cross-platform `VLiquidGlassBackdrop` and `VLiquidGlassSurface` with shared local backdrop

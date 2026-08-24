@@ -46,6 +46,7 @@ class VkThemeManagerPrivate final {
     QFont baseCaptionFont;
     VkTheme resolvedTheme;
     bool animationsEnabled = true;
+    bool liquidGlassEnabled = true;
     QPointer<QGuiApplication> application;
     QPointer<QStyleHints> styleHints;
     QMetaObject::Connection colorSchemeConnection;

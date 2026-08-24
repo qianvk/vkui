@@ -116,9 +116,10 @@ class VLiquidGlassBackdropPrivate final : public QObject {
     }
 
     VkLiquidGlassFrame capture(const QWidget& surface, const int padding, const qreal sampleScale) {
+        const bool recursivelyContained = sourceWidget && sourceWidget->isAncestorOf(&surface) &&
+                                          sourceWidget->window() == surface.window();
         if (!sourceWidget || !sourceWidget->isVisible() || sourceWidget->size().isEmpty() ||
-            sampleScale <= 0.0 || sourceWidget == &surface ||
-            sourceWidget->isAncestorOf(&surface)) {
+            sampleScale <= 0.0 || sourceWidget == &surface || recursivelyContained) {
             return {};
         }
         if (observedWidgets.isEmpty()) {
@@ -293,7 +294,8 @@ class VLiquidGlassSurfacePrivate final {
     void rebuildMaterial() {
         materialDirty = false;
         material = {};
-        if (!enabled || !backdrop || q->size().isEmpty()) {
+        if (!enabled || !VkThemeManager::instance()->liquidGlassEnabled() || !backdrop ||
+            q->size().isEmpty()) {
             return;
         }
         const int padding = VkLiquidGlassRenderer::capturePadding(style);
@@ -321,6 +323,15 @@ class VLiquidGlassSurfacePrivate final {
 
         QPainter painter(q);
         painter.setRenderHint(QPainter::Antialiasing);
+        const auto* manager = VkThemeManager::instance();
+        if (!manager->liquidGlassEnabled()) {
+            const VkTheme& theme = manager->theme();
+            painter.fillPath(path, theme.colors().elevatedBackground);
+            painter.setPen(QPen(theme.colors().border, theme.metrics().borderWidth));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawPath(path);
+            return;
+        }
         painter.save();
         painter.setClipPath(path);
         if (!material.isNull()) {
@@ -387,6 +398,8 @@ VLiquidGlassSurface::VLiquidGlassSurface(QWidget* parent)
                     d->invalidate();
                 }
             });
+    connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassEnabledChanged, this,
+            [this] { d->invalidate(); });
 }
 
 VLiquidGlassSurface::~VLiquidGlassSurface() = default;

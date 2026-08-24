@@ -22,6 +22,8 @@ class QWidget;
 namespace vkui {
 
 class VPopover;
+class VLiquidGlassBackdrop;
+class VLiquidGlassSurface;
 
 struct VPopoverGeometryMetrics final {
     qreal contentPadding = 0.0;
@@ -94,6 +96,7 @@ class VPopoverPrivate final : public QObject {
     void reconnectWindowAndScreen();
     void setObservedScreen(QScreen* screen);
     void syncTypography();
+    void syncLiquidGlassSurface();
     void queueReposition();
     [[nodiscard]] bool repositionNow();
     [[nodiscard]] QRectF anchorGlobalRect() const;
@@ -114,10 +117,13 @@ class VPopoverPrivate final : public QObject {
     QPointer<QWidget> suppressedToggleAnchor;
     QPointer<QWidget> anchorWindow;
     QPointer<QWidget> boundaryWidget;
+    QPointer<VLiquidGlassBackdrop> glassBackdrop;
+    QPointer<VLiquidGlassSurface> glassSurface;
     QRect anchorLocalRect;
     QPointer<QScreen> observedScreen;
 
     QMetaObject::Connection themeChangedConnection;
+    QMetaObject::Connection liquidGlassEnabledConnection;
     QMetaObject::Connection contentDestroyedConnection;
     QMetaObject::Connection anchorDestroyedConnection;
     QMetaObject::Connection windowScreenConnection;

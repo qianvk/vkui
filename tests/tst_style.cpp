@@ -47,6 +47,7 @@
 #include <vkui/widgets/controls/VSegmentedControl.h>
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 #include <vkui/widgets/style/VStyle.h>
 #include <vkui/widgets/views/VTreeView.h>
 
@@ -59,6 +60,7 @@ namespace {
 class InspectableComboBox final : public vkui::VCombobox {
   public:
     using VCombobox::initStyleOption;
+    using VCombobox::VCombobox;
 };
 
 class InspectableSlider final : public vkui::VSlider {
@@ -180,6 +182,7 @@ class StyleTest final : public QObject {
     void comboBoxPopupUsesOwnerTypography();
     void comboPopupUsesMacStyleItems();
     void comboPopupUsesOneRoundedSurface();
+    void popupSurfacesFollowLiquidGlassPolicy();
     void menuRenderingUsesThemeTypography();
     void submenuStaysAboveItsRestackedParent();
     void colorChangesAvoidStructuralRepolish();
@@ -203,6 +206,7 @@ class StyleTest final : public QObject {
     vkui::VkAccentColor accentColor_ = vkui::VkAccentColor::Blue;
     vkui::VkAppearance appearance_ = vkui::VkAppearance::Auto;
     int textSizeLevel_ = vkui::VkDefaultTextSizeLevel;
+    bool liquidGlassEnabled_ = true;
 };
 
 void StyleTest::initTestCase() {
@@ -212,7 +216,9 @@ void StyleTest::initTestCase() {
     accentColor_ = manager->accentColor();
     appearance_ = manager->appearance();
     textSizeLevel_ = manager->textSizeLevel();
+    liquidGlassEnabled_ = manager->liquidGlassEnabled();
     manager->setAnimationsEnabled(false);
+    manager->setLiquidGlassEnabled(true);
 }
 
 void StyleTest::cleanupTestCase() {
@@ -221,6 +227,7 @@ void StyleTest::cleanupTestCase() {
     manager->setAppearance(appearance_);
     manager->setTextSizeLevel(textSizeLevel_);
     manager->setAnimationsEnabled(animationsEnabled_);
+    manager->setLiquidGlassEnabled(liquidGlassEnabled_);
 }
 
 void StyleTest::everyAccentHasLegibleSelectedText() {
@@ -534,6 +541,45 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
                                 vkui::VStylePainter::contrastingText(theme.colors().accent)),
              1);
     combo.hidePopup();
+}
+
+void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
+    auto* manager = vkui::VkThemeManager::instance();
+    manager->setLiquidGlassEnabled(true);
+
+    QWidget owner;
+    owner.resize(360, 240);
+    InspectableComboBox combo(&owner);
+    combo.addItems({QStringLiteral("One"), QStringLiteral("Two")});
+    combo.setGeometry(80, 80, 180, 32);
+    owner.show();
+    combo.showPopup();
+    QTRY_VERIFY(combo.view()->isVisible());
+
+    QWidget* comboPopup = combo.view()->window();
+    auto* comboGlass = comboPopup->findChild<vkui::VLiquidGlassSurface*>(
+        QStringLiteral("vkuiPopupLiquidGlassSurface"));
+    QVERIFY(comboGlass != nullptr);
+    QVERIFY(comboGlass->isVisible());
+    QVERIFY(comboGlass->backdrop() != nullptr);
+    QCOMPARE(comboGlass->backdrop()->sourceWidget(), &owner);
+
+    manager->setLiquidGlassEnabled(false);
+    QTRY_VERIFY(!comboGlass->isVisible());
+    manager->setLiquidGlassEnabled(true);
+    QTRY_VERIFY(comboGlass->isVisible());
+    combo.hidePopup();
+
+    QMenu menu(&owner);
+    menu.addAction(QStringLiteral("Menu item"));
+    menu.popup(owner.mapToGlobal(QPoint(24, 24)));
+    QTRY_VERIFY(menu.isVisible());
+    auto* menuGlass =
+        menu.findChild<vkui::VLiquidGlassSurface*>(QStringLiteral("vkuiPopupLiquidGlassSurface"));
+    QVERIFY(menuGlass != nullptr);
+    QVERIFY(menuGlass->isVisible());
+    QCOMPARE(menuGlass->backdrop()->sourceWidget(), &owner);
+    menu.close();
 }
 
 void StyleTest::menuRenderingUsesThemeTypography() {

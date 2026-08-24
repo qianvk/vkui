@@ -12,6 +12,8 @@
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/controls/VSlider.h>
+#include <vkui/widgets/controls/VSwitch.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 #include <vkui/widgets/style/VStyle.h>
 
 class ThemePageTest final : public QObject {
@@ -21,18 +23,52 @@ class ThemePageTest final : public QObject {
     void initTestCase();
     void cleanupTestCase();
     void textSizeSliderMatchesThingsLevelsAndUpdatesLive();
+    void liquidGlassControlAndPreviewUpdateLive();
 
   private:
     int originalTextSizeLevel_ = vkui::VkDefaultTextSizeLevel;
+    bool originalLiquidGlassEnabled_ = true;
 };
 
 void ThemePageTest::initTestCase() {
     vkui::installVkUi(*qApp);
     originalTextSizeLevel_ = vkui::VkThemeManager::instance()->textSizeLevel();
+    originalLiquidGlassEnabled_ = vkui::VkThemeManager::instance()->liquidGlassEnabled();
 }
 
 void ThemePageTest::cleanupTestCase() {
     vkui::VkThemeManager::instance()->setTextSizeLevel(originalTextSizeLevel_);
+    vkui::VkThemeManager::instance()->setLiquidGlassEnabled(originalLiquidGlassEnabled_);
+}
+
+void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
+    auto* manager = vkui::VkThemeManager::instance();
+    manager->setLiquidGlassEnabled(true);
+    ThemePage page;
+    page.resize(760, 1100);
+    page.show();
+    QCoreApplication::processEvents();
+
+    auto* toggle = page.findChild<vkui::VSwitch*>(QStringLiteral("liquidGlassEnabledSwitch"));
+    auto* preview = page.findChild<QWidget*>(QStringLiteral("liquidGlassPreview"));
+    QVERIFY(toggle != nullptr);
+    QVERIFY(preview != nullptr);
+    QCOMPARE(preview->findChildren<vkui::VLiquidGlassSurface*>().size(), 2);
+    QVERIFY(toggle->isChecked());
+
+    QImage enabledPreview(preview->size(), QImage::Format_ARGB32_Premultiplied);
+    enabledPreview.fill(Qt::transparent);
+    preview->render(&enabledPreview);
+
+    toggle->click();
+    QCOMPARE(manager->liquidGlassEnabled(), false);
+    QCoreApplication::processEvents();
+    QImage disabledPreview(preview->size(), QImage::Format_ARGB32_Premultiplied);
+    disabledPreview.fill(Qt::transparent);
+    preview->render(&disabledPreview);
+    QVERIFY(enabledPreview != disabledPreview);
+    manager->setLiquidGlassEnabled(true);
+    QCOMPARE(toggle->isChecked(), true);
 }
 
 void ThemePageTest::textSizeSliderMatchesThingsLevelsAndUpdatesLive() {

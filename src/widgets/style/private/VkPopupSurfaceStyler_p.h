@@ -13,6 +13,8 @@ class QWidget;
 namespace vkui {
 
 class VCombobox;
+class VLiquidGlassBackdrop;
+class VLiquidGlassSurface;
 
 class VkPopupSurfaceStyler final : public QObject {
   public:
@@ -42,12 +44,16 @@ class VkPopupSurfaceStyler final : public QObject {
         QPalette palette;
         QRegion mask;
         Qt::WindowFlags windowFlags;
+        VLiquidGlassBackdrop* glassBackdrop = nullptr;
+        VLiquidGlassSurface* glassSurface = nullptr;
     };
 
     static void raiseVisibleSubmenuChain(QMenu* menu);
     [[nodiscard]] static bool hasMenuTransientParent(const QMenu* menu);
     static void scheduleMenuStackRestore(QMenu* menu, bool raiseMenu);
     static void applyTransparentPalette(QWidget& widget);
+    [[nodiscard]] static QWidget* backdropSourceFor(QWidget& popup);
+    void syncLiquidGlassSurface(QWidget& popup);
 
     QHash<QWidget*, PopupState> popups_;
 };

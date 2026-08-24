@@ -12,11 +12,22 @@
 #include <QtWidgets/QWidget>
 #include <algorithm>
 #include <ranges>
+#include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 
 namespace vkui {
 
-VkPopupSurfaceStyler::VkPopupSurfaceStyler(QObject* parent) : QObject(parent) {}
+VkPopupSurfaceStyler::VkPopupSurfaceStyler(QObject* parent) : QObject(parent) {
+    connect(VkThemeManager::instance(), &VkThemeManager::liquidGlassEnabledChanged, this, [this] {
+        const auto popups = popups_.keys();
+        for (QWidget* popup : popups) {
+            if (popup) {
+                syncLiquidGlassSurface(*popup);
+            }
+        }
+    });
+}
 
 VkPopupSurfaceStyler::~VkPopupSurfaceStyler() {
     const auto popups = popups_.keys();
@@ -89,6 +100,7 @@ void VkPopupSurfaceStyler::polish(QWidget* widget) {
 #endif
     widget->installEventFilter(this);
     connect(widget, &QObject::destroyed, this, [this, widget] { popups_.remove(widget); });
+    syncLiquidGlassSurface(*widget);
     widget->update();
 }
 
@@ -100,6 +112,8 @@ void VkPopupSurfaceStyler::unpolish(QWidget* widget) {
     const PopupState state = iterator.value();
     popups_.erase(iterator);
 
+    delete state.glassSurface;
+    delete state.glassBackdrop;
     widget->removeEventFilter(this);
     widget->setAttribute(Qt::WA_TranslucentBackground, state.translucentBackground);
     widget->setAttribute(Qt::WA_NoSystemBackground, state.noSystemBackground);
@@ -132,16 +146,29 @@ bool VkPopupSurfaceStyler::eventFilter(QObject* watched, QEvent* event) {
         break;
     }
     case QEvent::Resize:
-    case QEvent::ChildAdded:
     case QEvent::StyleChange:
     case QEvent::PaletteChange:
         applyTransparentPalette(*popup);
         popup->clearMask();
+        syncLiquidGlassSurface(*popup);
         popup->update();
         break;
+    case QEvent::ChildAdded: {
+        applyTransparentPalette(*popup);
+        popup->clearMask();
+        const QPointer<QWidget> guardedPopup(popup);
+        QTimer::singleShot(0, this, [this, guardedPopup] {
+            if (guardedPopup && popups_.contains(guardedPopup)) {
+                syncLiquidGlassSurface(*guardedPopup);
+                guardedPopup->update();
+            }
+        });
+        break;
+    }
     case QEvent::Show:
         applyTransparentPalette(*popup);
         popup->clearMask();
+        syncLiquidGlassSurface(*popup);
         popup->update();
         if (auto* menu = qobject_cast<QMenu*>(popup)) {
             scheduleMenuStackRestore(menu, true);
@@ -207,6 +234,63 @@ void VkPopupSurfaceStyler::applyTransparentPalette(QWidget& widget) {
     transparent.setColor(QPalette::AlternateBase, Qt::transparent);
     transparent.setColor(QPalette::Window, Qt::transparent);
     widget.setPalette(transparent);
+}
+
+QWidget* VkPopupSurfaceStyler::backdropSourceFor(QWidget& popup) {
+    if (const auto* comboBox = owningVCombobox(&popup)) {
+        return comboBox->window();
+    }
+
+    for (QObject* parent = popup.parent(); parent; parent = parent->parent()) {
+        auto* parentWidget = qobject_cast<QWidget*>(parent);
+        if (!parentWidget) {
+            continue;
+        }
+        QWidget* candidate = parentWidget->window();
+        if (candidate != &popup && !isPopupContainer(candidate)) {
+            return candidate;
+        }
+    }
+    QWidget* activeWindow = QApplication::activeWindow();
+    return activeWindow != &popup ? activeWindow : nullptr;
+}
+
+void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
+    auto iterator = popups_.find(&popup);
+    if (iterator == popups_.end()) {
+        return;
+    }
+    PopupState& state = iterator.value();
+    const bool enabled = VkThemeManager::instance()->liquidGlassEnabled();
+    if (!enabled) {
+        if (state.glassSurface) {
+            state.glassSurface->hide();
+        }
+        return;
+    }
+
+    QWidget* source = backdropSourceFor(popup);
+    if (!state.glassBackdrop) {
+        state.glassBackdrop = new VLiquidGlassBackdrop(source, &popup);
+    } else {
+        state.glassBackdrop->setSourceWidget(source);
+    }
+    if (!state.glassSurface) {
+        state.glassSurface = new VLiquidGlassSurface(&popup);
+        state.glassSurface->setObjectName(QStringLiteral("vkuiPopupLiquidGlassSurface"));
+        state.glassSurface->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        state.glassSurface->setFocusPolicy(Qt::NoFocus);
+        state.glassSurface->setBackdrop(state.glassBackdrop);
+    }
+
+    VLiquidGlassStyle style = VLiquidGlassStyle::regular();
+    const VkMetricTokens& metrics = VkThemeManager::instance()->theme().metrics();
+    style.cornerRadius =
+        isVComboboxPopup(&popup) ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
+    state.glassSurface->setGlassStyle(style);
+    state.glassSurface->setGeometry(popup.rect());
+    state.glassSurface->show();
+    state.glassSurface->lower();
 }
 
 } // namespace vkui
