@@ -62,6 +62,12 @@ interface-text scale; `setControlExtent()` is the deliberate absolute-size escap
 button/combo icons and automatic tree icons use responsive semantic metrics, but explicit Qt icon
 sizes remain unchanged.
 
+A horizontal or vertical slider with `tickPosition() != NoTicks` uses the discrete macOS
+presentation: a neutral track, one dot for every bounded interval, and an elevated capsule handle.
+The tick interval remains Qt-owned and is also the visual granularity. A slider without ticks keeps
+the continuous accent-filled presentation. Both are ordinary `QSlider`/`VSlider` controls and use
+the same keyboard, accessibility, value, and hit-testing contracts.
+
 Combo-box width follows Qt's mature `QComboBox::SizeAdjustPolicy`: use `AdjustToContents` for small,
 stable models and `AdjustToMinimumContentsLengthWithIcon` for large or frequently changing models.
 The popup asks Qt to grow to its longest full item, then Qt clamps that geometry to the available

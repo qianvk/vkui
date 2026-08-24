@@ -99,7 +99,7 @@ recreated.
 Interface typography can be adjusted live without a global widget traversal:
 
 ```cpp
-vkui::VkThemeManager::instance()->setTextScale(1.25); // Snaps to a 5% step in the 80–160% range.
+vkui::VkThemeManager::instance()->setTextSizeLevel(6); // Levels 1–12; level 3 is Default.
 vkui::setTextStyle(*sectionTitle, vkui::VTextStyle::Title);
 ```
 

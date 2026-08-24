@@ -14,4 +14,5 @@
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeChange.h>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTypographyTokens.h>

@@ -17,7 +17,7 @@ class ThemeTest final : public QObject {
     void explicitAppearanceChangesGeneration();
     void appearanceSignalsArePrecise();
     void accentColorsAreDistinctAndGenerationSafe();
-    void textScaleResolvesTypographyAndMetricsPrecisely();
+    void textSizeLevelResolvesTypographyAndMetricsPrecisely();
     void resolvedPaletteIsApplied();
 };
 
@@ -166,45 +166,49 @@ void ThemeTest::explicitAppearanceChangesGeneration() {
     manager->setAppearance(original);
 }
 
-void ThemeTest::textScaleResolvesTypographyAndMetricsPrecisely() {
+void ThemeTest::textSizeLevelResolvesTypographyAndMetricsPrecisely() {
     auto* manager = vkui::VkThemeManager::instance();
-    const qreal originalScale = manager->textScale();
-    manager->resetTextScale();
+    const int originalLevel = manager->textSizeLevel();
+    manager->resetTextSizeLevel();
 
     const qreal defaultBodySize = manager->theme().typography().body.pointSizeF();
     const qreal defaultControlHeight = manager->theme().metrics().controlHeightRegular;
     const qreal defaultIndicatorExtent = manager->theme().metrics().fixedControlExtentRegular;
     const quint64 colorGeneration = manager->theme().colorGeneration();
-    QSignalSpy scaleSpy(manager, &vkui::VkThemeManager::textScaleChanged);
+    QSignalSpy levelSpy(manager, &vkui::VkThemeManager::textSizeLevelChanged);
     QSignalSpy themeSpy(manager, &vkui::VkThemeManager::themeChanged);
 
-    manager->setTextScale(vkui::VkMaximumTextScale);
-    QCOMPARE(manager->textScale(), vkui::VkMaximumTextScale);
-    QCOMPARE(manager->theme().textScale(), vkui::VkMaximumTextScale);
+    manager->setTextSizeLevel(vkui::VkMaximumTextSizeLevel);
+    QCOMPARE(manager->textSizeLevel(), vkui::VkMaximumTextSizeLevel);
+    QCOMPARE(manager->theme().textSizeLevel(), vkui::VkMaximumTextSizeLevel);
+    QCOMPARE(manager->theme().textScale(),
+             vkui::textScaleForTextSizeLevel(vkui::VkMaximumTextSizeLevel));
     QVERIFY(manager->theme().typography().body.pointSizeF() > defaultBodySize);
     QVERIFY(manager->theme().metrics().controlHeightRegular > defaultControlHeight);
     QVERIFY(manager->theme().metrics().fixedControlExtentRegular > defaultIndicatorExtent);
     QCOMPARE(manager->theme().colorGeneration(), colorGeneration);
     QCOMPARE(QApplication::font(), manager->theme().typography().body);
-    QCOMPARE(scaleSpy.count(), 1);
+    QCOMPARE(levelSpy.count(), 1);
     QCOMPARE(themeSpy.count(), 1);
     QCOMPARE(themeSpy.constLast().at(1).value<vkui::VkThemeChanges>(),
              vkui::VkThemeChanges(vkui::VkThemeChange::Metrics |
                                   vkui::VkThemeChange::Typography));
 
-    manager->setTextScale(1.62);
-    QCOMPARE(manager->textScale(), vkui::VkMaximumTextScale);
-    QCOMPARE(scaleSpy.count(), 1);
+    manager->setTextSizeLevel(100);
+    QCOMPARE(manager->textSizeLevel(), vkui::VkMaximumTextSizeLevel);
+    QCOMPARE(levelSpy.count(), 1);
 
-    manager->setTextScale(1.23);
-    QCOMPARE(manager->textScale(), 1.25);
-    QCOMPARE(manager->theme().typography().body.pointSizeF(), defaultBodySize * 1.25);
-    manager->setTextScale(0.10);
-    QCOMPARE(manager->textScale(), vkui::VkMinimumTextScale);
-    QCOMPARE(manager->theme().typography().body.pointSizeF(), defaultBodySize * 0.80);
-    QCOMPARE(scaleSpy.count(), 3);
+    manager->setTextSizeLevel(4);
+    QCOMPARE(manager->textSizeLevel(), 4);
+    QCOMPARE(manager->theme().typography().body.pointSizeF(),
+             defaultBodySize * vkui::textScaleForTextSizeLevel(4));
+    manager->setTextSizeLevel(-100);
+    QCOMPARE(manager->textSizeLevel(), vkui::VkMinimumTextSizeLevel);
+    QCOMPARE(manager->theme().typography().body.pointSizeF(),
+             defaultBodySize * vkui::textScaleForTextSizeLevel(vkui::VkMinimumTextSizeLevel));
+    QCOMPARE(levelSpy.count(), 3);
 
-    manager->setTextScale(originalScale);
+    manager->setTextSizeLevel(originalLevel);
 }
 
 void ThemeTest::appearanceSignalsArePrecise() {

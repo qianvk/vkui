@@ -11,9 +11,10 @@
 #include <QDialogButtonBox>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QGroupBox>
 #include <QImage>
-#include <QLineEdit>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
 #include <QProxyStyle>
@@ -172,11 +173,12 @@ class StyleTest final : public QObject {
     void embeddedEditorsDoNotPaintASecondFrame();
     void comboBoxSizingAndElisionProtectTheChevronColumn();
     void fixedControlsHonorSizeClasses();
-    void textScaleResizesTypographyControlsAndIcons();
+    void textSizeLevelResizesAllInheritedTextControlsAndIcons();
     void selectedIndicatorsUseWhiteMarks();
     void segmentedControlHasNoHoverVisual();
     void switchShowsFocusOnlyForKeyboardNavigation();
     void sliderHandleDragPreservesCurrentValue();
+    void discreteSliderUsesMacStyleTicksAndCapsuleHandle();
     void styleInteractionsAreEventDriven();
     void dialogButtonsUsePlatformOrder();
     void hiddenAnimationsSettleAtTheirTarget();
@@ -185,7 +187,7 @@ class StyleTest final : public QObject {
     bool animationsEnabled_ = true;
     vkui::VkAccentColor accentColor_ = vkui::VkAccentColor::Blue;
     vkui::VkAppearance appearance_ = vkui::VkAppearance::Auto;
-    qreal textScale_ = vkui::VkDefaultTextScale;
+    int textSizeLevel_ = vkui::VkDefaultTextSizeLevel;
 };
 
 void StyleTest::initTestCase() {
@@ -194,7 +196,7 @@ void StyleTest::initTestCase() {
     animationsEnabled_ = manager->animationsEnabled();
     accentColor_ = manager->accentColor();
     appearance_ = manager->appearance();
-    textScale_ = manager->textScale();
+    textSizeLevel_ = manager->textSizeLevel();
     manager->setAnimationsEnabled(false);
 }
 
@@ -202,7 +204,7 @@ void StyleTest::cleanupTestCase() {
     auto* manager = vkui::VkThemeManager::instance();
     manager->setAccentColor(accentColor_);
     manager->setAppearance(appearance_);
-    manager->setTextScale(textScale_);
+    manager->setTextSizeLevel(textSizeLevel_);
     manager->setAnimationsEnabled(animationsEnabled_);
 }
 
@@ -665,13 +667,20 @@ void StyleTest::fixedControlsHonorSizeClasses() {
              vkui::controlExtent(vkui::VControlSize::Large));
 }
 
-void StyleTest::textScaleResizesTypographyControlsAndIcons() {
+void StyleTest::textSizeLevelResizesAllInheritedTextControlsAndIcons() {
     auto* manager = vkui::VkThemeManager::instance();
-    const qreal originalScale = manager->textScale();
-    manager->resetTextScale();
+    const int originalLevel = manager->textSizeLevel();
+    manager->resetTextSizeLevel();
 
     QPushButton button(QStringLiteral("Settings"));
     QCheckBox checkBox(QStringLiteral("Option"));
+    QLabel bodyLabel(QStringLiteral("Body label"));
+    QGroupBox groupBox(QStringLiteral("Group title"));
+    QLineEdit lineEdit(QStringLiteral("Editable text"));
+    QComboBox comboBox;
+    comboBox.addItem(QStringLiteral("Menu text"));
+    vkui::VSegmentedControl segmented;
+    segmented.addSegment(QStringLiteral("Segment text"));
     vkui::VSwitch control;
     QLabel title(QStringLiteral("Title"));
     vkui::setTextStyle(title, vkui::VTextStyle::Title);
@@ -679,6 +688,8 @@ void StyleTest::textScaleResizesTypographyControlsAndIcons() {
     QCheckBox exactCheckBox(QStringLiteral("Exact"));
     vkui::setControlExtent(exactCheckBox, 27);
     const int defaultFontHeight = button.fontMetrics().height();
+    const QList<QWidget*> inheritedTextWidgets{&button,   &checkBox, &bodyLabel, &groupBox,
+                                               &lineEdit, &comboBox, &segmented};
     const int defaultButtonHeight = button.sizeHint().height();
     const int defaultIndicator =
         checkBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &checkBox);
@@ -687,10 +698,14 @@ void StyleTest::textScaleResizesTypographyControlsAndIcons() {
         button.style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, &button);
     const qreal defaultTitleSize = title.font().pointSizeF();
 
-    manager->setTextScale(vkui::VkMaximumTextScale);
+    manager->setTextSizeLevel(vkui::VkMaximumTextSizeLevel);
     QCoreApplication::processEvents();
 
     QVERIFY(button.fontMetrics().height() > defaultFontHeight);
+    for (QWidget* widget : inheritedTextWidgets) {
+        QCOMPARE(widget->font(), QApplication::font());
+        QVERIFY(widget->fontMetrics().height() > defaultFontHeight);
+    }
     QVERIFY(button.sizeHint().height() > defaultButtonHeight);
     QVERIFY(checkBox.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &checkBox) >
             defaultIndicator);
@@ -705,7 +720,7 @@ void StyleTest::textScaleResizesTypographyControlsAndIcons() {
 
     vkui::resetTextStyle(title);
     QVERIFY(!vkui::textStyle(title));
-    manager->setTextScale(originalScale);
+    manager->setTextSizeLevel(originalLevel);
 }
 
 void StyleTest::selectedIndicatorsUseWhiteMarks() {
@@ -841,6 +856,45 @@ void StyleTest::sliderHandleDragPreservesCurrentValue() {
     QCOMPARE(slider.value(), initialValue);
     QTest::mouseRelease(&slider, Qt::LeftButton, Qt::NoModifier, pressPoint);
     QVERIFY(!slider.isSliderDown());
+}
+
+void StyleTest::discreteSliderUsesMacStyleTicksAndCapsuleHandle() {
+    InspectableSlider slider(Qt::Horizontal);
+    slider.setRange(vkui::VkMinimumTextSizeLevel, vkui::VkMaximumTextSizeLevel);
+    slider.setValue(vkui::VkDefaultTextSizeLevel);
+    slider.setSingleStep(1);
+    slider.setTickInterval(1);
+    slider.setTickPosition(QSlider::TicksBelow);
+    slider.resize(260, slider.sizeHint().height());
+    slider.show();
+    QCoreApplication::processEvents();
+
+    QStyleOptionSlider option;
+    slider.initStyleOption(&option);
+    const QRect handle = slider.style()->subControlRect(QStyle::CC_Slider, &option,
+                                                        QStyle::SC_SliderHandle, &slider);
+    const QRect groove = slider.style()->subControlRect(QStyle::CC_Slider, &option,
+                                                        QStyle::SC_SliderGroove, &slider);
+    QVERIFY(handle.height() > handle.width());
+    QVERIFY(groove.height() <= 2);
+    QCOMPARE(
+        slider.style()->hitTestComplexControl(QStyle::CC_Slider, &option, handle.center(), &slider),
+        QStyle::SC_SliderHandle);
+
+    const QImage rendered = renderWidget(slider);
+    const int firstSampleX = groove.left() + qRound(groove.width() * 0.45);
+    const int secondSampleX = groove.left() + qRound(groove.width() * 0.80);
+    QCOMPARE(rendered.pixelColor(firstSampleX, groove.center().y()),
+             rendered.pixelColor(secondSampleX, groove.center().y()));
+
+    InspectableSlider continuous(Qt::Horizontal);
+    continuous.setRange(0, 100);
+    continuous.resize(260, 30);
+    QStyleOptionSlider continuousOption;
+    continuous.initStyleOption(&continuousOption);
+    const QRect continuousHandle = continuous.style()->subControlRect(
+        QStyle::CC_Slider, &continuousOption, QStyle::SC_SliderHandle, &continuous);
+    QCOMPARE(continuousHandle.width(), continuousHandle.height());
 }
 
 void StyleTest::styleInteractionsAreEventDriven() {

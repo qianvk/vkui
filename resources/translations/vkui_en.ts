@@ -1427,24 +1427,16 @@
         <translation>Accent color</translation>
     </message>
     <message>
-        <source>Interface text size</source>
-        <translation>Interface text size</translation>
+        <source>Text Size</source>
+        <translation>Text Size</translation>
     </message>
     <message>
-        <source>Text follows the platform system font. Controls, meaningful icons, spacing, and semantic text styles respond without uniformly zooming window chrome.</source>
-        <translation>Text follows the platform system font. Controls, meaningful icons, spacing, and semantic text styles respond without uniformly zooming window chrome.</translation>
+        <source>Standard Qt widgets inherit the application font automatically. Semantic headings, controls, meaningful icons, and spacing respond without dedicated label subclasses.</source>
+        <translation>Standard Qt widgets inherit the application font automatically. Semantic headings, controls, meaningful icons, and spacing respond without dedicated label subclasses.</translation>
     </message>
     <message>
-        <source>80%</source>
-        <translation>80%</translation>
-    </message>
-    <message>
-        <source>160%</source>
-        <translation>160%</translation>
-    </message>
-    <message>
-        <source>Reset to 100%</source>
-        <translation>Reset to 100%</translation>
+        <source>Default</source>
+        <translation>Default</translation>
     </message>
     <message>
         <source>Settings</source>
@@ -1467,12 +1459,16 @@
         <translation>Responsive metrics</translation>
     </message>
     <message>
-        <source>%1% · %2 pt body</source>
-        <translation>%1% · %2 pt body</translation>
+        <source>Text size</source>
+        <translation>Text size</translation>
     </message>
     <message>
-        <source>%1% · %2 px body</source>
-        <translation>%1% · %2 px body</translation>
+        <source>Level %1 · %2 pt body</source>
+        <translation>Level %1 · %2 pt body</translation>
+    </message>
+    <message>
+        <source>Level %1 · %2 px body</source>
+        <translation>Level %1 · %2 px body</translation>
     </message>
     <message>
         <source>%1 px control · %2 px icon</source>

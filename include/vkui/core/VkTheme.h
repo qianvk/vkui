@@ -8,6 +8,7 @@
 #include <vkui/core/VkColorTokens.h>
 #include <vkui/core/VkMetricTokens.h>
 #include <vkui/core/VkMotion.h>
+#include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTypographyTokens.h>
 
 namespace vkui {
@@ -27,6 +28,8 @@ class VKUI_CORE_EXPORT VkTheme final {
     [[nodiscard]] const VkMetricTokens& metrics() const noexcept;
     [[nodiscard]] const VkTypographyTokens& typography() const noexcept;
     [[nodiscard]] const VkMotionTokens& motion() const noexcept;
+    /** Discrete interface-text level used to resolve this theme. */
+    [[nodiscard]] int textSizeLevel() const noexcept;
     /** Relative interface-text scale used to resolve typography and responsive geometry. */
     [[nodiscard]] qreal textScale() const noexcept;
 
@@ -38,13 +41,14 @@ class VKUI_CORE_EXPORT VkTheme final {
 
   private:
     VkTheme(VkColorTokens colors, VkMetricTokens metrics, VkTypographyTokens typography,
-            VkMotionTokens motion, qreal textScale, VkAppearance effectiveAppearance,
-            quint64 generation, quint64 colorGeneration);
+            VkMotionTokens motion, int textSizeLevel, qreal textScale,
+            VkAppearance effectiveAppearance, quint64 generation, quint64 colorGeneration);
 
     VkColorTokens colors_;
     VkMetricTokens metrics_;
     VkTypographyTokens typography_;
     VkMotionTokens motion_;
+    int textSizeLevel_ = VkDefaultTextSizeLevel;
     qreal textScale_ = 1.0;
     VkAppearance effectiveAppearance_ = VkAppearance::Light;
     quint64 generation_ = 0;

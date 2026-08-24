@@ -31,13 +31,12 @@ same tokens for its own compositions.
 
 ## Interface text scale
 
-`VkThemeManager::setTextScale()` controls one process-wide interface reading scale. Values are
-clamped to 80–160 percent and snapped to five-percent increments; 100 percent restores the
-platform baseline. Five percent is fine enough to avoid conspicuous jumps while limiting layout
-and glyph-cache churn during live slider interaction. Ten-percent page steps provide useful
-keyboard navigation. The 80-percent floor keeps macOS's 13-logical-pixel body baseline close to
-the platform's 10-pixel minimum, while 160 percent provides a substantial readability range
-without turning a desktop surface into a touch-layout zoom.
+`VkThemeManager::setTextSizeLevel()` controls one process-wide interface reading size. It follows
+the current Things for Mac control: 12 discrete levels, numbered 1–12, with level 3 as Default.
+Each step represents approximately one point around the macOS 13-point body reference, producing
+an internal relative range of 11/13 through 22/13. The public integer level avoids false precision,
+limits live layout work to 12 states, and gives pointer, keyboard, and accessibility input exactly
+the same granularity.
 
 The scale is responsive rather than a uniform transform:
 
@@ -50,16 +49,30 @@ The scale is responsive rather than a uniform transform:
   stable.
 
 The manager captures the unscaled application font once when it attaches to `QGuiApplication`.
-Every slider value is resolved again from that baseline, so repeated or reversed adjustments never
-compound rounding or prior scale. Qt then propagates the body font efficiently. Use
+Every level is resolved again from that baseline, so repeated or reversed adjustments never
+compound rounding or prior scale. Qt then propagates the body font efficiently to `QLabel`,
+`QGroupBox`, buttons, editors, item views, menus, and other widgets that inherit normally. No
+VkUI-specific replacements for standard textual widgets are necessary. Use
 `setTextStyle(widget, VTextStyle::Title)` (or another semantic role) for explicitly styled text;
 the lightweight binding listens only for typography changes. Direct per-widget fonts remain an
 application-owned override.
+
+Things intentionally treats this as content typography rather than indiscriminate window zoom: its
+Settings chrome stays stable, and its sidebar growth is dampened at large values. VkUI provides a
+global interface policy because it is a library-level accessibility primitive. An application that
+wants Things-style scope should apply its own content level at a content-root boundary and leave
+preferences/window chrome on the inherited application font; it still does not need `VLabel` or
+`VGroupBox` subclasses.
 
 Small, Regular, and Large `VControlSize` presets resolve through the responsive symbol metrics.
 An exact `setControlExtent(widget, logicalPixels)` value remains absolute by design. Likewise,
 standard style icon metrics and automatic tree/file icons scale, while an explicit Qt `iconSize`
 remains authoritative.
+
+Ticked sliders use the discrete macOS presentation: a neutral two-pixel track, one dot per value,
+and a subtle elevated capsule handle. Continuous sliders retain the accent-filled track and round
+handle, so semantic appearance follows Qt's existing `tickPosition` contract rather than another
+widget subclass or style property.
 
 Surface metrics remain component-scoped where their geometry is intentionally independent:
 `popoverCornerRadius`, `menuCornerRadius`, `comboBoxCornerRadius`, and
