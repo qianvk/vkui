@@ -189,6 +189,7 @@ void LiquidGlassTest::disabledSurfaceDoesNotPaintMaterial() {
 void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     const vkui::VLiquidGlassStyle regular = vkui::VLiquidGlassStyle::regular();
     const vkui::VLiquidGlassStyle clear = vkui::VLiquidGlassStyle::clear();
+    const vkui::VLiquidGlassStyle popup = vkui::VLiquidGlassStyle::popup();
 
     QCOMPARE(regular.blurRadius, 1.0);
     QCOMPARE(regular.refractionHeight, 12.0);
@@ -197,6 +198,10 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QVERIFY(clear.blurRadius < regular.blurRadius);
     QVERIFY(clear.refractionHeight > regular.refractionHeight);
     QVERIFY(clear.refractionAmount > regular.refractionAmount);
+    QVERIFY(popup.blurRadius > regular.blurRadius);
+    QVERIFY(popup.tintOpacity > regular.tintOpacity);
+    QVERIFY(popup.refractionHeight > regular.refractionHeight);
+    QVERIFY(popup.opticalEdgeIntensity < regular.opticalEdgeIntensity);
 }
 
 void LiquidGlassTest::regularMaterialRefractsBackdropAtEdge() {
@@ -318,6 +323,7 @@ void LiquidGlassTest::styleValuesAreSanitized() {
     invalid.chromaticAberration = 80.0;
     invalid.saturation = 9.0;
     invalid.tintOpacity = -2.0;
+    invalid.opticalEdgeIntensity = 9.0;
     surface.setGlassStyle(invalid);
 
     const vkui::VLiquidGlassStyle resolved = surface.glassStyle();
@@ -328,6 +334,7 @@ void LiquidGlassTest::styleValuesAreSanitized() {
     QCOMPARE(resolved.chromaticAberration, 8.0);
     QCOMPARE(resolved.saturation, 2.0);
     QCOMPARE(resolved.tintOpacity, 0.0);
+    QCOMPARE(resolved.opticalEdgeIntensity, 1.0);
 }
 
 QTEST_MAIN(LiquidGlassTest)

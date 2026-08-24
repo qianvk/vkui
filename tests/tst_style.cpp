@@ -522,8 +522,10 @@ void StyleTest::comboPopupRealignsCommittedItemAfterHover() {
     QTRY_VERIFY(combo.view()->isVisible());
 
     const QModelIndex hoveredIndex = combo.model()->index(3, combo.modelColumn());
-    combo.view()->selectionModel()->setCurrentIndex(hoveredIndex, QItemSelectionModel::NoUpdate);
+    combo.view()->selectionModel()->setCurrentIndex(hoveredIndex,
+                                                    QItemSelectionModel::ClearAndSelect);
     QCOMPARE(combo.view()->currentIndex(), hoveredIndex);
+    QVERIFY(combo.view()->selectionModel()->isSelected(hoveredIndex));
     QCOMPARE(combo.currentIndex(), 1);
 
     combo.hidePopup();
@@ -531,20 +533,24 @@ void StyleTest::comboPopupRealignsCommittedItemAfterHover() {
     QTRY_VERIFY(combo.view()->isVisible());
     const QModelIndex committedIndex = combo.model()->index(1, combo.modelColumn());
     QCOMPARE(combo.view()->currentIndex(), committedIndex);
+    QVERIFY(combo.view()->selectionModel()->isSelected(committedIndex));
+    QVERIFY(!combo.view()->selectionModel()->isSelected(hoveredIndex));
 
-    const QRect selectedGlobal(combo.view()->viewport()->mapToGlobal(
-                                   combo.view()->visualRect(committedIndex).topLeft()),
-                               combo.view()->visualRect(committedIndex).size());
+    const QRect selectedGlobal(
+        combo.view()->viewport()->mapToGlobal(combo.view()->visualRect(committedIndex).topLeft()),
+        combo.view()->visualRect(committedIndex).size());
     const QRect comboGlobal(combo.mapToGlobal(QPoint(0, 0)), combo.size());
     QCOMPARE(selectedGlobal.top(), comboGlobal.top());
     combo.hidePopup();
 
     combo.setPlaceholderText(QStringLiteral("Choose an item"));
     combo.setCurrentIndex(-1);
-    combo.view()->selectionModel()->setCurrentIndex(hoveredIndex, QItemSelectionModel::NoUpdate);
+    combo.view()->selectionModel()->setCurrentIndex(hoveredIndex,
+                                                    QItemSelectionModel::ClearAndSelect);
     combo.showPopup();
     QTRY_VERIFY(combo.view()->isVisible());
     QVERIFY(!combo.view()->currentIndex().isValid());
+    QVERIFY(combo.view()->selectionModel()->selectedIndexes().isEmpty());
     combo.hidePopup();
 }
 
@@ -660,6 +666,10 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(comboGlass->isHidden());
     QVERIFY(comboGlass->backdrop() != nullptr);
     QCOMPARE(comboGlass->backdrop()->sourceWidget(), &owner);
+    QCOMPARE(comboGlass->glassStyle().blurRadius, vkui::VLiquidGlassStyle::popup().blurRadius);
+    const int popupInset = combo.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &combo);
+    QCOMPARE(comboGlass->geometry(),
+             comboPopup->rect().adjusted(popupInset, popupInset, -popupInset, -popupInset));
 
     manager->setLiquidGlassEnabled(false);
     QVERIFY(comboGlass->isHidden());
@@ -679,6 +689,7 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(menuGlass != nullptr);
     QVERIFY(menuGlass->isHidden());
     QCOMPARE(menuGlass->backdrop()->sourceWidget(), &owner);
+    QCOMPARE(menuGlass->glassStyle().blurRadius, vkui::VLiquidGlassStyle::popup().blurRadius);
 
     QImage menuImage(menu.size(), QImage::Format_ARGB32_Premultiplied);
     menuImage.fill(Qt::transparent);

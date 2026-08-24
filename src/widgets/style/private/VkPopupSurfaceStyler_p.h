@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "../../effects/private/VkShadowCache_p.h"
+
 #include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QObject>
@@ -61,6 +63,7 @@ class VkPopupSurfaceStyler final : public QObject {
         QList<ContentWidgetState> contentWidgets;
         VLiquidGlassBackdrop* glassBackdrop = nullptr;
         VLiquidGlassSurface* glassSurface = nullptr;
+        mutable VkShadowCache shadowCache;
     };
 
     static void raiseVisibleSubmenuChain(QMenu* menu);

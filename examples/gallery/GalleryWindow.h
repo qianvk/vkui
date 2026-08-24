@@ -4,6 +4,7 @@
 
 #include <QTranslator>
 #include <QWidget>
+#include <optional>
 #include <vkui/window/VWindowAgent.h>
 
 class QLabel;
@@ -37,11 +38,14 @@ class GalleryWindow final : public QWidget {
     void rebuildCentralWidget();
     void registerWindowChrome(QWidget* navigationTitleBar, QWidget* contentTitleBar,
                               const QList<QWidget*>& interactiveWidgets);
+    void scheduleLanguageChange(Language language);
     void applyLanguage(Language language);
     void updateWindowTitle();
 
     QTranslator translator_;
     Language language_ = Language::System;
+    std::optional<Language> pendingLanguage_;
+    bool languageChangeScheduled_ = false;
     int currentPage_ = 0;
     int navigationWidth_ = 224;
     QWidget* central_ = nullptr;

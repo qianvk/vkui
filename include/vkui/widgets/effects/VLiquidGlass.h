@@ -30,6 +30,8 @@ struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
     qreal chromaticAberration = 1.25;
     qreal saturation = 1.12;
     qreal tintOpacity = 0.10;
+    /** Scales optical specular edges independently from a semantic border. */
+    qreal opticalEdgeIntensity = 1.0;
     bool adaptiveLuminance = true;
     /** Opts into a neutral semantic outline in addition to the optical edge highlights. */
     bool drawsBorder = false;
@@ -40,6 +42,9 @@ struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
 
     /** Returns a clearer material for content where backdrop detail should remain visible. */
     [[nodiscard]] static VLiquidGlassStyle clear() noexcept;
+
+    /** Returns the thicker regular material intended for menus, popovers, and other overlays. */
+    [[nodiscard]] static VLiquidGlassStyle popup() noexcept;
 
     friend bool operator==(const VLiquidGlassStyle&, const VLiquidGlassStyle&) = default;
 };

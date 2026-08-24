@@ -257,7 +257,7 @@ void VPopoverPrivate::syncLiquidGlassSurface() {
         glassSurface->hide();
         return;
     }
-    VLiquidGlassStyle style = VLiquidGlassStyle::regular();
+    VLiquidGlassStyle style = VLiquidGlassStyle::popup();
     style.cornerRadius = VkThemeManager::instance()->theme().metrics().popoverCornerRadius;
     glassSurface->setGlassStyle(style);
     glassSurface->setGeometry(bodyRect);

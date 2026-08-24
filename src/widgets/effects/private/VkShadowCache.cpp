@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-#include "VPopoverShadowCache_p.h"
+#include "VkShadowCache_p.h"
 
 #include <QtCore/QtMath>
 #include <QtGui/QImage>
@@ -103,9 +103,9 @@ void boxBlur(QImage& image, int radius, std::vector<QRgb>& line) {
 
 } // namespace
 
-const QPixmap& VPopoverShadowCache::shadow(const QPainterPath& path, const QSize& logicalSize,
-                                            qreal devicePixelRatio, const QColor& color,
-                                            qreal blurRadius, const QPointF& offset) {
+const QPixmap& VkShadowCache::shadow(const QPainterPath& path, const QSize& logicalSize,
+                                     qreal devicePixelRatio, const QColor& color, qreal blurRadius,
+                                     const QPointF& offset) {
     const qreal dpr = std::max<qreal>(1.0, devicePixelRatio);
     const qreal radius = std::max<qreal>(0.0, blurRadius);
     if (!pixmap_.isNull() && path_ == path && logicalSize_ == logicalSize &&
@@ -152,7 +152,7 @@ const QPixmap& VPopoverShadowCache::shadow(const QPainterPath& path, const QSize
     return pixmap_;
 }
 
-void VPopoverShadowCache::invalidate() {
+void VkShadowCache::invalidate() {
     path_ = {};
     logicalSize_ = {};
     pixmap_ = {};
