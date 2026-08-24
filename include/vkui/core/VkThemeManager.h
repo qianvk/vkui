@@ -21,6 +21,8 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     Q_OBJECT
     Q_PROPERTY(int textSizeLevel READ textSizeLevel WRITE setTextSizeLevel RESET resetTextSizeLevel
                    NOTIFY textSizeLevelChanged)
+    Q_PROPERTY(bool liquidGlassEnabled READ liquidGlassEnabled WRITE setLiquidGlassEnabled NOTIFY
+                   liquidGlassEnabledChanged)
 
   public:
     /**
@@ -54,6 +56,11 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     [[nodiscard]] bool animationsEnabled() const noexcept;
     void setAnimationsEnabled(bool enabled);
 
+    /** Returns whether glass-capable surfaces use the shared optical material. */
+    [[nodiscard]] bool liquidGlassEnabled() const noexcept;
+    /** Enables or disables Liquid Glass without rebuilding the semantic theme. */
+    void setLiquidGlassEnabled(bool enabled);
+
   Q_SIGNALS:
     void appearanceChanged(vkui::VkAppearance appearance);
     void effectiveAppearanceChanged(vkui::VkAppearance appearance);
@@ -62,6 +69,7 @@ class VKUI_CORE_EXPORT VkThemeManager final : public QObject {
     void accentColorChanged(vkui::VkAccentColor accentColor);
     void textSizeLevelChanged(int level);
     void animationsEnabledChanged(bool enabled);
+    void liquidGlassEnabledChanged(bool enabled);
 
   private:
     explicit VkThemeManager(QObject* parent = nullptr);

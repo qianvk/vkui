@@ -31,6 +31,7 @@
 #include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 
 namespace {
 
@@ -190,6 +191,97 @@ class TextSizePicker final : public QWidget {
     DefaultMarkerButton* defaultButton_ = nullptr;
 };
 
+class LiquidGlassPreviewSource final : public QWidget {
+  public:
+    explicit LiquidGlassPreviewSource(QWidget* parent = nullptr) : QWidget(parent) {
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    }
+
+  protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QLinearGradient background(rect().topLeft(), rect().topRight());
+        background.setColorAt(0.0, QColor(46, 118, 246));
+        background.setColorAt(0.48, QColor(177, 78, 219));
+        background.setColorAt(1.0, QColor(255, 118, 77));
+        painter.fillRect(rect(), background);
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(255, 224, 74, 220));
+        painter.drawEllipse(QPointF(width() * 0.22, height() * 0.30), 34.0, 34.0);
+        painter.setBrush(QColor(45, 214, 139, 220));
+        painter.drawEllipse(QPointF(width() * 0.78, height() * 0.28), 42.0, 42.0);
+
+        QFont sampleFont = font();
+        sampleFont.setBold(true);
+        sampleFont.setPixelSize(std::max(18, height() / 5));
+        painter.setFont(sampleFont);
+        painter.setPen(QColor(255, 255, 255, 205));
+        painter.drawText(QRect(0, 4, width(), height() / 2), Qt::AlignCenter,
+                         QStringLiteral("LIQUID  GLASS"));
+    }
+};
+
+class LiquidGlassPreview final : public QWidget {
+  public:
+    explicit LiquidGlassPreview(QWidget* parent = nullptr) : QWidget(parent) {
+        setObjectName(QStringLiteral("liquidGlassPreview"));
+        setMinimumHeight(150);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+        source_ = new LiquidGlassPreviewSource(this);
+        backdrop_ = new vkui::VLiquidGlassBackdrop(source_, this);
+        regular_ = createSurface(ThemePage::tr("Regular"), ThemePage::tr("Balanced refraction"),
+                                 vkui::VLiquidGlassStyle::regular());
+        clear_ = createSurface(ThemePage::tr("Clear"), ThemePage::tr("Maximum backdrop detail"),
+                               vkui::VLiquidGlassStyle::clear());
+        source_->lower();
+    }
+
+    [[nodiscard]] QSize sizeHint() const override {
+        return {520, 150};
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QWidget::resizeEvent(event);
+        source_->setGeometry(rect());
+        constexpr int outerMargin = 20;
+        constexpr int gap = 16;
+        const int surfaceWidth = std::max(1, (width() - outerMargin * 2 - gap) / 2);
+        const int surfaceHeight = std::max(72, height() - outerMargin * 2);
+        const int top = (height() - surfaceHeight) / 2;
+        regular_->setGeometry(outerMargin, top, surfaceWidth, surfaceHeight);
+        clear_->setGeometry(outerMargin + surfaceWidth + gap, top, surfaceWidth, surfaceHeight);
+    }
+
+  private:
+    vkui::VLiquidGlassSurface* createSurface(const QString& title, const QString& detail,
+                                             vkui::VLiquidGlassStyle style) {
+        auto* surface = new vkui::VLiquidGlassSurface(this);
+        surface->setBackdrop(backdrop_);
+        style.cornerRadius = 18.0;
+        surface->setGlassStyle(style);
+        auto* layout = new QVBoxLayout(surface);
+        layout->setContentsMargins(16, 10, 16, 10);
+        layout->setSpacing(2);
+        auto* titleLabel = new QLabel(title, surface);
+        vkui::setTextStyle(*titleLabel, vkui::VTextStyle::BodyEmphasized);
+        auto* detailLabel = new QLabel(detail, surface);
+        vkui::setTextStyle(*detailLabel, vkui::VTextStyle::Caption);
+        layout->addStretch();
+        layout->addWidget(titleLabel);
+        layout->addWidget(detailLabel);
+        return surface;
+    }
+
+    LiquidGlassPreviewSource* source_ = nullptr;
+    vkui::VLiquidGlassBackdrop* backdrop_ = nullptr;
+    vkui::VLiquidGlassSurface* regular_ = nullptr;
+    vkui::VLiquidGlassSurface* clear_ = nullptr;
+};
+
 QString accentColorName(vkui::VkAccentColor accentColor) {
     switch (accentColor) {
     case vkui::VkAccentColor::Blue:
@@ -260,10 +352,9 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     auto* accentLayout = new QGridLayout(accentGroup);
     auto* accentButtons = new QButtonGroup(accentGroup);
     const QList<vkui::VkAccentColor> accents{
-        vkui::VkAccentColor::Blue,   vkui::VkAccentColor::Purple,
-        vkui::VkAccentColor::Pink,   vkui::VkAccentColor::Red,
-        vkui::VkAccentColor::Orange, vkui::VkAccentColor::Yellow,
-        vkui::VkAccentColor::Green,  vkui::VkAccentColor::Graphite,
+        vkui::VkAccentColor::Blue,  vkui::VkAccentColor::Purple,   vkui::VkAccentColor::Pink,
+        vkui::VkAccentColor::Red,   vkui::VkAccentColor::Orange,   vkui::VkAccentColor::Yellow,
+        vkui::VkAccentColor::Green, vkui::VkAccentColor::Graphite,
     };
     for (int index = 0; index < accents.size(); ++index) {
         const vkui::VkAccentColor accent = accents.at(index);
@@ -284,6 +375,33 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
             });
     layout->addWidget(accentGroup);
 
+    auto* glassGroup = new QGroupBox(tr("Liquid Glass"), this);
+    glassGroup->setObjectName(QStringLiteral("liquidGlassGroup"));
+    auto* glassLayout = new QVBoxLayout(glassGroup);
+    auto* glassControlRow = new QHBoxLayout;
+    auto* glassLabel = new QLabel(tr("Enable Liquid Glass for supported surfaces"), glassGroup);
+    auto* glassSwitch = new vkui::VSwitch(glassGroup);
+    glassSwitch->setObjectName(QStringLiteral("liquidGlassEnabledSwitch"));
+    glassSwitch->setAccessibleName(tr("Enable Liquid Glass"));
+    glassSwitch->setChecked(vkui::VkThemeManager::instance()->liquidGlassEnabled());
+    glassLabel->setBuddy(glassSwitch);
+    glassControlRow->addWidget(glassLabel);
+    glassControlRow->addWidget(glassSwitch);
+    glassControlRow->addStretch();
+    glassLayout->addLayout(glassControlRow);
+    auto* glassExplanation = new QLabel(
+        tr("The same cached Qt renderer is used by controls, menus, combobox popups, and "
+           "popovers. Disabling it selects the opaque semantic fallback."),
+        glassGroup);
+    glassExplanation->setWordWrap(true);
+    glassLayout->addWidget(glassExplanation);
+    glassLayout->addWidget(new LiquidGlassPreview(glassGroup));
+    connect(glassSwitch, &vkui::VSwitch::toggled, vkui::VkThemeManager::instance(),
+            &vkui::VkThemeManager::setLiquidGlassEnabled);
+    connect(vkui::VkThemeManager::instance(), &vkui::VkThemeManager::liquidGlassEnabledChanged,
+            glassSwitch, &vkui::VSwitch::setChecked);
+    layout->addWidget(glassGroup);
+
     auto* textSizeGroup = new QGroupBox(tr("Text Size"), this);
     textSizeGroup->setObjectName(QStringLiteral("interfaceTextSizeGroup"));
     auto* textSizeLayout = new QVBoxLayout(textSizeGroup);
@@ -300,8 +418,8 @@ ThemePage::ThemePage(QWidget* parent) : QWidget(parent) {
     textSizeLayout->addWidget(textSizePicker);
 
     auto* previewRow = new QHBoxLayout;
-    auto* previewButton = new QPushButton(vkui::icon(vkui::VkSymbol::Settings),
-                                          tr("Settings"), textSizeGroup);
+    auto* previewButton =
+        new QPushButton(vkui::icon(vkui::VkSymbol::Settings), tr("Settings"), textSizeGroup);
     auto* previewCheck = new QCheckBox(tr("Option"), textSizeGroup);
     previewCheck->setChecked(true);
     auto* previewCombo = new vkui::VCombobox(textSizeGroup);
@@ -385,7 +503,6 @@ void ThemePage::updateSummary() {
             : tr("Level %1 · %2 px body").arg(level).arg(theme.typography().body.pixelSize()));
     const int controlHeight = qRound(theme.metrics().controlHeightRegular);
     const int iconExtent = qRound(theme.metrics().controlHeightSmall * 0.67);
-    typographyLabel_->setText(
-        tr("%1 px control · %2 px icon").arg(controlHeight).arg(iconExtent));
+    typographyLabel_->setText(tr("%1 px control · %2 px icon").arg(controlHeight).arg(iconExtent));
     generationLabel_->setText(QString::number(theme.generation()));
 }

@@ -1389,6 +1389,38 @@
         <translation>石墨色</translation>
     </message>
     <message>
+        <source>Liquid Glass</source>
+        <translation>液态玻璃</translation>
+    </message>
+    <message>
+        <source>Enable Liquid Glass for supported surfaces</source>
+        <translation>为支持的表面启用液态玻璃</translation>
+    </message>
+    <message>
+        <source>Enable Liquid Glass</source>
+        <translation>启用液态玻璃</translation>
+    </message>
+    <message>
+        <source>The same cached Qt renderer is used by controls, menus, combobox popups, and popovers. Disabling it selects the opaque semantic fallback.</source>
+        <translation>控件、菜单、组合框弹出层和浮层使用同一个带缓存的 Qt 渲染器。关闭后将使用不透明的语义表面。</translation>
+    </message>
+    <message>
+        <source>Regular</source>
+        <translation>标准</translation>
+    </message>
+    <message>
+        <source>Balanced refraction</source>
+        <translation>平衡折射</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>清透</translation>
+    </message>
+    <message>
+        <source>Maximum backdrop detail</source>
+        <translation>最大化保留背景细节</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="49"/>
         <source>Theme and Appearance</source>
         <translation>主题与外观</translation>

@@ -723,4 +723,16 @@ void VkThemeManager::setAnimationsEnabled(const bool enabled) {
     Q_EMIT animationsEnabledChanged(enabled);
 }
 
+bool VkThemeManager::liquidGlassEnabled() const noexcept {
+    return d->liquidGlassEnabled;
+}
+
+void VkThemeManager::setLiquidGlassEnabled(const bool enabled) {
+    if (d->liquidGlassEnabled == enabled) {
+        return;
+    }
+    d->liquidGlassEnabled = enabled;
+    Q_EMIT liquidGlassEnabledChanged(enabled);
+}
+
 } // namespace vkui

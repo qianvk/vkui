@@ -19,6 +19,7 @@ class ThemeTest final : public QObject {
     void accentColorsAreDistinctAndGenerationSafe();
     void textSizeLevelResolvesTypographyAndMetricsPrecisely();
     void resolvedPaletteIsApplied();
+    void liquidGlassPolicyHasPreciseSignal();
 };
 
 void ThemeTest::resolvedThemeIsComplete() {
@@ -191,8 +192,7 @@ void ThemeTest::textSizeLevelResolvesTypographyAndMetricsPrecisely() {
     QCOMPARE(levelSpy.count(), 1);
     QCOMPARE(themeSpy.count(), 1);
     QCOMPARE(themeSpy.constLast().at(1).value<vkui::VkThemeChanges>(),
-             vkui::VkThemeChanges(vkui::VkThemeChange::Metrics |
-                                  vkui::VkThemeChange::Typography));
+             vkui::VkThemeChanges(vkui::VkThemeChange::Metrics | vkui::VkThemeChange::Typography));
 
     manager->setTextSizeLevel(100);
     QCOMPARE(manager->textSizeLevel(), vkui::VkMaximumTextSizeLevel);
@@ -239,6 +239,24 @@ void ThemeTest::resolvedPaletteIsApplied() {
     QCOMPARE(qApp->palette().color(QPalette::Window), manager->theme().colors().windowBackground);
     QCOMPARE(qApp->palette().color(QPalette::WindowText), manager->theme().colors().textPrimary);
     manager->setAppearance(original);
+}
+
+void ThemeTest::liquidGlassPolicyHasPreciseSignal() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool original = manager->liquidGlassEnabled();
+    QSignalSpy policySpy(manager, &vkui::VkThemeManager::liquidGlassEnabledChanged);
+    QSignalSpy themeSpy(manager, &vkui::VkThemeManager::themeChanged);
+
+    manager->setLiquidGlassEnabled(!original);
+    QCOMPARE(manager->liquidGlassEnabled(), !original);
+    QCOMPARE(policySpy.count(), 1);
+    QCOMPARE(themeSpy.count(), 0);
+
+    manager->setLiquidGlassEnabled(!original);
+    QCOMPARE(policySpy.count(), 1);
+    manager->setLiquidGlassEnabled(original);
+    QCOMPARE(policySpy.count(), 2);
+    QCOMPARE(themeSpy.count(), 0);
 }
 
 QTEST_MAIN(ThemeTest)

@@ -27,6 +27,7 @@
 #include <utility>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 #include <vkui/widgets/overlays/VPopover.h>
 
 namespace vkui {
@@ -89,6 +90,11 @@ VPopoverPrivate::VPopoverPrivate(VPopover* popover) : q(popover), animation(popo
                 // changes keep the existing shadow image hot.
                 q->update();
             }
+        });
+    liquidGlassEnabledConnection =
+        connect(manager, &VkThemeManager::liquidGlassEnabledChanged, q, [this] {
+            syncLiquidGlassSurface();
+            q->update();
         });
     syncTypography();
 }
@@ -221,6 +227,40 @@ void VPopoverPrivate::syncTypography() {
     }
     appliedContentFont = content->font();
     hasAppliedContentFont = true;
+}
+
+void VPopoverPrivate::syncLiquidGlassSurface() {
+    if (!q || !finalPlacement.isValid()) {
+        return;
+    }
+    if (!VkThemeManager::instance()->liquidGlassEnabled()) {
+        if (glassSurface) {
+            glassSurface->hide();
+        }
+        return;
+    }
+    if (!glassBackdrop) {
+        glassBackdrop = new VLiquidGlassBackdrop(anchorWindow, q);
+    }
+    if (!glassSurface) {
+        glassSurface = new VLiquidGlassSurface(q);
+        glassSurface->setObjectName(QStringLiteral("vkuiPopoverLiquidGlassSurface"));
+        glassSurface->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        glassSurface->setFocusPolicy(Qt::NoFocus);
+        glassSurface->setBackdrop(glassBackdrop);
+    }
+    glassBackdrop->setSourceWidget(anchorWindow);
+    const QRect bodyRect = finalPlacement.bodyRect.toAlignedRect().intersected(q->rect());
+    if (bodyRect.isEmpty()) {
+        glassSurface->hide();
+        return;
+    }
+    VLiquidGlassStyle style = VLiquidGlassStyle::regular();
+    style.cornerRadius = VkThemeManager::instance()->theme().metrics().popoverCornerRadius;
+    glassSurface->setGlassStyle(style);
+    glassSurface->setGeometry(bodyRect);
+    glassSurface->show();
+    glassSurface->lower();
 }
 
 void VPopoverPrivate::setPreferredPlacement(VPopoverPlacement placement) {
@@ -388,6 +428,10 @@ void VPopoverPrivate::shutdown() {
     if (themeChangedConnection) {
         disconnect(themeChangedConnection);
         themeChangedConnection = {};
+    }
+    if (liquidGlassEnabledConnection) {
+        disconnect(liquidGlassEnabledConnection);
+        liquidGlassEnabledConnection = {};
     }
     if (contentDestroyedConnection) {
         disconnect(contentDestroyedConnection);
@@ -716,6 +760,7 @@ bool VPopoverPrivate::repositionNow() {
     if (content && content->geometry() != localContentRect) {
         content->setGeometry(localContentRect);
     }
+    syncLiquidGlassSurface();
     return true;
 }
 
@@ -1073,7 +1118,11 @@ void VPopoverPrivate::paint(QPaintEvent* event) {
         painter.drawPixmap(QPointF(0.0, 0.0), shadow);
     }
 
-    painter.fillPath(finalPath, colors.popoverBackground);
+    QColor surface = colors.popoverBackground;
+    if (VkThemeManager::instance()->liquidGlassEnabled()) {
+        surface.setAlpha(theme.effectiveAppearance() == VkAppearance::Dark ? 108 : 76);
+    }
+    painter.fillPath(finalPath, surface);
     QPen borderPen(colors.border);
     borderPen.setWidthF(std::max<qreal>(0.5, metrics.borderWidth));
     borderPen.setJoinStyle(Qt::RoundJoin);

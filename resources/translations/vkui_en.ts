@@ -1389,6 +1389,38 @@
         <translation>Graphite</translation>
     </message>
     <message>
+        <source>Liquid Glass</source>
+        <translation>Liquid Glass</translation>
+    </message>
+    <message>
+        <source>Enable Liquid Glass for supported surfaces</source>
+        <translation>Enable Liquid Glass for supported surfaces</translation>
+    </message>
+    <message>
+        <source>Enable Liquid Glass</source>
+        <translation>Enable Liquid Glass</translation>
+    </message>
+    <message>
+        <source>The same cached Qt renderer is used by controls, menus, combobox popups, and popovers. Disabling it selects the opaque semantic fallback.</source>
+        <translation>The same cached Qt renderer is used by controls, menus, combobox popups, and popovers. Disabling it selects the opaque semantic fallback.</translation>
+    </message>
+    <message>
+        <source>Regular</source>
+        <translation>Regular</translation>
+    </message>
+    <message>
+        <source>Balanced refraction</source>
+        <translation>Balanced refraction</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>Clear</translation>
+    </message>
+    <message>
+        <source>Maximum backdrop detail</source>
+        <translation>Maximum backdrop detail</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="49"/>
         <source>Theme and Appearance</source>
         <translation>Theme and Appearance</translation>

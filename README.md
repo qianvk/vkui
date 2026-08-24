@@ -123,7 +123,9 @@ hit target. See the [tree-view guide](docs/tree-view.md) and [file-tree guide](d
 
 `VLiquidGlassBackdrop` and `VLiquidGlassSurface` provide shared, local backdrop sampling for
 cross-platform glass compositions without replacing child-widget behavior. The cached QPainter
-renderer is shared by every platform. See the [liquid-glass guide](docs/liquid-glass.md).
+renderer is shared by every platform. `VkThemeManager::setLiquidGlassEnabled()` switches all
+supported surfaces between the optical material and their opaque semantic fallback without
+rebuilding the theme. See the [liquid-glass guide](docs/liquid-glass.md).
 
 ## Status
 
