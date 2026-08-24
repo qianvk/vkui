@@ -71,6 +71,11 @@ target_sources(tst_gallerycontentview PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/gallery/GalleryContentView.cpp
 )
 
+if(TARGET vkui_gallery_ui)
+    vkui_add_test(tst_gallerywindow tst_gallerywindow.cpp)
+    target_link_libraries(tst_gallerywindow PRIVATE vkui_gallery_ui)
+endif()
+
 if(VKUI_BUILD_INTERACTION)
     add_executable(tst_buffer tst_buffer.cpp)
     target_link_libraries(tst_buffer PRIVATE VkUI::Buffer)
@@ -144,7 +149,7 @@ if(WIN32 AND VKUI_BUILD_SHARED)
     )
     target_sources(tst_popoverpath PRIVATE
         ${PROJECT_SOURCE_DIR}/src/widgets/overlays/private/VPopoverPath.cpp
-        ${PROJECT_SOURCE_DIR}/src/widgets/overlays/private/VPopoverShadowCache.cpp
+        ${PROJECT_SOURCE_DIR}/src/widgets/effects/private/VkShadowCache.cpp
     )
     target_sources(tst_style PRIVATE
         ${PROJECT_SOURCE_DIR}/src/widgets/style/private/VStylePainter.cpp

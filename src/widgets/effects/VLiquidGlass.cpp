@@ -29,6 +29,7 @@ VLiquidGlassStyle sanitizedStyle(VLiquidGlassStyle style) noexcept {
     style.chromaticAberration = std::clamp(style.chromaticAberration, 0.0, 8.0);
     style.saturation = std::clamp(style.saturation, 0.0, 2.0);
     style.tintOpacity = std::clamp(style.tintOpacity, 0.0, 1.0);
+    style.opticalEdgeIntensity = std::clamp(style.opticalEdgeIntensity, 0.0, 1.0);
     switch (style.quality) {
     case VLiquidGlassQuality::Automatic:
     case VLiquidGlassQuality::Reduced:
@@ -77,6 +78,20 @@ VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
     style.saturation = 1.16;
     style.tintOpacity = 0.04;
     style.quality = VLiquidGlassQuality::High;
+    return style;
+}
+
+VLiquidGlassStyle VLiquidGlassStyle::popup() noexcept {
+    VLiquidGlassStyle style;
+    // Larger floating surfaces need softer scattering, stronger adaptive tint, and a thicker
+    // refractive edge than compact controls so foreground content remains visually separated.
+    style.blurRadius = 4.0;
+    style.refractionHeight = 16.0;
+    style.refractionAmount = 28.0;
+    style.chromaticAberration = 1.0;
+    style.saturation = 1.04;
+    style.tintOpacity = 0.32;
+    style.opticalEdgeIntensity = 0.78;
     return style;
 }
 
@@ -362,13 +377,19 @@ class VLiquidGlassSurfacePrivate final {
         const bool dark =
             VkThemeManager::instance()->theme().effectiveAppearance() == VkAppearance::Dark;
         painter.setBrush(Qt::NoBrush);
-        QLinearGradient specular(bounds.topLeft(), bounds.bottomLeft());
-        specular.setColorAt(0.0, QColor(255, 255, 255, dark ? 118 : 168));
-        specular.setColorAt(0.34, QColor(255, 255, 255, dark ? 36 : 54));
-        specular.setColorAt(0.66, QColor(255, 255, 255, dark ? 20 : 30));
-        specular.setColorAt(1.0, QColor(255, 255, 255, dark ? 48 : 68));
-        painter.setPen(QPen(specular, 1.0));
-        painter.drawPath(path);
+        const qreal edgeIntensity = style.opticalEdgeIntensity;
+        if (edgeIntensity > 0.0) {
+            const auto edgeColor = [edgeIntensity](const int alpha) {
+                return QColor(255, 255, 255, qRound(alpha * edgeIntensity));
+            };
+            QLinearGradient specular(bounds.topLeft(), bounds.bottomLeft());
+            specular.setColorAt(0.0, edgeColor(dark ? 118 : 168));
+            specular.setColorAt(0.34, edgeColor(dark ? 36 : 54));
+            specular.setColorAt(0.66, edgeColor(dark ? 20 : 30));
+            specular.setColorAt(1.0, edgeColor(dark ? 48 : 68));
+            painter.setPen(QPen(specular, 1.0));
+            painter.drawPath(path);
+        }
 
         if (style.drawsBorder) {
             // Draw the neutral rim last so directional highlights never erase one side.
@@ -377,11 +398,12 @@ class VLiquidGlassSurfacePrivate final {
         }
 
         const QRectF innerBounds = bounds.adjusted(1.0, 1.0, -1.0, -1.0);
-        if (!innerBounds.isEmpty()) {
+        if (edgeIntensity > 0.0 && !innerBounds.isEmpty()) {
             QPainterPath innerPath;
             innerPath.addRoundedRect(innerBounds, std::max<qreal>(0.0, radius - 1.0),
                                      std::max<qreal>(0.0, radius - 1.0));
-            painter.setPen(QPen(QColor(255, 255, 255, dark ? 30 : 62), 1.0));
+            painter.setPen(
+                QPen(QColor(255, 255, 255, qRound((dark ? 30 : 62) * edgeIntensity)), 1.0));
             painter.drawPath(innerPath);
         }
         painter.restore();

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+#include "widgets/effects/private/VkShadowCache_p.h"
 #include "widgets/overlays/private/VPopoverPath_p.h"
-#include "widgets/overlays/private/VPopoverShadowCache_p.h"
 
 #include <QImage>
 #include <QtTest>
-
 #include <cmath>
 
 class PopoverPathTest final : public QObject {
@@ -29,10 +28,10 @@ void PopoverPathTest::continuousCurvedArrowForEveryDirection_data() {
                            << QPointF(120.0, 4.0) << QPointF(120.0, 20.0);
     QTest::newRow("above") << static_cast<int>(vkui::VPopoverPlacement::Above)
                            << QPointF(120.0, 156.0) << QPointF(120.0, 140.0);
-    QTest::newRow("right") << static_cast<int>(vkui::VPopoverPlacement::Right)
-                           << QPointF(4.0, 80.0) << QPointF(20.0, 80.0);
-    QTest::newRow("left") << static_cast<int>(vkui::VPopoverPlacement::Left)
-                          << QPointF(236.0, 80.0) << QPointF(220.0, 80.0);
+    QTest::newRow("right") << static_cast<int>(vkui::VPopoverPlacement::Right) << QPointF(4.0, 80.0)
+                           << QPointF(20.0, 80.0);
+    QTest::newRow("left") << static_cast<int>(vkui::VPopoverPlacement::Left) << QPointF(236.0, 80.0)
+                          << QPointF(220.0, 80.0);
 }
 
 void PopoverPathTest::continuousCurvedArrowForEveryDirection() {
@@ -59,8 +58,8 @@ void PopoverPathTest::continuousCurvedArrowForEveryDirection() {
 void PopoverPathTest::containsBodyCenterAndArrowTipBounds() {
     const QRectF body(20.0, 20.0, 200.0, 120.0);
     const QPointF tip(130.0, 3.0);
-    const QPainterPath path = vkui::VPopoverPath::create(body, vkui::VPopoverPlacement::Below,
-                                                          tip, QPointF(130.0, 20.0), 20.0, 12.0);
+    const QPainterPath path = vkui::VPopoverPath::create(body, vkui::VPopoverPlacement::Below, tip,
+                                                         QPointF(130.0, 20.0), 20.0, 12.0);
     QVERIFY(path.contains(body.center()));
     QVERIFY(path.boundingRect().contains(tip));
     QCOMPARE(path.boundingRect().left(), body.left());
@@ -72,9 +71,9 @@ void PopoverPathTest::clampsArrowBaseAwayFromCorners() {
     const QRectF body(20.0, 20.0, 200.0, 120.0);
     const qreal radius = 12.0;
     const qreal arrowWidth = 20.0;
-    const QPainterPath path = vkui::VPopoverPath::create(
-        body, vkui::VPopoverPlacement::Below, QPointF(body.left(), 3.0),
-        QPointF(body.left(), body.top()), arrowWidth, radius);
+    const QPainterPath path =
+        vkui::VPopoverPath::create(body, vkui::VPopoverPlacement::Below, QPointF(body.left(), 3.0),
+                                   QPointF(body.left(), body.top()), arrowWidth, radius);
     QVERIFY(path.elementCount() > 2);
     const QPainterPath::Element firstBase = path.elementAt(1);
     QVERIFY(firstBase.x >= body.left() + radius - 0.01);
@@ -83,7 +82,7 @@ void PopoverPathTest::clampsArrowBaseAwayFromCorners() {
 
 void PopoverPathTest::invalidBodyProducesEmptyPath() {
     QVERIFY(vkui::VPopoverPath::create(QRectF{}, vkui::VPopoverPlacement::Below, QPointF{},
-                                        QPointF{}, 20.0, 12.0)
+                                       QPointF{}, 20.0, 12.0)
                 .isEmpty());
 }
 
@@ -100,10 +99,9 @@ void PopoverPathTest::shadowIsDprCorrectAndSymmetric() {
     QPainterPath path;
     path.addRoundedRect(body, 12.0, 12.0);
 
-    vkui::VPopoverShadowCache cache;
-    const QPixmap& shadow =
-        cache.shadow(path, logicalSize, devicePixelRatio, QColor(0, 0, 0, 112), 8.0,
-                     QPointF(0.0, 2.0));
+    vkui::VkShadowCache cache;
+    const QPixmap& shadow = cache.shadow(path, logicalSize, devicePixelRatio, QColor(0, 0, 0, 112),
+                                         8.0, QPointF(0.0, 2.0));
     QVERIFY(!shadow.isNull());
     QCOMPARE(shadow.devicePixelRatio(), devicePixelRatio);
     QCOMPARE(shadow.size(), QSize(qRound(logicalSize.width() * devicePixelRatio),
@@ -111,8 +109,9 @@ void PopoverPathTest::shadowIsDprCorrectAndSymmetric() {
     QCOMPARE(shadow.deviceIndependentSize(), QSizeF(logicalSize));
 
     const qint64 cacheKey = shadow.cacheKey();
-    QCOMPARE(cache.shadow(path, logicalSize, devicePixelRatio, QColor(0, 0, 0, 112), 8.0,
-                          QPointF(0.0, 2.0))
+    QCOMPARE(cache
+                 .shadow(path, logicalSize, devicePixelRatio, QColor(0, 0, 0, 112), 8.0,
+                         QPointF(0.0, 2.0))
                  .cacheKey(),
              cacheKey);
 

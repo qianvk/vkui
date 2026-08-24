@@ -74,7 +74,32 @@ endif()
 if(VKUI_BUILD_EXAMPLES)
     find_package(Qt6LinguistTools 6.6 QUIET)
     if(NOT Qt6LinguistTools_FOUND)
-        message(STATUS "Qt LinguistTools unavailable; Gallery translations will not be compiled")
+        get_filename_component(_vkui_qt_prefix "${Qt6_DIR}/../../.." ABSOLUTE)
+        find_program(VKUI_LRELEASE_EXECUTABLE
+            NAMES lrelease-qt6 lrelease6 lrelease
+            HINTS
+                "${_vkui_qt_prefix}/bin"
+                "$ENV{QTDIR}/bin"
+        )
+        if(NOT VKUI_LRELEASE_EXECUTABLE)
+            file(GLOB _vkui_lrelease_candidates LIST_DIRECTORIES FALSE
+                "$ENV{HOME}/Qt/*/macos/bin/lrelease"
+                "$ENV{HOME}/Qt/*/gcc_64/bin/lrelease"
+                "$ENV{HOME}/Qt/*/mingw_64/bin/lrelease.exe"
+                "$ENV{HOME}/Qt/*/msvc*/bin/lrelease.exe"
+            )
+            if(_vkui_lrelease_candidates)
+                list(SORT _vkui_lrelease_candidates COMPARE NATURAL ORDER DESCENDING)
+                list(GET _vkui_lrelease_candidates 0 VKUI_LRELEASE_EXECUTABLE)
+            endif()
+        endif()
+        if(VKUI_LRELEASE_EXECUTABLE)
+            message(STATUS "Using lrelease fallback: ${VKUI_LRELEASE_EXECUTABLE}")
+        else()
+            message(WARNING
+                "Qt LinguistTools and lrelease are unavailable; Gallery translations "
+                "will not be compiled")
+        endif()
     endif()
 endif()
 
@@ -197,14 +222,14 @@ target_sources(vkui_widgets
         src/widgets/effects/VLiquidGlass.cpp
         src/widgets/effects/private/VkLiquidGlassRenderer_p.h
         src/widgets/effects/private/VkLiquidGlassRenderer.cpp
+        src/widgets/effects/private/VkShadowCache_p.h
+        src/widgets/effects/private/VkShadowCache.cpp
         src/widgets/overlays/VPopover.cpp
         src/widgets/overlays/private/VPopover_p.h
         src/widgets/overlays/private/VPopoverPlacementEngine_p.h
         src/widgets/overlays/private/VPopoverPlacementEngine.cpp
         src/widgets/overlays/private/VPopoverPath_p.h
         src/widgets/overlays/private/VPopoverPath.cpp
-        src/widgets/overlays/private/VPopoverShadowCache_p.h
-        src/widgets/overlays/private/VPopoverShadowCache.cpp
         src/widgets/views/VTreeItemDelegate.cpp
         src/widgets/views/VTreeView.cpp
         src/widgets/views/VFileTreeView.cpp

@@ -22,6 +22,7 @@
 #include <QLocale>
 #include <QStandardItem>
 #include <QStandardItemModel>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkThemeManager.h>
@@ -64,6 +65,29 @@ void GalleryWindow::applyLanguage(Language language) {
 
     rebuildCentralWidget();
     updateWindowTitle();
+}
+
+void GalleryWindow::scheduleLanguageChange(const Language language) {
+    pendingLanguage_ = language;
+    if (languageChangeScheduled_) {
+        return;
+    }
+
+    languageChangeScheduled_ = true;
+    QTimer::singleShot(0, this, [this] {
+        languageChangeScheduled_ = false;
+        if (!pendingLanguage_) {
+            return;
+        }
+
+        const Language requestedLanguage = *pendingLanguage_;
+        pendingLanguage_.reset();
+        if (requestedLanguage != language_) {
+            // QComboBox is still emitting activated() in the originating event. Rebuilding after
+            // that event returns keeps the sender alive for Qt's complete signal-delivery stack.
+            applyLanguage(requestedLanguage);
+        }
+    });
 }
 
 void GalleryWindow::rebuildCentralWidget() {
@@ -179,8 +203,9 @@ void GalleryWindow::rebuildCentralWidget() {
         surface->setObjectName(objectName);
         surface->setBackdrop(pages_->liquidGlassBackdrop());
         vkui::VLiquidGlassStyle style = vkui::VLiquidGlassStyle::regular();
-        // Compact title-bar controls rely on lensing and specular edges, not a semantic outline.
+        // These controls use refraction for definition and intentionally have no outline.
         style.drawsBorder = false;
+        style.opticalEdgeIntensity = 0.0;
         surface->setGlassStyle(style);
         surface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         auto* layout = new QHBoxLayout(surface);
@@ -207,6 +232,7 @@ void GalleryWindow::rebuildCentralWidget() {
     const auto [languageSurface, languageLayout] =
         addGlassSetting(QStringLiteral("galleryLanguageGlass"), tr("Language"));
     languageBox_ = new vkui::VCombobox(languageSurface);
+    languageBox_->setObjectName(QStringLiteral("galleryLanguageBox"));
     languageBox_->addItem(tr("System"), static_cast<int>(Language::System));
     languageBox_->addItem(QStringLiteral("English"), static_cast<int>(Language::English));
     languageBox_->addItem(QStringLiteral("简体中文"),
@@ -252,7 +278,7 @@ void GalleryWindow::rebuildCentralWidget() {
             static_cast<vkui::VkAppearance>(appearanceBox_->itemData(index).toInt()));
     });
     connect(languageBox_, &QComboBox::activated, this, [this](int index) {
-        applyLanguage(static_cast<Language>(languageBox_->itemData(index).toInt()));
+        scheduleLanguageChange(static_cast<Language>(languageBox_->itemData(index).toInt()));
     });
 
     currentPage_ = qBound(0, currentPage_, pages_->count() - 1);

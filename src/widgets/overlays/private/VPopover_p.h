@@ -3,8 +3,8 @@
 #pragma once
 
 #include "../../animation/private/VkWidgetAnimation_p.h"
+#include "../../effects/private/VkShadowCache_p.h"
 #include "VPopoverPlacementEngine_p.h"
-#include "VPopoverShadowCache_p.h"
 
 #include <QtCore/QMargins>
 #include <QtCore/QMetaObject>
@@ -149,7 +149,7 @@ class VPopoverPrivate final : public QObject {
     VPopoverPlacementResult finalPlacement;
     QPainterPath finalPath;
     VkWidgetAnimation animation;
-    VPopoverShadowCache shadowCache;
+    VkShadowCache shadowCache;
 };
 
 } // namespace vkui

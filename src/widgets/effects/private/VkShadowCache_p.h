@@ -12,10 +12,10 @@
 namespace vkui {
 
 /**
- * A one-entry, DPR-aware cache for the popover's final-geometry shadow.
+ * A one-entry, DPR-aware cache for a popup's final-geometry shadow.
  * Animation transforms the cached pixmap instead of regenerating its blur.
  */
-class VPopoverShadowCache final {
+class VkShadowCache final {
   public:
     [[nodiscard]] const QPixmap& shadow(const QPainterPath& path, const QSize& logicalSize,
                                         qreal devicePixelRatio, const QColor& color,

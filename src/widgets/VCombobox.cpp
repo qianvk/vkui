@@ -39,8 +39,8 @@ Qt::TextElideMode VCombobox::elideMode() const noexcept {
 }
 
 void VCombobox::showPopup() {
-    // Qt positions menu-style combo popups from the view's current index. Hovering mutates that
-    // index without changing QComboBox::currentIndex(), so restore the committed item first.
+    // Qt uses the view's selection both for menu highlighting and popup placement. Hovering mutates
+    // that selection without committing QComboBox::currentIndex(), so restore both parts first.
     if (count() > 0) {
         synchronizePopupCurrentIndex();
     }
@@ -56,13 +56,17 @@ void VCombobox::synchronizePopupCurrentIndex() {
 
     const QModelIndex committedIndex =
         model()->index(currentIndex(), modelColumn(), rootModelIndex());
-    if (selection->currentIndex() == committedIndex) {
-        return;
-    }
 
     const QSignalBlocker viewBlocker(popupView);
     const QSignalBlocker selectionBlocker(selection);
-    selection->setCurrentIndex(committedIndex, QItemSelectionModel::NoUpdate);
+    QItemSelectionModel::SelectionFlags flags =
+        committedIndex.isValid() ? QItemSelectionModel::ClearAndSelect : QItemSelectionModel::Clear;
+    if (popupView->selectionBehavior() == QAbstractItemView::SelectRows) {
+        flags.setFlag(QItemSelectionModel::Rows);
+    }
+    // Match QComboBoxPrivate::setCurrentIndex(): changing only the current anchor leaves the
+    // previous mouse-hover row selected and therefore highlighted by QComboMenuDelegate.
+    selection->setCurrentIndex(committedIndex, flags);
 }
 
 } // namespace vkui

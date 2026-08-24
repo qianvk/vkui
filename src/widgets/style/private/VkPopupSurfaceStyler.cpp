@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+#include "VStylePainter_p.h"
 #include "VkPopupSurfaceStyler_p.h"
 
 #include <QtCore/QEvent>
@@ -17,13 +18,16 @@
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/effects/VLiquidGlass.h>
 
-#include "VStylePainter_p.h"
-
 namespace {
 
 qreal deviceHairlineWidth(const QPainter& painter) {
     const QPaintDevice* device = painter.device();
     return 1.0 / std::max<qreal>(1.0, device ? device->devicePixelRatioF() : 1.0);
+}
+
+QRect popupSurfaceRect(const QWidget& popup, const vkui::VkMetricTokens& metrics) {
+    const int inset = qMax(0, qRound(metrics.spacing6));
+    return popup.rect().adjusted(inset, inset, -inset, -inset);
 }
 
 } // namespace
@@ -101,16 +105,33 @@ void VkPopupSurfaceStyler::drawPopupSurface(const QWidget& popup, QPainter& pain
     const bool comboBoxPopup = isVComboboxPopup(&popup);
     const qreal radius =
         comboBoxPopup ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
+    const QRect surfaceRect = popupSurfaceRect(popup, metrics);
+    if (surfaceRect.isEmpty()) {
+        return;
+    }
 
     const auto iterator = popups_.constFind(const_cast<QWidget*>(&popup));
+    if (iterator != popups_.cend()) {
+        QPainterPath shadowPath;
+        shadowPath.addRoundedRect(QRectF(surfaceRect), radius, radius);
+        const QPixmap& shadow = iterator->shadowCache.shadow(
+            shadowPath, popup.size(), popup.devicePixelRatioF(), theme.colors().shadow,
+            metrics.spacing8, QPointF(0.0, metrics.spacing2));
+        if (!shadow.isNull()) {
+            painter.drawPixmap(QPointF(0.0, 0.0), shadow);
+        }
+    }
     if (VkThemeManager::instance()->liquidGlassEnabled() && iterator != popups_.cend() &&
         iterator->glassSurface) {
+        painter.save();
+        painter.translate(surfaceRect.topLeft());
         iterator->glassSurface->paintMaterial(painter);
+        painter.restore();
         return;
     }
 
     const QColor border = VStylePainter::multiplyAlpha(theme.colors().border, 0.68);
-    VStylePainter::drawRoundedPanel(painter, QRectF(popup.rect()), radius,
+    VStylePainter::drawRoundedPanel(painter, QRectF(surfaceRect), radius,
                                     theme.colors().elevatedBackground, border,
                                     deviceHairlineWidth(painter));
 }
@@ -288,9 +309,10 @@ void VkPopupSurfaceStyler::applyTransparentPalette(QWidget& widget) {
 }
 
 void VkPopupSurfaceStyler::makeContentWidgetTransparent(QWidget& widget, PopupState& state) {
-    const auto alreadyStored = std::ranges::any_of(
-        state.contentWidgets,
-        [&widget](const ContentWidgetState& item) { return item.widget == &widget; });
+    const auto alreadyStored =
+        std::ranges::any_of(state.contentWidgets, [&widget](const ContentWidgetState& item) {
+            return item.widget == &widget;
+        });
     if (!alreadyStored) {
         state.contentWidgets.append({
             &widget,
@@ -393,12 +415,12 @@ void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
         state.glassSurface->hide();
     }
 
-    VLiquidGlassStyle style = VLiquidGlassStyle::regular();
+    VLiquidGlassStyle style = VLiquidGlassStyle::popup();
     const VkMetricTokens& metrics = VkThemeManager::instance()->theme().metrics();
     style.cornerRadius =
         isVComboboxPopup(&popup) ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
     state.glassSurface->setGlassStyle(style);
-    state.glassSurface->setGeometry(popup.rect());
+    state.glassSurface->setGeometry(popupSurfaceRect(popup, metrics));
     state.glassSurface->hide();
 }
 
