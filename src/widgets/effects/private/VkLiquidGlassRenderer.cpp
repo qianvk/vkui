@@ -105,10 +105,36 @@ QImage gaussianApproximation(const QImage& source, const int blurRadius) {
     if (blurRadius <= 0 || source.isNull()) {
         return source;
     }
-    const int passRadius = std::max(1, qRound(blurRadius / 3.0));
+    const int passCount = std::clamp(blurRadius, 1, 3);
+    const int passRadius = std::max(1, qRound(static_cast<qreal>(blurRadius) / passCount));
     QImage result = source.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-    for (int pass = 0; pass < 3; ++pass) {
+    for (int pass = 0; pass < passCount; ++pass) {
         result = verticalBoxBlur(horizontalBoxBlur(result, passRadius), passRadius);
+    }
+    return result;
+}
+
+QImage blendImages(const QImage& source, const QImage& blurred, const qreal amount) {
+    if (source.isNull() || blurred.isNull() || amount <= 0.0) {
+        return source;
+    }
+    const qreal boundedAmount = std::clamp(amount, 0.0, 1.0);
+    QImage result = source.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    for (int y = 0; y < result.height(); ++y) {
+        auto* output = reinterpret_cast<QRgb*>(result.scanLine(y));
+        const auto* softened = reinterpret_cast<const QRgb*>(blurred.constScanLine(y));
+        for (int x = 0; x < result.width(); ++x) {
+            const QRgb sharp = output[x];
+            const QRgb soft = softened[x];
+            output[x] = qRgba(qRound(std::lerp(static_cast<qreal>(qRed(sharp)),
+                                               static_cast<qreal>(qRed(soft)), boundedAmount)),
+                              qRound(std::lerp(static_cast<qreal>(qGreen(sharp)),
+                                               static_cast<qreal>(qGreen(soft)), boundedAmount)),
+                              qRound(std::lerp(static_cast<qreal>(qBlue(sharp)),
+                                               static_cast<qreal>(qBlue(soft)), boundedAmount)),
+                              qRound(std::lerp(static_cast<qreal>(qAlpha(sharp)),
+                                               static_cast<qreal>(qAlpha(soft)), boundedAmount)));
+        }
     }
     return result;
 }
@@ -214,6 +240,9 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
                            std::max(1, qCeil(logicalSize.height() * scale)));
     const int blurRadius = qRound(std::max<qreal>(0.0, style.blurRadius) * scale);
     const QImage blurred = gaussianApproximation(frame.image, blurRadius);
+    const qreal scattering = std::clamp(style.blurRadius / 3.0, 0.0, 0.72);
+    const QImage opticalSource =
+        blurRadius > 0 ? blendImages(frame.image, blurred, scattering) : frame.image;
     QImage result(outputSize, QImage::Format_ARGB32_Premultiplied);
     result.fill(Qt::transparent);
 
@@ -230,7 +259,7 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
     const qreal saturation = std::clamp(style.saturation, 0.0, 2.0);
     qreal tintOpacity = std::clamp(style.tintOpacity, 0.0, 1.0);
     if (style.adaptiveLuminance) {
-        const qreal contrastDistance = std::abs(averageLuminance(blurred) - 0.5) * 2.0;
+        const qreal contrastDistance = std::abs(averageLuminance(opticalSource) - 0.5) * 2.0;
         tintOpacity *= std::lerp(0.78, 1.18, contrastDistance);
         tintOpacity = std::clamp(tintOpacity, 0.0, 1.0);
     }
@@ -272,11 +301,13 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
 
             const qreal sampleX = padding + x - normalX * displacement;
             const qreal sampleY = padding + y - normalY * displacement;
-            const Sample center = bilinearSample(blurred, sampleX, sampleY);
-            const Sample redSample = bilinearSample(blurred, sampleX - normalX * edgeDispersion,
-                                                    sampleY - normalY * edgeDispersion);
-            const Sample blueSample = bilinearSample(blurred, sampleX + normalX * edgeDispersion,
-                                                     sampleY + normalY * edgeDispersion);
+            const Sample center = bilinearSample(opticalSource, sampleX, sampleY);
+            const Sample redSample =
+                bilinearSample(opticalSource, sampleX - normalX * edgeDispersion,
+                               sampleY - normalY * edgeDispersion);
+            const Sample blueSample =
+                bilinearSample(opticalSource, sampleX + normalX * edgeDispersion,
+                               sampleY + normalY * edgeDispersion);
 
             qreal red = redSample.red;
             qreal green = center.green;

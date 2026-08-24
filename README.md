@@ -122,8 +122,8 @@ derive from `VTreeItemDelegate`; their leading-icon geometry automatically remai
 hit target. See the [tree-view guide](docs/tree-view.md) and [file-tree guide](docs/file-tree.md).
 
 `VLiquidGlassBackdrop` and `VLiquidGlassSurface` provide shared, local backdrop sampling for
-cross-platform glass compositions without replacing child-widget behavior. See the
-[liquid-glass guide](docs/liquid-glass.md).
+cross-platform glass compositions without replacing child-widget behavior. The cached QPainter
+renderer is shared by every platform. See the [liquid-glass guide](docs/liquid-glass.md).
 
 ## Status
 

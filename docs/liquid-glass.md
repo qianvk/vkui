@@ -27,18 +27,21 @@ layout->addWidget(appearanceComboBox);
 ```
 
 The renderer captures only the surface rectangle plus the pixels required by blur and refraction.
-It downsamples that region according to `VLiquidGlassQuality`, applies a three-pass separable blur,
-rounded-rectangle edge refraction, optional chromatic dispersion, saturation, adaptive tint, and a
-device-independent rim highlight. Captures and final material images remain cached until the source,
-surface geometry, device scale, style, or theme changes. Source paint events are coalesced to one
-queued invalidation, so several surfaces can share one provider without installing separate source
-observers or continuously polling the window.
+It downsamples that region according to `VLiquidGlassQuality`, applies a one-to-three-pass separable
+blur while retaining a sharp optical component, and adds rounded-rectangle edge refraction,
+optional chromatic dispersion, saturation, adaptive tint, and symmetric rim/specular layers.
+`VLiquidGlassStyle::regular()` and `clear()` provide balanced and clearer optical presets without
+changing the rendering backend.
 
-`Automatic` currently resolves to the balanced CPU path. `Reduced` is suitable for low-power or
-large-area surfaces, while `High` retains more source pixels. All qualities use public Qt APIs on
-macOS and Windows and fall back to a theme-aware translucent material if the source is unavailable.
-Applications with drawing state that changes without producing a QWidget paint event should call
-`VLiquidGlassBackdrop::invalidate()` after committing that state.
+Captures and final material images remain cached until the source, surface geometry, device scale,
+style, or theme changes. Source observation starts lazily on the first capture and paint events are
+coalesced to one queued invalidation, so several surfaces can share one provider without
+continuously polling the window. The entire path uses QPainter and public Qt APIs on every platform.
+
+`Automatic` resolves to the balanced path. `Reduced` is suitable for low-power or large-area
+surfaces, while `High` retains more source pixels. Applications with drawing state that changes
+without producing a QWidget paint event should call `VLiquidGlassBackdrop::invalidate()` after
+committing that state.
 
 `VLiquidGlassSurface::setGlassEnabled(false)` disables all material painting while preserving the
 container and its child-widget behavior. A missing or temporarily unavailable source instead uses

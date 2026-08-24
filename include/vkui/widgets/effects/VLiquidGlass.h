@@ -22,12 +22,12 @@ enum class VLiquidGlassQuality {
 /** Material parameters shared by liquid-glass surfaces. Values use logical pixels. */
 struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
     qreal cornerRadius = -1.0;
-    qreal blurRadius = 12.0;
-    qreal refractionHeight = 5.0;
-    qreal refractionAmount = 3.5;
-    qreal chromaticAberration = 0.65;
-    qreal saturation = 1.08;
-    qreal tintOpacity = 0.20;
+    qreal blurRadius = 1.0;
+    qreal refractionHeight = 12.0;
+    qreal refractionAmount = 24.0;
+    qreal chromaticAberration = 1.25;
+    qreal saturation = 1.12;
+    qreal tintOpacity = 0.10;
     bool adaptiveLuminance = true;
     VLiquidGlassQuality quality = VLiquidGlassQuality::Automatic;
 
