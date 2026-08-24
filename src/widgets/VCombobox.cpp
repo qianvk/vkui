@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#include <QtCore/QItemSelectionModel>
+#include <QtCore/QSignalBlocker>
 #include <QtWidgets/QAbstractItemView>
 #include <vkui/widgets/VCombobox.h>
 
@@ -34,6 +36,33 @@ void VCombobox::setElideMode(const Qt::TextElideMode mode) {
 
 Qt::TextElideMode VCombobox::elideMode() const noexcept {
     return elideMode_;
+}
+
+void VCombobox::showPopup() {
+    // Qt positions menu-style combo popups from the view's current index. Hovering mutates that
+    // index without changing QComboBox::currentIndex(), so restore the committed item first.
+    if (count() > 0) {
+        synchronizePopupCurrentIndex();
+    }
+    QComboBox::showPopup();
+}
+
+void VCombobox::synchronizePopupCurrentIndex() {
+    QAbstractItemView* popupView = view();
+    QItemSelectionModel* selection = popupView ? popupView->selectionModel() : nullptr;
+    if (!selection || !model()) {
+        return;
+    }
+
+    const QModelIndex committedIndex =
+        model()->index(currentIndex(), modelColumn(), rootModelIndex());
+    if (selection->currentIndex() == committedIndex) {
+        return;
+    }
+
+    const QSignalBlocker viewBlocker(popupView);
+    const QSignalBlocker selectionBlocker(selection);
+    selection->setCurrentIndex(committedIndex, QItemSelectionModel::NoUpdate);
 }
 
 } // namespace vkui
