@@ -204,13 +204,25 @@ QString comboBoxMenuText(const QString& source) {
     return text;
 }
 
+QFont fontWithSizeOf(QFont font, const QFont& sizeSource) {
+    if (sizeSource.pointSizeF() > 0.0) {
+        font.setPointSizeF(sizeSource.pointSizeF());
+    } else if (sizeSource.pixelSize() > 0) {
+        font.setPixelSize(sizeSource.pixelSize());
+    }
+    return font;
+}
+
 qreal deviceHairlineWidth(const QPainter& painter) {
     const QPaintDevice* device = painter.device();
     return 1.0 / std::max<qreal>(1.0, device ? device->devicePixelRatioF() : 1.0);
 }
 
-void drawComboBoxMenuItem(const QStyleOptionMenuItem& option, QPainter& painter,
+void drawComboBoxMenuItem(const QStyleOptionMenuItem& sourceOption, QPainter& painter,
                           const vkui::VCombobox& comboBox, const vkui::VkTheme& theme) {
+    QStyleOptionMenuItem option(sourceOption);
+    option.font = comboBox.font();
+    option.fontMetrics = QFontMetrics(option.font);
     const auto& colors = theme.colors();
     const auto& metrics = theme.metrics();
     const bool enabled = option.state.testFlag(QStyle::State_Enabled);
@@ -715,6 +727,8 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
             return;
         }
         QStyleOptionMenuItem copy = *menuItem;
+        copy.font = fontWithSizeOf(copy.font, theme.typography().body);
+        copy.fontMetrics = QFontMetrics(copy.font);
         if (selected && enabled) {
             VStylePainter::drawRoundedPanel(*painter, insetRect(option->rect, metrics.spacing2),
                                             metrics.cornerRadiusSmall, colors.controlFillHovered,
@@ -1150,7 +1164,8 @@ int VStyle::layoutSpacing(QSizePolicy::ControlType control1, QSizePolicy::Contro
 QSize VStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
                                const QSize& contentsSize, const QWidget* widget) const {
     QSize result = QProxyStyle::sizeFromContents(type, option, contentsSize, widget);
-    const auto& metrics = VkThemeManager::instance()->theme().metrics();
+    const VkTheme& theme = VkThemeManager::instance()->theme();
+    const auto& metrics = theme.metrics();
     switch (type) {
     case CT_PushButton:
         result.rwidth() =
@@ -1225,11 +1240,22 @@ QSize VStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
     case CT_MenuItem: {
         const auto* menuItem = qstyleoption_cast<const QStyleOptionMenuItem*>(option);
         const auto* comboBox = qobject_cast<const VCombobox*>(widget);
-        if (menuItem && comboBox) {
+        if (menuItem) {
+            QStyleOptionMenuItem resolvedOption(*menuItem);
+            resolvedOption.font = comboBox
+                                      ? comboBox->font()
+                                      : fontWithSizeOf(menuItem->font, theme.typography().body);
+            resolvedOption.fontMetrics = QFontMetrics(resolvedOption.font);
+            result = QProxyStyle::sizeFromContents(type, &resolvedOption, contentsSize, widget);
+            const QFontMetrics& fontMetrics = resolvedOption.fontMetrics;
+            if (!comboBox) {
+                result.rheight() = std::max(result.height(), qRound(metrics.controlHeightRegular));
+                result.rwidth() += qRound(metrics.spacing8);
+                break;
+            }
             const ComboBoxMenuMetrics itemMetrics =
-                comboBoxMenuMetrics(menuItem->fontMetrics, *comboBox, metrics);
-            const int textWidth =
-                menuItem->fontMetrics.horizontalAdvance(comboBoxMenuText(menuItem->text));
+                comboBoxMenuMetrics(fontMetrics, *comboBox, metrics);
+            const int textWidth = fontMetrics.horizontalAdvance(comboBoxMenuText(menuItem->text));
             const int preferredWidth = itemMetrics.leadingMargin + itemMetrics.leadingColumnWidth +
                                        itemMetrics.columnGap + textWidth + itemMetrics.rightMargin;
             result.rwidth() = std::max(result.width(), preferredWidth);

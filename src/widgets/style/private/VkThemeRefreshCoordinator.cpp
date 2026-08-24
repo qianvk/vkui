@@ -65,18 +65,10 @@ void VkThemeRefreshCoordinator::refreshWidgets() {
         return;
     }
 
-    if (changes.testFlag(VkThemeChange::Typography)) {
+    if (!changes.testFlag(VkThemeChange::Metrics)) {
         // VkThemeManager applies the resolved body font through QGuiApplication. Qt then owns
         // inherited-font resolution, FontChange delivery, size-hint invalidation, and layout
-        // activation. Repeating that work through QApplication::allWidgets() would be both
-        // redundant and observably slower while a text-size slider is moving.
-        updateVisibleWindows();
-        return;
-    }
-
-    if (!changes.testFlag(VkThemeChange::Metrics)) {
-        // QApplication::setPalette already propagates palette changes. One update per visible
-        // top-level surface also covers tokens that are consumed directly by custom painters.
+        // activation. Color-only changes use the same cheap top-level repaint path.
         updateVisibleWindows();
         return;
     }
@@ -93,8 +85,10 @@ void VkThemeRefreshCoordinator::refreshWidgets() {
         widgets.append({widget, widgetDepth(widget)});
     }
 
-    // Structural changes are rare. Preserve Qt's parent/child polish ordering so inherited fonts,
-    // palettes, metrics, and size hints are rebuilt deterministically.
+    // Responsive metrics change geometry independently of QWidget fonts. Preserve Qt's
+    // parent/child polish ordering so style size hints and cached layouts rebuild
+    // deterministically. Discrete text levels and the queued coalescing above bound this more
+    // expensive path.
     std::ranges::sort(widgets, [](const WidgetEntry& left, const WidgetEntry& right) {
         return left.depth > right.depth;
     });

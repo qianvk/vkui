@@ -8,6 +8,9 @@ releases are tagged.
 - Added live 12-level interface-text sizing with level 3 as Default, semantic `VTextStyle` roles,
   complete standard-widget font inheritance, responsive control/icon/spacing metrics,
   non-compounding baseline font resolution, and a Things-inspired discrete Gallery slider.
+- Unified ComboBox and menu popup typography with their public owner/theme fonts, fixed coalesced
+  metric invalidation during text-level changes, and connected Preferences to the real text-size
+  setting instead of its obsolete percentage preview.
 - Replaced the disclosure-only tree base and Gallery-specific tree painting with `VTreeView`,
   `VTreeItemDelegate`, and `VFileTreeView`: shared styling, delegate-authoritative icon hit testing,
   interruptible icon-only expansion, reusable branch connectors, and view-owned structural motion.

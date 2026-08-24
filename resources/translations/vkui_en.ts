@@ -4,10 +4,10 @@
 <context>
     <name>GalleryPreferencesWindow</name>
     <message>
-        <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="161"/>
-        <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="209"/>
-        <source>%1%</source>
-        <translation>%1%</translation>
+        <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="173"/>
+        <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="222"/>
+        <source>Level %1</source>
+        <translation>Level %1</translation>
     </message>
     <message>
         <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="200"/>
@@ -45,9 +45,9 @@
         <translation>Enable interface animations</translation>
     </message>
     <message>
-        <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="208"/>
-        <source>Text preview scale</source>
-        <translation>Text preview scale</translation>
+        <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="221"/>
+        <source>Text size</source>
+        <translation>Text size</translation>
     </message>
     <message>
         <location filename="../../examples/gallery/GalleryPreferencesWindow.cpp" line="211"/>

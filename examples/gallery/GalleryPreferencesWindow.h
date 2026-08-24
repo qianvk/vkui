@@ -9,11 +9,11 @@ class QCheckBox;
 class QEvent;
 class QGroupBox;
 class QLabel;
-class QSlider;
 class QWidget;
 
 namespace vkui {
 class VCombobox;
+class VSlider;
 }
 
 /** Application-owned, lazily created Preferences window. */
@@ -41,9 +41,9 @@ class GalleryPreferencesWindow final : public QWidget {
     QLabel* appearanceLabel_ = nullptr;
     vkui::VCombobox* appearanceBox_ = nullptr;
     QCheckBox* animationsBox_ = nullptr;
-    QLabel* scaleLabel_ = nullptr;
-    QSlider* scaleSlider_ = nullptr;
-    QLabel* scaleValue_ = nullptr;
+    QLabel* textSizeLabel_ = nullptr;
+    vkui::VSlider* textSizeSlider_ = nullptr;
+    QLabel* textSizeValue_ = nullptr;
     QLabel* noteLabel_ = nullptr;
     // Declared last so native teardown precedes QWidget base destruction.
     vkui::VWindowAgent windowAgent_;
