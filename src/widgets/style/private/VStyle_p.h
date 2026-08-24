@@ -6,6 +6,7 @@ namespace vkui {
 
 class VStyle;
 class VkPopupSurfaceStyler;
+class VkScrollBarActivityController;
 class VkWidgetTypographyController;
 
 class VStylePrivate final {
@@ -15,6 +16,7 @@ class VStylePrivate final {
 
     VStyle* q = nullptr;
     VkPopupSurfaceStyler* popupSurfaces = nullptr;
+    VkScrollBarActivityController* scrollBars = nullptr;
     VkWidgetTypographyController* typography = nullptr;
 };
 

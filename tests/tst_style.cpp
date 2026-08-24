@@ -25,6 +25,7 @@
 #include <QPushButton>
 #include <QQueue>
 #include <QRadioButton>
+#include <QScrollBar>
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QStyleOptionComboBox>
@@ -67,6 +68,12 @@ class InspectableSlider final : public vkui::VSlider {
   public:
     explicit InspectableSlider(Qt::Orientation orientation) : VSlider(orientation) {}
     using VSlider::initStyleOption;
+};
+
+class InspectableScrollBar final : public QScrollBar {
+  public:
+    explicit InspectableScrollBar(Qt::Orientation orientation) : QScrollBar(orientation) {}
+    using QScrollBar::initStyleOption;
 };
 
 class PolishProbeStyle final : public QProxyStyle {
@@ -231,6 +238,7 @@ class StyleTest final : public QObject {
     void switchShowsFocusOnlyForKeyboardNavigation();
     void sliderHandleDragPreservesCurrentValue();
     void discreteSliderUsesMacStyleTicksAndCapsuleHandle();
+    void scrollBarsUseTransientThumbWithoutTrack();
     void styleInteractionsAreEventDriven();
     void dialogButtonsUsePlatformOrder();
     void hiddenAnimationsSettleAtTheirTarget();
@@ -1429,6 +1437,64 @@ void StyleTest::discreteSliderUsesMacStyleTicksAndCapsuleHandle() {
     const QRect continuousHandle = continuous.style()->subControlRect(
         QStyle::CC_Slider, &continuousOption, QStyle::SC_SliderHandle, &continuous);
     QCOMPARE(continuousHandle.width(), continuousHandle.height());
+}
+
+void StyleTest::scrollBarsUseTransientThumbWithoutTrack() {
+    InspectableScrollBar scrollBar(Qt::Vertical);
+    scrollBar.setRange(0, 100);
+    scrollBar.setPageStep(20);
+    scrollBar.setValue(40);
+    scrollBar.resize(scrollBar.sizeHint().width(), 160);
+    scrollBar.show();
+    QCoreApplication::processEvents();
+    QEvent initialLeave(QEvent::Leave);
+    QApplication::sendEvent(&scrollBar, &initialLeave);
+
+    const auto render = [&scrollBar] {
+        QStyleOptionSlider option;
+        scrollBar.initStyleOption(&option);
+        QImage image(scrollBar.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        scrollBar.style()->drawComplexControl(QStyle::CC_ScrollBar, &option, &painter,
+                                              &scrollBar);
+        return image;
+    };
+    const auto alphaPixelCount = [](const QImage& image) {
+        int count = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                count += image.pixelColor(x, y).alpha() > 0 ? 1 : 0;
+            }
+        }
+        return count;
+    };
+
+    QCOMPARE(alphaPixelCount(render()), 0);
+
+    QEvent enter(QEvent::Enter);
+    QApplication::sendEvent(&scrollBar, &enter);
+    const QImage hovered = render();
+    QVERIFY(alphaPixelCount(hovered) > 0);
+
+    QStyleOptionSlider option;
+    scrollBar.initStyleOption(&option);
+    const QRect thumb = scrollBar.style()->subControlRect(
+        QStyle::CC_ScrollBar, &option, QStyle::SC_ScrollBarSlider, &scrollBar);
+    const QRect groove = scrollBar.style()->subControlRect(
+        QStyle::CC_ScrollBar, &option, QStyle::SC_ScrollBarGroove, &scrollBar);
+    QVERIFY(hovered.pixelColor(thumb.center()).alpha() > 0);
+    const QPoint trackSample(groove.center().x(),
+                             thumb.top() > groove.top() ? groove.top() : groove.bottom());
+    QVERIFY(!thumb.contains(trackSample));
+    QCOMPARE(hovered.pixelColor(trackSample).alpha(), 0);
+
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(&scrollBar, &leave);
+    QCOMPARE(alphaPixelCount(render()), 0);
+
+    scrollBar.setValue(scrollBar.value() + 1);
+    QVERIFY(alphaPixelCount(render()) > 0);
 }
 
 void StyleTest::styleInteractionsAreEventDriven() {

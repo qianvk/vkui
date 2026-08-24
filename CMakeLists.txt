@@ -207,6 +207,8 @@ target_sources(vkui_widgets
         src/widgets/style/private/VStyle_p.h
         src/widgets/style/private/VkPopupSurfaceStyler_p.h
         src/widgets/style/private/VkPopupSurfaceStyler.cpp
+        src/widgets/style/private/VkScrollBarActivityController_p.h
+        src/widgets/style/private/VkScrollBarActivityController.cpp
         src/widgets/style/private/VkThemeRefreshCoordinator_p.h
         src/widgets/style/private/VkThemeRefreshCoordinator.cpp
         src/widgets/style/private/VkWidgetTypographyController_p.h
