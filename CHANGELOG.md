@@ -5,6 +5,8 @@ releases are tagged.
 
 ## Unreleased
 
+- Removed the fixed dark lower-half overlay and default semantic outline from Liquid Glass surfaces,
+  and replaced the static Gallery sample with scrollable content moving beneath fixed previews.
 - Added a macOS-style Clear-to-Tinted Liquid Glass preference with a conditional live Gallery
   slider, targeted cache invalidation, and borderless Gallery title-bar glass controls that retain
   refraction and optical highlights.

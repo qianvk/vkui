@@ -6,6 +6,8 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QRadioButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QStyleOptionSlider>
 #include <QtTest/QTest>
 #include <cmath>
@@ -57,11 +59,22 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
     auto* appearanceControls =
         page.findChild<QWidget*>(QStringLiteral("liquidGlassAppearanceControls"));
     auto* tintSlider = page.findChild<vkui::VSlider*>(QStringLiteral("liquidGlassTintSlider"));
+    auto* previewScrollArea =
+        page.findChild<QScrollArea*>(QStringLiteral("liquidGlassPreviewScrollArea"));
     QVERIFY(toggle != nullptr);
     QVERIFY(preview != nullptr);
     QVERIFY(appearanceControls != nullptr);
     QVERIFY(tintSlider != nullptr);
-    QCOMPARE(preview->findChildren<vkui::VLiquidGlassSurface*>().size(), 2);
+    QVERIFY(previewScrollArea != nullptr);
+    const auto glassSurfaces = preview->findChildren<vkui::VLiquidGlassSurface*>();
+    QCOMPARE(glassSurfaces.size(), 2);
+    QCOMPARE(previewScrollArea->frameShape(), QFrame::NoFrame);
+    QVERIFY(previewScrollArea->verticalScrollBar()->maximum() > 0);
+    for (const auto* surface : glassSurfaces) {
+        QVERIFY(surface->backdrop() != nullptr);
+        QCOMPARE(surface->backdrop()->sourceWidget(), previewScrollArea->viewport());
+        QVERIFY(!previewScrollArea->viewport()->isAncestorOf(surface));
+    }
     QVERIFY(toggle->isChecked());
     QVERIFY(appearanceControls->isVisible());
     QCOMPARE(tintSlider->minimum(), vkui::VkMinimumLiquidGlassTintLevel);
@@ -72,6 +85,13 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
     QCOMPARE(manager->liquidGlassTintLevel(), 72);
     manager->setLiquidGlassTintLevel(41);
     QCOMPARE(tintSlider->value(), 41);
+
+    const QRect fixedGlassGeometry = glassSurfaces.constFirst()->geometry();
+    const QImage initialGlass = glassSurfaces.constFirst()->grab().toImage();
+    previewScrollArea->verticalScrollBar()->setValue(
+        previewScrollArea->verticalScrollBar()->maximum());
+    QTRY_VERIFY(glassSurfaces.constFirst()->grab().toImage() != initialGlass);
+    QCOMPARE(glassSurfaces.constFirst()->geometry(), fixedGlassGeometry);
 
     QImage enabledPreview(preview->size(), QImage::Format_ARGB32_Premultiplied);
     enabledPreview.fill(Qt::transparent);

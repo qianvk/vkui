@@ -360,19 +360,12 @@ class VLiquidGlassSurfacePrivate final {
 
         const bool dark =
             VkThemeManager::instance()->theme().effectiveAppearance() == VkAppearance::Dark;
-        QLinearGradient depth(bounds.topLeft(), bounds.bottomLeft());
-        depth.setColorAt(0.0, QColor(255, 255, 255, dark ? 45 : 58));
-        depth.setColorAt(0.42, QColor(255, 255, 255, 8));
-        depth.setColorAt(0.62, QColor(0, 0, 0, 0));
-        depth.setColorAt(1.0, QColor(20, 24, 32, dark ? 35 : 18));
-        painter.fillPath(path, depth);
-
         painter.setBrush(Qt::NoBrush);
         QLinearGradient specular(bounds.topLeft(), bounds.bottomLeft());
-        specular.setColorAt(0.0, QColor(255, 255, 255, dark ? 155 : 205));
-        specular.setColorAt(0.48, QColor(255, 255, 255, dark ? 48 : 76));
-        specular.setColorAt(0.72, QColor(255, 255, 255, 0));
-        specular.setColorAt(1.0, QColor(255, 255, 255, 0));
+        specular.setColorAt(0.0, QColor(255, 255, 255, dark ? 118 : 168));
+        specular.setColorAt(0.34, QColor(255, 255, 255, dark ? 36 : 54));
+        specular.setColorAt(0.66, QColor(255, 255, 255, dark ? 20 : 30));
+        specular.setColorAt(1.0, QColor(255, 255, 255, dark ? 48 : 68));
         painter.setPen(QPen(specular, 1.0));
         painter.drawPath(path);
 

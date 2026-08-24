@@ -8,6 +8,7 @@
 #include <QEvent>
 #include <QFontInfo>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -16,6 +17,8 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QResizeEvent>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QStyle>
 #include <QStyleOptionSlider>
@@ -191,35 +194,57 @@ class TextSizePicker final : public QWidget {
     DefaultMarkerButton* defaultButton_ = nullptr;
 };
 
-class LiquidGlassPreviewSource final : public QWidget {
+class LiquidGlassPreviewContent final : public QWidget {
   public:
-    explicit LiquidGlassPreviewSource(QWidget* parent = nullptr) : QWidget(parent) {
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    explicit LiquidGlassPreviewContent(QWidget* parent = nullptr) : QWidget(parent) {
+        setMinimumHeight(520);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+    [[nodiscard]] QSize sizeHint() const override {
+        return {620, 520};
     }
 
   protected:
     void paintEvent(QPaintEvent*) override {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        QLinearGradient background(rect().topLeft(), rect().topRight());
+        QLinearGradient background(rect().topLeft(), rect().bottomRight());
         background.setColorAt(0.0, QColor(46, 118, 246));
-        background.setColorAt(0.48, QColor(177, 78, 219));
-        background.setColorAt(1.0, QColor(255, 118, 77));
+        background.setColorAt(0.32, QColor(157, 77, 226));
+        background.setColorAt(0.66, QColor(255, 101, 91));
+        background.setColorAt(1.0, QColor(25, 176, 142));
         painter.fillRect(rect(), background);
 
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(255, 224, 74, 220));
-        painter.drawEllipse(QPointF(width() * 0.22, height() * 0.30), 34.0, 34.0);
-        painter.setBrush(QColor(45, 214, 139, 220));
-        painter.drawEllipse(QPointF(width() * 0.78, height() * 0.28), 42.0, 42.0);
+        constexpr int CardHeight = 76;
+        constexpr int CardGap = 24;
+        const int horizontalMargin = std::max(20, width() / 18);
+        const int cardWidth = std::max(120, width() - horizontalMargin * 2);
+        for (int index = 0; index < 5; ++index) {
+            const int top = 28 + index * (CardHeight + CardGap);
+            const QRectF card(horizontalMargin, top, cardWidth, CardHeight);
+            const bool lightCard = index % 2 == 0;
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(lightCard ? QColor(248, 249, 252, 218) : QColor(24, 30, 46, 206));
+            painter.drawRoundedRect(card, 18.0, 18.0);
 
-        QFont sampleFont = font();
-        sampleFont.setBold(true);
-        sampleFont.setPixelSize(std::max(18, height() / 5));
-        painter.setFont(sampleFont);
-        painter.setPen(QColor(255, 255, 255, 205));
-        painter.drawText(QRect(0, 4, width(), height() / 2), Qt::AlignCenter,
-                         QStringLiteral("LIQUID  GLASS"));
+            const QColor marker = index % 3 == 0   ? QColor(255, 221, 68, 230)
+                                  : index % 3 == 1 ? QColor(63, 224, 172, 230)
+                                                   : QColor(255, 255, 255, 220);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(marker);
+            painter.drawEllipse(QRectF(card.left() + 18, card.top() + 18, 40, 40));
+            const QColor primaryLine =
+                lightCard ? QColor(36, 42, 58, 168) : QColor(255, 255, 255, 214);
+            const QColor secondaryLine =
+                lightCard ? QColor(36, 42, 58, 92) : QColor(255, 255, 255, 122);
+            painter.setBrush(primaryLine);
+            painter.drawRoundedRect(
+                QRectF(card.left() + 76, card.top() + 20, card.width() * 0.42, 9), 4.5, 4.5);
+            painter.setBrush(secondaryLine);
+            painter.drawRoundedRect(
+                QRectF(card.left() + 76, card.top() + 43, card.width() * 0.62, 7), 3.5, 3.5);
+        }
     }
 };
 
@@ -227,40 +252,74 @@ class LiquidGlassPreview final : public QWidget {
   public:
     explicit LiquidGlassPreview(QWidget* parent = nullptr) : QWidget(parent) {
         setObjectName(QStringLiteral("liquidGlassPreview"));
-        setMinimumHeight(150);
+        setMinimumHeight(230);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-        source_ = new LiquidGlassPreviewSource(this);
-        backdrop_ = new vkui::VLiquidGlassBackdrop(source_, this);
+        scrollArea_ = new QScrollArea(this);
+        scrollArea_->setObjectName(QStringLiteral("liquidGlassPreviewScrollArea"));
+        scrollArea_->setFrameShape(QFrame::NoFrame);
+        scrollArea_->setWidgetResizable(true);
+        scrollArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scrollArea_->setWidget(new LiquidGlassPreviewContent);
+        scrollArea_->viewport()->setObjectName(QStringLiteral("liquidGlassPreviewViewport"));
+        scrollArea_->setAccessibleName(ThemePage::tr("Scrollable Liquid Glass backdrop"));
+        scrollArea_->viewport()->installEventFilter(this);
+
+        backdrop_ = new vkui::VLiquidGlassBackdrop(scrollArea_->viewport(), this);
         regular_ = createSurface(ThemePage::tr("Regular"), ThemePage::tr("Balanced refraction"),
                                  vkui::VLiquidGlassStyle::regular());
         clear_ = createSurface(ThemePage::tr("Clear"), ThemePage::tr("Maximum backdrop detail"),
                                vkui::VLiquidGlassStyle::clear());
-        source_->lower();
+        connect(scrollArea_->verticalScrollBar(), &QScrollBar::valueChanged, backdrop_,
+                &vkui::VLiquidGlassBackdrop::invalidate);
     }
 
     [[nodiscard]] QSize sizeHint() const override {
-        return {520, 150};
+        return {620, 230};
     }
 
   protected:
     void resizeEvent(QResizeEvent* event) override {
         QWidget::resizeEvent(event);
-        source_->setGeometry(rect());
-        constexpr int outerMargin = 20;
-        constexpr int gap = 16;
-        const int surfaceWidth = std::max(1, (width() - outerMargin * 2 - gap) / 2);
-        const int surfaceHeight = std::max(72, height() - outerMargin * 2);
-        const int top = (height() - surfaceHeight) / 2;
-        regular_->setGeometry(outerMargin, top, surfaceWidth, surfaceHeight);
-        clear_->setGeometry(outerMargin + surfaceWidth + gap, top, surfaceWidth, surfaceHeight);
+        scrollArea_->setGeometry(rect());
+        layoutSurfaces();
+    }
+
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched == scrollArea_->viewport() && event != nullptr &&
+            (event->type() == QEvent::Resize || event->type() == QEvent::Move ||
+             event->type() == QEvent::Show)) {
+            layoutSurfaces();
+        }
+        return QWidget::eventFilter(watched, event);
     }
 
   private:
+    void layoutSurfaces() {
+        if (regular_ == nullptr || clear_ == nullptr || scrollArea_->viewport()->size().isEmpty()) {
+            return;
+        }
+        const QRect viewportRect(scrollArea_->viewport()->mapTo(this, QPoint{}),
+                                 scrollArea_->viewport()->size());
+        constexpr int OuterMargin = 18;
+        constexpr int Gap = 14;
+        constexpr int SurfaceHeight = 78;
+        const int availableWidth = std::max(2, viewportRect.width() - OuterMargin * 2 - Gap);
+        const int surfaceWidth = std::max(1, availableWidth / 2);
+        const int top = viewportRect.top() + OuterMargin;
+        const int left = viewportRect.left() + OuterMargin;
+        regular_->setGeometry(left, top, surfaceWidth, SurfaceHeight);
+        clear_->setGeometry(left + surfaceWidth + Gap, top, availableWidth - surfaceWidth,
+                            SurfaceHeight);
+        regular_->raise();
+        clear_->raise();
+    }
+
     vkui::VLiquidGlassSurface* createSurface(const QString& title, const QString& detail,
                                              vkui::VLiquidGlassStyle style) {
         auto* surface = new vkui::VLiquidGlassSurface(this);
         surface->setBackdrop(backdrop_);
+        surface->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         style.cornerRadius = 18.0;
         surface->setGlassStyle(style);
         auto* layout = new QVBoxLayout(surface);
@@ -276,7 +335,7 @@ class LiquidGlassPreview final : public QWidget {
         return surface;
     }
 
-    LiquidGlassPreviewSource* source_ = nullptr;
+    QScrollArea* scrollArea_ = nullptr;
     vkui::VLiquidGlassBackdrop* backdrop_ = nullptr;
     vkui::VLiquidGlassSurface* regular_ = nullptr;
     vkui::VLiquidGlassSurface* clear_ = nullptr;
