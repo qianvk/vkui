@@ -52,9 +52,14 @@ backdrop providers to these framework-owned popup surfaces.
 The renderer captures only the surface rectangle plus the pixels required by blur and refraction.
 It downsamples that region according to `VLiquidGlassQuality`, applies a one-to-three-pass separable
 blur while retaining a sharp optical component, and adds rounded-rectangle edge refraction,
-optional chromatic dispersion, saturation, adaptive tint, and symmetric rim/specular layers.
+optional chromatic dispersion, saturation, adaptive tint, and balanced perimeter highlights.
 `VLiquidGlassStyle::regular()` and `clear()` provide balanced and clearer optical presets without
 changing the rendering backend.
+
+Surface lighting does not apply a fixed dark gradient to the lower half of the material. The
+captured backdrop remains vertically neutral, while perimeter lensing and restrained highlights
+define the silhouette. This avoids an artificial inner shadow on solid backgrounds and leaves
+content-aware separation to the backdrop and owning composition.
 
 Captures and final material images remain cached until the source, surface geometry, device scale,
 style, or theme changes. Source observation starts lazily on the first capture and paint events are
@@ -69,6 +74,7 @@ committing that state.
 `VLiquidGlassSurface::setGlassEnabled(false)` disables all material painting while preserving the
 container and its child-widget behavior. Disabling the process-wide policy selects an opaque
 semantic fallback, while a missing or temporarily unavailable source under the enabled policy uses
-the theme-aware translucent fallback. `VLiquidGlassStyle::drawsBorder` controls the neutral
-semantic outline independently from lensing and specular edge light; compact floating controls can
-disable the outline without losing the optical material.
+the theme-aware translucent fallback. `VLiquidGlassStyle::drawsBorder` is an opt-in neutral
+semantic outline independent from lensing and specular edge light. The default material leaves it
+off; an application can enable it for an explicit high-contrast treatment without changing the
+optical renderer.

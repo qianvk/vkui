@@ -84,6 +84,7 @@ class LiquidGlassTest final : public QObject {
     void materialPresetsHaveDistinctOptics();
     void regularMaterialRefractsBackdropAtEdge();
     void rimIsHorizontallySymmetric();
+    void interiorLightingIsVerticallyBalanced();
     void themeTintPreferenceChangesRenderedMaterial();
     void styleValuesAreSanitized();
 };
@@ -192,6 +193,7 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QCOMPARE(regular.blurRadius, 1.0);
     QCOMPARE(regular.refractionHeight, 12.0);
     QCOMPARE(regular.refractionAmount, 24.0);
+    QVERIFY(!regular.drawsBorder);
     QVERIFY(clear.blurRadius < regular.blurRadius);
     QVERIFY(clear.refractionHeight > regular.refractionHeight);
     QVERIFY(clear.refractionAmount > regular.refractionAmount);
@@ -240,6 +242,40 @@ void LiquidGlassTest::rimIsHorizontallySymmetric() {
     QVERIFY(std::abs(leading.red() - trailing.red()) <= 2);
     QVERIFY(std::abs(leading.green() - trailing.green()) <= 2);
     QVERIFY(std::abs(leading.blue() - trailing.blue()) <= 2);
+}
+
+void LiquidGlassTest::interiorLightingIsVerticallyBalanced() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool originalEnabled = manager->liquidGlassEnabled();
+    const int originalTint = manager->liquidGlassTintLevel();
+    manager->setLiquidGlassEnabled(true);
+    manager->setLiquidGlassTintLevel(vkui::VkMinimumLiquidGlassTintLevel);
+
+    QWidget host;
+    host.resize(240, 96);
+    SplitColorWidget source(&host);
+    source.setColors(Qt::white, Qt::white);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(20, 16, 200, 64);
+    auto style = vkui::VLiquidGlassStyle::regular();
+    style.drawsBorder = false;
+    surface.setGlassStyle(style);
+    surface.setBackdrop(&backdrop);
+    surface.raise();
+    host.show();
+    QCoreApplication::processEvents();
+
+    const QColor upper = sampledColor(surface, QPoint(surface.width() / 2, surface.height() / 4));
+    const QColor lower =
+        sampledColor(surface, QPoint(surface.width() / 2, surface.height() * 3 / 4));
+    QVERIFY(std::abs(upper.red() - lower.red()) <= 2);
+    QVERIFY(std::abs(upper.green() - lower.green()) <= 2);
+    QVERIFY(std::abs(upper.blue() - lower.blue()) <= 2);
+
+    manager->setLiquidGlassTintLevel(originalTint);
+    manager->setLiquidGlassEnabled(originalEnabled);
 }
 
 void LiquidGlassTest::themeTintPreferenceChangesRenderedMaterial() {

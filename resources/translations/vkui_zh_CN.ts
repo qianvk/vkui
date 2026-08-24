@@ -1429,6 +1429,10 @@
         <translation>着色</translation>
     </message>
     <message>
+        <source>Scrollable Liquid Glass backdrop</source>
+        <translation>可滚动的液态玻璃背景</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="49"/>
         <source>Theme and Appearance</source>
         <translation>主题与外观</translation>

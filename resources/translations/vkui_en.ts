@@ -1429,6 +1429,10 @@
         <translation>Tinted</translation>
     </message>
     <message>
+        <source>Scrollable Liquid Glass backdrop</source>
+        <translation>Scrollable Liquid Glass backdrop</translation>
+    </message>
+    <message>
         <location filename="../../examples/gallery/pages/ThemePage.cpp" line="49"/>
         <source>Theme and Appearance</source>
         <translation>Theme and Appearance</translation>
