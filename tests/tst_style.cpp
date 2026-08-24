@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "widgets/animation/private/VkWidgetAnimation_p.h"
+#include "widgets/effects/private/VkPopupGlassStyle_p.h"
 #include "widgets/style/private/VStylePainter_p.h"
 
 #include <QAbstractButton>
@@ -735,7 +736,9 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(comboGlass->isHidden());
     QVERIFY(comboGlass->backdrop() != nullptr);
     QCOMPARE(comboGlass->backdrop()->sourceWidget(), &owner);
-    QCOMPARE(comboGlass->glassStyle().blurRadius, vkui::VLiquidGlassStyle::popup().blurRadius);
+    QCOMPARE(comboGlass->glassStyle().blurRadius, vkui::detail::popupGlassStyle().blurRadius);
+    QCOMPARE(comboGlass->glassStyle().saturation, vkui::detail::popupGlassStyle().saturation);
+    QCOMPARE(comboGlass->glassStyle().tintOpacity, vkui::detail::popupGlassStyle().tintOpacity);
     const auto& metrics = manager->theme().metrics();
     const int shadowMargin = qCeil(metrics.spacing8 + std::abs(metrics.spacing2));
     const int contentMargin = qRound(metrics.spacing6);
@@ -799,7 +802,8 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(menuGlass != nullptr);
     QVERIFY(menuGlass->isHidden());
     QCOMPARE(menuGlass->backdrop()->sourceWidget(), &owner);
-    QCOMPARE(menuGlass->glassStyle().blurRadius, vkui::VLiquidGlassStyle::popup().blurRadius);
+    QCOMPARE(menuGlass->glassStyle().blurRadius, vkui::detail::popupGlassStyle().blurRadius);
+    QCOMPARE(menuGlass->glassStyle().tintOpacity, vkui::detail::popupGlassStyle().tintOpacity);
     QCOMPARE(menu.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &menu),
              shadowMargin + contentMargin);
     QCOMPARE(menuGlass->geometry(),

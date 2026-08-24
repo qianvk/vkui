@@ -240,7 +240,7 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
                            std::max(1, qCeil(logicalSize.height() * scale)));
     const int blurRadius = qRound(std::max<qreal>(0.0, style.blurRadius) * scale);
     const QImage blurred = gaussianApproximation(frame.image, blurRadius);
-    const qreal scattering = std::clamp(style.blurRadius / 3.0, 0.0, 1.0);
+    const qreal scattering = std::clamp(style.blurRadius / 3.0, 0.0, 0.72);
     const QImage opticalSource =
         blurRadius > 0 ? blendImages(frame.image, blurred, scattering) : frame.image;
     QImage result(outputSize, QImage::Format_ARGB32_Premultiplied);
@@ -257,7 +257,6 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
     const qreal dispersion = std::max<qreal>(0.0, style.chromaticAberration) * scale;
     const qreal padding = frame.padding * scale;
     const qreal saturation = std::clamp(style.saturation, 0.0, 2.0);
-    const qreal materialOpacity = std::clamp(style.materialOpacity, 0.0, 1.0);
     qreal tintOpacity = std::clamp(style.tintOpacity, 0.0, 1.0);
     if (style.adaptiveLuminance) {
         const qreal contrastDistance = std::abs(averageLuminance(opticalSource) - 0.5) * 2.0;
@@ -320,9 +319,8 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
             red = std::lerp(red, static_cast<qreal>(tint.red()), tintOpacity);
             green = std::lerp(green, static_cast<qreal>(tint.green()), tintOpacity);
             blue = std::lerp(blue, static_cast<qreal>(tint.blue()), tintOpacity);
-            output[x] = qPremultiply(
-                qRgba(boundedChannel(red), boundedChannel(green), boundedChannel(blue),
-                      boundedChannel(center.alpha * materialOpacity)));
+            output[x] = qRgba(boundedChannel(red), boundedChannel(green), boundedChannel(blue),
+                              boundedChannel(center.alpha));
         }
     }
     return result;

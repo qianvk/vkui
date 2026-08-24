@@ -148,6 +148,9 @@ void PopoverInteractionTest::popoverUsesSharedLiquidGlassPolicy() {
     QVERIFY(surface->isVisible());
     QVERIFY(surface->backdrop() != nullptr);
     QCOMPARE(surface->backdrop()->sourceWidget(), &window);
+    QCOMPARE(surface->glassStyle().blurRadius, 10.0);
+    QCOMPARE(surface->glassStyle().refractionHeight, 0.0);
+    QCOMPARE(surface->glassStyle().tintOpacity, 0.24);
 
     manager->setLiquidGlassEnabled(false);
     QCoreApplication::processEvents();
