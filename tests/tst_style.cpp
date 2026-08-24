@@ -112,6 +112,17 @@ QImage renderWidget(QWidget& widget) {
     return image;
 }
 
+QImage renderPopupSurface(QWidget& popup) {
+    QImage image(popup.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    QStyleOption option;
+    option.initFrom(&popup);
+    option.rect = popup.rect();
+    popup.style()->drawPrimitive(QStyle::PE_PanelMenu, &option, &painter, &popup);
+    return image;
+}
+
 qreal linearChannel(qreal channel) {
     return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
 }
@@ -180,6 +191,11 @@ QRect matchingColorBounds(const QImage& image, const QColor& target, const int t
         }
     }
     return bounds;
+}
+
+int colorDistance(const QColor& first, const QColor& second) {
+    return std::abs(first.red() - second.red()) + std::abs(first.green() - second.green()) +
+           std::abs(first.blue() - second.blue()) + std::abs(first.alpha() - second.alpha());
 }
 
 } // namespace
@@ -719,7 +735,41 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QCOMPARE(comboGlass->geometry(),
              comboPopup->rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(comboGlass->glassStyle().cornerRadius, metrics.comboBoxPopupCornerRadius);
-    QVERIFY(comboGlass->glassStyle().refractionHeight <= contentMargin);
+    QVERIFY(comboGlass->glassStyle().refractionHeight > contentMargin);
+
+    // A missing backdrop selects the uniform material fallback. Any pixel discontinuity between
+    // the popup-only render and a normal row can then only come from an extra content layer.
+    comboGlass->setBackdrop(nullptr);
+    const QImage comboSurfaceImage = renderPopupSurface(*comboPopup);
+    const QImage comboImage = renderWidget(*comboPopup);
+    const QRect normalRow = combo.view()->visualRect(combo.model()->index(1, combo.modelColumn()));
+    const QRect normalVisible = normalRow.intersected(combo.view()->viewport()->rect());
+    const QPoint normalSample = combo.view()->viewport()->mapTo(
+        comboPopup, QPoint(normalVisible.right() - contentMargin, normalVisible.center().y()));
+    QVERIFY2(comboImage.rect().contains(normalSample),
+             qPrintable(QStringLiteral("image=%1,%2 %3x%4 row=%5,%6 %7x%8 sample=%9,%10")
+                            .arg(comboImage.rect().x())
+                            .arg(comboImage.rect().y())
+                            .arg(comboImage.width())
+                            .arg(comboImage.height())
+                            .arg(normalVisible.x())
+                            .arg(normalVisible.y())
+                            .arg(normalVisible.width())
+                            .arg(normalVisible.height())
+                            .arg(normalSample.x())
+                            .arg(normalSample.y())));
+    const QColor comboItemColor = comboImage.pixelColor(normalSample);
+    const QColor comboSurfaceColor = comboSurfaceImage.pixelColor(normalSample);
+    QVERIFY2(colorDistance(comboItemColor, comboSurfaceColor) <= 4,
+             qPrintable(QStringLiteral("Combo item %1,%2,%3,%4 differs from surface %5,%6,%7,%8")
+                            .arg(comboItemColor.red())
+                            .arg(comboItemColor.green())
+                            .arg(comboItemColor.blue())
+                            .arg(comboItemColor.alpha())
+                            .arg(comboSurfaceColor.red())
+                            .arg(comboSurfaceColor.green())
+                            .arg(comboSurfaceColor.blue())
+                            .arg(comboSurfaceColor.alpha())));
 
     manager->setLiquidGlassEnabled(false);
     QVERIFY(comboGlass->isHidden());
@@ -746,12 +796,20 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
              menu.rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(menuGlass->glassStyle().cornerRadius, metrics.menuCornerRadius);
 
+    menuGlass->setBackdrop(nullptr);
+    const QImage menuSurfaceImage = renderPopupSurface(menu);
+    QImage menuImage = renderWidget(menu);
+    const QRect actionRect = menu.actionGeometry(menuAction);
+    const QPoint menuItemSample(actionRect.right() - contentMargin, actionRect.center().y());
+    QVERIFY(menuImage.rect().contains(menuItemSample));
+    QVERIFY2(colorDistance(menuImage.pixelColor(menuItemSample),
+                           menuSurfaceImage.pixelColor(menuItemSample)) <= 4,
+             "Menu actions must reveal the popup surface without an extra background layer");
+
     menu.setActiveAction(menuAction);
     menu.update();
     QCoreApplication::processEvents();
-    QImage menuImage(menu.size(), QImage::Format_ARGB32_Premultiplied);
-    menuImage.fill(Qt::transparent);
-    menu.render(&menuImage);
+    menuImage = renderWidget(menu);
     const QRect menuSurface = menuGlass->geometry();
     const QRect menuContent =
         menuSurface.adjusted(contentMargin, contentMargin, -contentMargin, -contentMargin);
