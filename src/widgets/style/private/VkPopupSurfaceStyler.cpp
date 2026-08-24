@@ -179,10 +179,12 @@ void VkPopupSurfaceStyler::polish(QWidget* widget) {
     applyTransparentPalette(*widget);
     syncTransparentContent(*widget, storedState);
     widget->clearMask();
+    // Popup surfaces provide their own cross-platform shadow. Disable the platform shadow so the
+    // material is composited once instead of acquiring a second opaque-looking perimeter on macOS.
+    widget->setWindowFlag(Qt::NoDropShadowWindowHint, true);
 #if defined(Q_OS_WIN)
     // Qt requires a frameless top-level window for translucent QWidget backgrounds on Windows.
     widget->setWindowFlag(Qt::FramelessWindowHint, true);
-    widget->setWindowFlag(Qt::NoDropShadowWindowHint, true);
 #endif
     widget->installEventFilter(this);
     connect(widget, &QObject::destroyed, this, [this, widget] { popups_.remove(widget); });
@@ -208,9 +210,7 @@ void VkPopupSurfaceStyler::unpolish(QWidget* widget) {
     widget->setAttribute(Qt::WA_StyledBackground, state.styledBackground);
     widget->setAutoFillBackground(state.autoFillBackground);
     widget->setPalette(state.palette);
-#if defined(Q_OS_WIN)
     widget->setWindowFlags(state.windowFlags);
-#endif
     if (state.mask.isEmpty()) {
         widget->clearMask();
     } else {

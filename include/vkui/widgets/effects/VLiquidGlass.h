@@ -25,15 +25,13 @@ enum class VLiquidGlassQuality {
 struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
     qreal cornerRadius = -1.0;
     qreal blurRadius = 1.0;
-    /** Mixes the blurred backdrop over its sharp source. Zero is clear; one is fully scattered. */
-    qreal backdropScattering = 0.33;
-    /** Blends local samples toward the surface-wide backdrop color for information materials. */
-    qreal backdropUniformity = 0.0;
     qreal refractionHeight = 12.0;
     qreal refractionAmount = 24.0;
     qreal chromaticAberration = 1.25;
     qreal saturation = 1.12;
     qreal tintOpacity = 0.10;
+    /** Controls how strongly the rendered material covers the live backdrop. */
+    qreal materialOpacity = 0.74;
     /** Scales optical specular edges independently from a semantic border. */
     qreal opticalEdgeIntensity = 1.0;
     bool adaptiveLuminance = true;

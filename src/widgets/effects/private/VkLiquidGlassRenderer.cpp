@@ -172,32 +172,23 @@ Sample bilinearSample(const QImage& image, const qreal x, const qreal y) noexcep
     };
 }
 
-Sample averageSample(const QImage& image) noexcept {
+qreal averageLuminance(const QImage& image) noexcept {
     if (image.isNull()) {
-        return {127.5, 127.5, 127.5, 255.0};
+        return 0.5;
     }
     const int stride = std::max(1, std::min(image.width(), image.height()) / 18);
-    Sample average{0.0, 0.0, 0.0, 0.0};
+    qreal luminance = 0.0;
     int samples = 0;
     for (int y = stride / 2; y < image.height(); y += stride) {
         const auto* row = reinterpret_cast<const QRgb*>(image.constScanLine(y));
         for (int x = stride / 2; x < image.width(); x += stride) {
             const QRgb pixel = row[x];
-            average.red += qRed(pixel);
-            average.green += qGreen(pixel);
-            average.blue += qBlue(pixel);
-            average.alpha += qAlpha(pixel);
+            luminance +=
+                (0.2126 * qRed(pixel) + 0.7152 * qGreen(pixel) + 0.0722 * qBlue(pixel)) / 255.0;
             ++samples;
         }
     }
-    if (samples <= 0) {
-        return {127.5, 127.5, 127.5, 255.0};
-    }
-    average.red /= samples;
-    average.green /= samples;
-    average.blue /= samples;
-    average.alpha /= samples;
-    return average;
+    return samples > 0 ? luminance / samples : 0.5;
 }
 
 int boundedChannel(const qreal channel) noexcept {
@@ -219,11 +210,6 @@ VLiquidGlassQuality resolvedQuality(const VLiquidGlassQuality quality) noexcept 
 } // namespace
 
 int VkLiquidGlassRenderer::capturePadding(const VLiquidGlassStyle& style) noexcept {
-    if (style.backdropUniformity >= 1.0) {
-        // A fully uniform material samples only a representative surface-wide color. It has no
-        // local blur or displaced edge samples, so the minimum bilinear guard is sufficient.
-        return 2;
-    }
     return qCeil(
         std::max({style.blurRadius * 1.35, style.refractionHeight + style.refractionAmount, 2.0}));
 }
@@ -252,16 +238,11 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
     const qreal scale = frame.sampleScale;
     const QSize outputSize(std::max(1, qCeil(logicalSize.width() * scale)),
                            std::max(1, qCeil(logicalSize.height() * scale)));
-    const qreal uniformity = std::clamp(style.backdropUniformity, 0.0, 1.0);
-    const bool fullyUniform = uniformity >= 1.0;
     const int blurRadius = qRound(std::max<qreal>(0.0, style.blurRadius) * scale);
-    const QImage blurred = blurRadius > 0 && !fullyUniform
-                               ? gaussianApproximation(frame.image, blurRadius)
-                               : frame.image;
-    const QImage opticalSource = blurRadius > 0 && !fullyUniform
-                                     ? blendImages(frame.image, blurred, style.backdropScattering)
-                                     : frame.image;
-    const Sample backdropAverage = averageSample(opticalSource);
+    const QImage blurred = gaussianApproximation(frame.image, blurRadius);
+    const qreal scattering = std::clamp(style.blurRadius / 3.0, 0.0, 1.0);
+    const QImage opticalSource =
+        blurRadius > 0 ? blendImages(frame.image, blurred, scattering) : frame.image;
     QImage result(outputSize, QImage::Format_ARGB32_Premultiplied);
     result.fill(Qt::transparent);
 
@@ -276,28 +257,12 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
     const qreal dispersion = std::max<qreal>(0.0, style.chromaticAberration) * scale;
     const qreal padding = frame.padding * scale;
     const qreal saturation = std::clamp(style.saturation, 0.0, 2.0);
+    const qreal materialOpacity = std::clamp(style.materialOpacity, 0.0, 1.0);
     qreal tintOpacity = std::clamp(style.tintOpacity, 0.0, 1.0);
     if (style.adaptiveLuminance) {
-        const qreal averageLuminance =
-            (0.2126 * backdropAverage.red + 0.7152 * backdropAverage.green +
-             0.0722 * backdropAverage.blue) /
-            255.0;
-        const qreal contrastDistance = std::abs(averageLuminance - 0.5) * 2.0;
+        const qreal contrastDistance = std::abs(averageLuminance(opticalSource) - 0.5) * 2.0;
         tintOpacity *= std::lerp(0.78, 1.18, contrastDistance);
         tintOpacity = std::clamp(tintOpacity, 0.0, 1.0);
-    }
-    if (fullyUniform) {
-        const qreal gray = 0.2126 * backdropAverage.red + 0.7152 * backdropAverage.green +
-                           0.0722 * backdropAverage.blue;
-        const qreal red = std::lerp(gray + (backdropAverage.red - gray) * saturation,
-                                    static_cast<qreal>(tint.red()), tintOpacity);
-        const qreal green = std::lerp(gray + (backdropAverage.green - gray) * saturation,
-                                      static_cast<qreal>(tint.green()), tintOpacity);
-        const qreal blue = std::lerp(gray + (backdropAverage.blue - gray) * saturation,
-                                     static_cast<qreal>(tint.blue()), tintOpacity);
-        result.fill(qRgba(boundedChannel(red), boundedChannel(green), boundedChannel(blue),
-                          boundedChannel(backdropAverage.alpha)));
-        return result;
     }
 
     for (int y = 0; y < outputSize.height(); ++y) {
@@ -345,9 +310,9 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
                 bilinearSample(opticalSource, sampleX + normalX * edgeDispersion,
                                sampleY + normalY * edgeDispersion);
 
-            qreal red = std::lerp(redSample.red, backdropAverage.red, uniformity);
-            qreal green = std::lerp(center.green, backdropAverage.green, uniformity);
-            qreal blue = std::lerp(blueSample.blue, backdropAverage.blue, uniformity);
+            qreal red = redSample.red;
+            qreal green = center.green;
+            qreal blue = blueSample.blue;
             const qreal gray = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
             red = gray + (red - gray) * saturation;
             green = gray + (green - gray) * saturation;
@@ -355,8 +320,9 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
             red = std::lerp(red, static_cast<qreal>(tint.red()), tintOpacity);
             green = std::lerp(green, static_cast<qreal>(tint.green()), tintOpacity);
             blue = std::lerp(blue, static_cast<qreal>(tint.blue()), tintOpacity);
-            output[x] = qRgba(boundedChannel(red), boundedChannel(green), boundedChannel(blue),
-                              boundedChannel(center.alpha));
+            output[x] = qPremultiply(
+                qRgba(boundedChannel(red), boundedChannel(green), boundedChannel(blue),
+                      boundedChannel(center.alpha * materialOpacity)));
         }
     }
     return result;
