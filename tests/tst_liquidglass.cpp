@@ -197,9 +197,12 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QCOMPARE(regular.refractionAmount, 24.0);
     QVERIFY(!regular.drawsBorder);
     QVERIFY(clear.blurRadius < regular.blurRadius);
+    QVERIFY(clear.backdropScattering < regular.backdropScattering);
     QVERIFY(clear.refractionHeight > regular.refractionHeight);
     QVERIFY(clear.refractionAmount > regular.refractionAmount);
     QVERIFY(popup.blurRadius > regular.blurRadius);
+    QCOMPARE(popup.backdropScattering, 1.0);
+    QCOMPARE(popup.backdropUniformity, 1.0);
     QVERIFY(popup.tintOpacity > regular.tintOpacity);
     QCOMPARE(popup.refractionHeight, 0.0);
     QCOMPARE(popup.refractionAmount, 0.0);
@@ -212,7 +215,7 @@ void LiquidGlassTest::popupMaterialHasNoPerimeterBand() {
     QWidget host;
     host.resize(240, 96);
     SplitColorWidget source(&host);
-    source.setColors(Qt::white, Qt::white);
+    source.setColors(QColor(20, 80, 220), QColor(245, 190, 30));
     source.setGeometry(host.rect());
     vkui::VLiquidGlassBackdrop backdrop(&source);
     vkui::VLiquidGlassSurface surface(&host);
@@ -347,6 +350,8 @@ void LiquidGlassTest::styleValuesAreSanitized() {
     vkui::VLiquidGlassStyle invalid;
     invalid.cornerRadius = -20.0;
     invalid.blurRadius = 1000.0;
+    invalid.backdropScattering = 9.0;
+    invalid.backdropUniformity = 9.0;
     invalid.refractionHeight = -5.0;
     invalid.refractionAmount = 80.0;
     invalid.chromaticAberration = 80.0;
@@ -358,6 +363,8 @@ void LiquidGlassTest::styleValuesAreSanitized() {
     const vkui::VLiquidGlassStyle resolved = surface.glassStyle();
     QCOMPARE(resolved.cornerRadius, -1.0);
     QCOMPARE(resolved.blurRadius, 64.0);
+    QCOMPARE(resolved.backdropScattering, 1.0);
+    QCOMPARE(resolved.backdropUniformity, 1.0);
     QCOMPARE(resolved.refractionHeight, 0.0);
     QCOMPARE(resolved.refractionAmount, 32.0);
     QCOMPARE(resolved.chromaticAberration, 8.0);
