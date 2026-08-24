@@ -147,6 +147,15 @@ const QPixmap& VkShadowCache::shadow(const QPainterPath& path, const QSize& logi
         boxBlur(image, passRadius, line);
         boxBlur(image, passRadius, line);
     }
+    {
+        // A translucent material cannot occlude a shadow painted underneath it. Remove the
+        // original surface shape after blurring so the cached drop shadow affects only pixels
+        // outside the popup instead of tinting its interior or creating a perimeter band.
+        QPainter painter(&image);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setCompositionMode(QPainter::CompositionMode_DestinationOut);
+        painter.fillPath(path, Qt::black);
+    }
     pixmap_ = QPixmap::fromImage(std::move(image));
     pixmap_.setDevicePixelRatio(dpr);
     return pixmap_;

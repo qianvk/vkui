@@ -83,15 +83,16 @@ VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
 
 VLiquidGlassStyle VLiquidGlassStyle::popup() noexcept {
     VLiquidGlassStyle style;
-    // Information-rich floating surfaces need a continuous regular material. A broad, gentle lens
-    // crosses the content inset instead of ending on the rectangular item-view boundary.
+    // Popup content and its surrounding padding must share one material. Edge refraction would
+    // create a second optical band around the rectangular item region, so floating information
+    // surfaces use uniform scattering and tint across their complete rounded shape.
     style.blurRadius = 10.0;
-    style.refractionHeight = 10.0;
-    style.refractionAmount = 8.0;
-    style.chromaticAberration = 0.35;
+    style.refractionHeight = 0.0;
+    style.refractionAmount = 0.0;
+    style.chromaticAberration = 0.0;
     style.saturation = 0.96;
     style.tintOpacity = 0.40;
-    style.opticalEdgeIntensity = 0.45;
+    style.opticalEdgeIntensity = 0.0;
     return style;
 }
 

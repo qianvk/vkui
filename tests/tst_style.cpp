@@ -735,7 +735,8 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QCOMPARE(comboGlass->geometry(),
              comboPopup->rect().adjusted(shadowMargin, shadowMargin, -shadowMargin, -shadowMargin));
     QCOMPARE(comboGlass->glassStyle().cornerRadius, metrics.comboBoxPopupCornerRadius);
-    QVERIFY(comboGlass->glassStyle().refractionHeight > contentMargin);
+    QCOMPARE(comboGlass->glassStyle().refractionHeight, 0.0);
+    QCOMPARE(comboGlass->glassStyle().opticalEdgeIntensity, 0.0);
 
     // A missing backdrop selects the uniform material fallback. Any pixel discontinuity between
     // the popup-only render and a normal row can then only come from an extra content layer.
