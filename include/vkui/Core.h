@@ -7,12 +7,13 @@
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkColorTokens.h>
 #include <vkui/core/VkDiagnostics.h>
-#include <vkui/core/VkIcon.h>
 #include <vkui/core/VkFileIcon.h>
+#include <vkui/core/VkIcon.h>
+#include <vkui/core/VkLiquidGlassPreference.h>
 #include <vkui/core/VkMetricTokens.h>
 #include <vkui/core/VkMotion.h>
+#include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeChange.h>
 #include <vkui/core/VkThemeManager.h>
-#include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTypographyTokens.h>

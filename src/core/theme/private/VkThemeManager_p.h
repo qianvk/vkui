@@ -8,6 +8,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QStyleHints>
 #include <vkui/core/VkAccentColor.h>
+#include <vkui/core/VkLiquidGlassPreference.h>
 #include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkTheme.h>
 #include <vkui/core/VkThemeChange.h>
@@ -47,6 +48,7 @@ class VkThemeManagerPrivate final {
     VkTheme resolvedTheme;
     bool animationsEnabled = true;
     bool liquidGlassEnabled = true;
+    int liquidGlassTintLevel = VkDefaultLiquidGlassTintLevel;
     QPointer<QGuiApplication> application;
     QPointer<QStyleHints> styleHints;
     QMetaObject::Connection colorSchemeConnection;

@@ -5,6 +5,9 @@ releases are tagged.
 
 ## Unreleased
 
+- Added a macOS-style Clear-to-Tinted Liquid Glass preference with a conditional live Gallery
+  slider, targeted cache invalidation, and borderless Gallery title-bar glass controls that retain
+  refraction and optical highlights.
 - Added a process-wide Liquid Glass policy, a live Regular/Clear Gallery preview, and automatic
   Qt-rendered glass materials for `QMenu`, `VCombobox` popups, and `VPopover`, with efficient opaque
   fallbacks when disabled.

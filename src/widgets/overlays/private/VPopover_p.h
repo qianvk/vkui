@@ -124,6 +124,7 @@ class VPopoverPrivate final : public QObject {
 
     QMetaObject::Connection themeChangedConnection;
     QMetaObject::Connection liquidGlassEnabledConnection;
+    QMetaObject::Connection liquidGlassTintConnection;
     QMetaObject::Connection contentDestroyedConnection;
     QMetaObject::Connection anchorDestroyedConnection;
     QMetaObject::Connection windowScreenConnection;

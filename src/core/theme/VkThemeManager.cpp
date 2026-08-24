@@ -735,4 +735,21 @@ void VkThemeManager::setLiquidGlassEnabled(const bool enabled) {
     Q_EMIT liquidGlassEnabledChanged(enabled);
 }
 
+int VkThemeManager::liquidGlassTintLevel() const noexcept {
+    return d->liquidGlassTintLevel;
+}
+
+void VkThemeManager::setLiquidGlassTintLevel(const int level) {
+    const int boundedLevel = boundedLiquidGlassTintLevel(level);
+    if (d->liquidGlassTintLevel == boundedLevel) {
+        return;
+    }
+    d->liquidGlassTintLevel = boundedLevel;
+    Q_EMIT liquidGlassTintLevelChanged(boundedLevel);
+}
+
+void VkThemeManager::resetLiquidGlassTintLevel() {
+    setLiquidGlassTintLevel(VkDefaultLiquidGlassTintLevel);
+}
+
 } // namespace vkui

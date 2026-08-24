@@ -20,6 +20,7 @@ class ThemeTest final : public QObject {
     void textSizeLevelResolvesTypographyAndMetricsPrecisely();
     void resolvedPaletteIsApplied();
     void liquidGlassPolicyHasPreciseSignal();
+    void liquidGlassTintPolicyIsClampedAndPrecise();
 };
 
 void ThemeTest::resolvedThemeIsComplete() {
@@ -257,6 +258,31 @@ void ThemeTest::liquidGlassPolicyHasPreciseSignal() {
     manager->setLiquidGlassEnabled(original);
     QCOMPARE(policySpy.count(), 2);
     QCOMPARE(themeSpy.count(), 0);
+}
+
+void ThemeTest::liquidGlassTintPolicyIsClampedAndPrecise() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int original = manager->liquidGlassTintLevel();
+    manager->resetLiquidGlassTintLevel();
+    QSignalSpy tintSpy(manager, &vkui::VkThemeManager::liquidGlassTintLevelChanged);
+    QSignalSpy themeSpy(manager, &vkui::VkThemeManager::themeChanged);
+
+    manager->setLiquidGlassTintLevel(63);
+    QCOMPARE(manager->liquidGlassTintLevel(), 63);
+    QCOMPARE(tintSpy.count(), 1);
+    QCOMPARE(themeSpy.count(), 0);
+
+    manager->setLiquidGlassTintLevel(1000);
+    QCOMPARE(manager->liquidGlassTintLevel(), vkui::VkMaximumLiquidGlassTintLevel);
+    QCOMPARE(tintSpy.count(), 2);
+    manager->setLiquidGlassTintLevel(1000);
+    QCOMPARE(tintSpy.count(), 2);
+
+    manager->setLiquidGlassTintLevel(-1000);
+    QCOMPARE(manager->liquidGlassTintLevel(), vkui::VkMinimumLiquidGlassTintLevel);
+    QCOMPARE(tintSpy.count(), 3);
+    QCOMPARE(themeSpy.count(), 0);
+    manager->setLiquidGlassTintLevel(original);
 }
 
 QTEST_MAIN(ThemeTest)
