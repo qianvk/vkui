@@ -21,11 +21,12 @@ style implementation. Applications should use semantic palette roles and theme t
 compositions.
 
 Runtime theme refresh is change-aware. Color-only changes update the application palette and
-visible top-level surfaces without traversing or repolishing every widget. Application typography
-uses Qt's native font propagation and size-hint invalidation; metrics-only changes use a coalesced
-structural refresh. Motion changes are consumed by animation drivers without rebuilding widget
-geometry. Popup-surface setup and refresh coordination live in separate private components so
-`VStyle` remains focused on Qt style contracts.
+visible top-level surfaces without traversing or repolishing every widget. Responsive typography
+uses one controller for all polished widgets and only assigns the body font when neither the widget
+nor its ancestors own an explicit font. `VTextStyle`, direct `QWidget::setFont()`, and model
+`Qt::FontRole` values remain authoritative. Typography and metrics changes share one coalesced
+structural refresh; motion changes do not rebuild geometry. Popup surfaces, typography, and refresh
+coordination live in separate private components so `VStyle` remains focused on Qt style contracts.
 
 Keyboard focus remains visible through a restrained neutral border; mouse activation does not add a
 blue focus box. `VCombobox` is the opt-in macOS-style combo box and uses the macOS up/down chevron
@@ -54,11 +55,16 @@ contrasting text and checkmark colors. Item icons share the state column, preser
 origin without per-row geometry or model scans. The state column, checkmark stroke, row height, and
 margins scale from the owning `VCombobox` font and icon size. This is intentional: on Cocoa, Qt's
 private popup view retains the platform `QMenu` class font even after the application font changes.
-The style resolves both painting and `sizeFromContents()` from the public combo-box owner instead of
-mutating or replacing that private view. General `QMenu` rows similarly take their point/pixel size
-from the theme body font while preserving the action font's family and emphasis. The compact gutter
-owns its spacing once; Qt's menu-delegate icon padding is not added again on top of VkUI's explicit
-column gap.
+The style resolves both painting and `sizeFromContents()` from the public combo-box owner found
+through the real popup viewport/container ancestry instead of mutating or replacing that private
+view. The collapsed label uses the same owner font and metrics rather than trusting a cached style
+option. General `QMenu` rows similarly take their point/pixel size from the theme body font while
+preserving the action font's family and emphasis. The compact gutter owns its spacing once; Qt's
+menu-delegate icon padding is not added again on top of VkUI's explicit column gap.
+
+`VTreeItemDelegate` treats the owning view as the default typography source, so cached view options
+cannot freeze row text at an older size. A model-provided `Qt::FontRole` remains an explicit
+application override, matching Qt's model/view contract.
 
 Checked checkbox and radio indicators use device-pixel-aligned outlines, accent-colored selected
 edges, and white marks. `vkui::setControlSize()` gives these standard widgets Small, Regular, and

@@ -11,6 +11,8 @@ releases are tagged.
 - Unified ComboBox and menu popup typography with their public owner/theme fonts, fixed coalesced
   metric invalidation during text-level changes, and connected Preferences to the real text-size
   setting instead of its obsolete percentage preview.
+- Added centralized responsive QWidget typography, popup content propagation, real ComboBox-owner
+  lookup, and view-owned tree fonts so every inherited Gallery control follows text-size changes.
 - Replaced the disclosure-only tree base and Gallery-specific tree painting with `VTreeView`,
   `VTreeItemDelegate`, and `VFileTreeView`: shared styling, delegate-authoritative icon hit testing,
   interruptible icon-only expansion, reusable branch connectors, and view-owned structural motion.

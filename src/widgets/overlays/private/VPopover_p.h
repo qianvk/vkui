@@ -10,6 +10,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
 #include <QtCore/QRect>
+#include <QtGui/QFont>
 #include <QtGui/QPainterPath>
 
 class QEvent;
@@ -92,6 +93,7 @@ class VPopoverPrivate final : public QObject {
     void removeAnchorFilters();
     void reconnectWindowAndScreen();
     void setObservedScreen(QScreen* screen);
+    void syncTypography();
     void queueReposition();
     [[nodiscard]] bool repositionNow();
     [[nodiscard]] QRectF anchorGlobalRect() const;
@@ -126,7 +128,13 @@ class VPopoverPrivate final : public QObject {
     bool filtersAttached = false;
     bool repositionQueued = false;
     bool internalHide = false;
+    bool managesFont = true;
+    bool hasAppliedFont = false;
+    bool managesContentFont = false;
+    bool hasAppliedContentFont = false;
     qreal currentOpacity = 1.0;
+    QFont appliedFont;
+    QFont appliedContentFont;
     QSize preferredContentSize;
     QMargins contentMarginOverride{-1, -1, -1, -1};
     VPopoverGeometryMetrics geometryMetrics;

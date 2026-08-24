@@ -71,6 +71,10 @@ VPopoverPrivate::VPopoverPrivate(VPopover* popover) : q(popover), animation(popo
     geometryMetrics = popoverGeometryMetrics(manager->theme().metrics());
     themeChangedConnection = connect(
         manager, &VkThemeManager::themeChanged, q, [this](quint64, const VkThemeChanges changes) {
+            if (changes.testFlag(VkThemeChange::Typography)) {
+                syncTypography();
+                queueReposition();
+            }
             if (changes.testFlag(VkThemeChange::Metrics)) {
                 const VPopoverGeometryMetrics nextMetrics =
                     popoverGeometryMetrics(VkThemeManager::instance()->theme().metrics());
@@ -86,6 +90,7 @@ VPopoverPrivate::VPopoverPrivate(VPopover* popover) : q(popover), animation(popo
                 q->update();
             }
         });
+    syncTypography();
 }
 
 VPopoverPrivate::~VPopoverPrivate() {
@@ -107,6 +112,9 @@ void VPopoverPrivate::setContentWidget(QWidget* newContent) {
     }
     content = nullptr;
     delete oldContent;
+    managesContentFont = false;
+    hasAppliedContentFont = false;
+    appliedContentFont = QFont{};
 
     if (!newContent) {
         if (contentViewport) {
@@ -122,9 +130,14 @@ void VPopoverPrivate::setContentWidget(QWidget* newContent) {
     preferredContentSize = {};
     newContent->setParent(contentViewport);
     content = newContent;
+    managesContentFont = !newContent->testAttribute(Qt::WA_SetFont);
+    syncTypography();
     contentDestroyedConnection = connect(newContent, &QObject::destroyed, q, [this] {
         content = nullptr;
         contentDestroyedConnection = {};
+        managesContentFont = false;
+        hasAppliedContentFont = false;
+        appliedContentFont = QFont{};
         preferredContentSize = {};
         if (contentViewport) {
             contentViewport->hide();
@@ -177,6 +190,37 @@ void VPopoverPrivate::refreshGeometry() {
     if (state != State::Closed && anchor && content) {
         (void)repositionNow();
     }
+}
+
+void VPopoverPrivate::syncTypography() {
+    if (q == nullptr) {
+        return;
+    }
+    if (managesFont && hasAppliedFont && q->font() != appliedFont) {
+        // QWidget::setFont() remains the explicit application override.
+        managesFont = false;
+    }
+    if (managesFont) {
+        const QFont target = VkThemeManager::instance()->theme().typography().body;
+        if (!hasAppliedFont || q->font() != target) {
+            q->setFont(target);
+        }
+        appliedFont = q->font();
+        hasAppliedFont = true;
+    }
+
+    if (content == nullptr || !managesContentFont) {
+        return;
+    }
+    if (hasAppliedContentFont && content->font() != appliedContentFont) {
+        managesContentFont = false;
+        return;
+    }
+    if (!hasAppliedContentFont || content->font() != q->font()) {
+        content->setFont(q->font());
+    }
+    appliedContentFont = content->font();
+    hasAppliedContentFont = true;
 }
 
 void VPopoverPrivate::setPreferredPlacement(VPopoverPlacement placement) {
@@ -646,8 +690,8 @@ bool VPopoverPrivate::repositionNow() {
     }
     finalPlacement = result;
     finalPath = VPopoverPath::create(result.bodyRect, result.resolvedPlacement, result.arrowTip,
-                                      result.arrowBaseCenter, metrics.popoverArrowWidth,
-                                      metrics.popoverCornerRadius);
+                                     result.arrowBaseCenter, metrics.popoverArrowWidth,
+                                     metrics.popoverCornerRadius);
     if (finalPath.isEmpty()) {
         return false;
     }
@@ -1044,6 +1088,9 @@ VPopover::VPopover(QWidget* parent)
     livePopoverPrivates().insert(this, d.get());
     Q_ASSERT_X(QThread::currentThread() == thread(), "VPopover::VPopover",
                "VPopover must be created on the GUI thread");
+    // Popup windows are a QWidget font-inheritance boundary by default. Keep the installed content
+    // hierarchy attached to the application typography without touching individual descendants.
+    setAttribute(Qt::WA_WindowPropagation, true);
     setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_NoSystemBackground, true);
     setAttribute(Qt::WA_DeleteOnClose, false);

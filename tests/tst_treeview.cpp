@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-#include <QDir>
 #include <QAbstractListModel>
+#include <QDir>
+#include <QFontMetrics>
 #include <QHeaderView>
 #include <QMouseEvent>
 #include <QPainter>
@@ -52,9 +53,9 @@ class OffsetTreeDelegate final : public vkui::VTreeItemDelegate {
     using vkui::VTreeItemDelegate::VTreeItemDelegate;
 
   protected:
-    [[nodiscard]] vkui::VTreeItemLayout layoutTreeItem(
-        const QStyleOptionViewItem& option, const QModelIndex& index,
-        const vkui::VTreeItemPresentation& presentation) const override {
+    [[nodiscard]] vkui::VTreeItemLayout
+    layoutTreeItem(const QStyleOptionViewItem& option, const QModelIndex& index,
+                   const vkui::VTreeItemPresentation& presentation) const override {
         vkui::VTreeItemLayout layout =
             VTreeItemDelegate::layoutTreeItem(option, index, presentation);
         constexpr int offset = 11;
@@ -66,7 +67,8 @@ class OffsetTreeDelegate final : public vkui::VTreeItemDelegate {
 
 class MoveListModel final : public QAbstractListModel {
   public:
-    explicit MoveListModel(const int count, QObject* parent = nullptr) : QAbstractListModel(parent) {
+    explicit MoveListModel(const int count, QObject* parent = nullptr)
+        : QAbstractListModel(parent) {
         for (int row = 0; row < count; ++row) {
             m_rows.append(QStringLiteral("Row %1").arg(row));
         }
@@ -106,8 +108,8 @@ class MoveListModel final : public QAbstractListModel {
         for (int index = 0; index < count; ++index) {
             moved.append(m_rows.takeAt(sourceRow));
         }
-        const int insertion = destinationChild > sourceRow ? destinationChild - count
-                                                            : destinationChild;
+        const int insertion =
+            destinationChild > sourceRow ? destinationChild - count : destinationChild;
         for (int index = 0; index < moved.size(); ++index) {
             m_rows.insert(insertion + index, moved.at(index));
         }
@@ -152,8 +154,7 @@ class MutationListModel final : public QAbstractListModel {
         }
         beginInsertRows(parent, row, row + count - 1);
         for (int offset = 0; offset < count; ++offset) {
-            m_rows.insert(row + offset,
-                          {QStringLiteral("Inserted %1").arg(offset), ChildKind});
+            m_rows.insert(row + offset, {QStringLiteral("Inserted %1").arg(offset), ChildKind});
         }
         endInsertRows();
         return true;
@@ -205,6 +206,7 @@ class TreeViewTest final : public QObject {
 
   private slots:
     void installsUnifiedStyleAndSharesDelegateGeometry();
+    void defaultFontComesFromViewAndModelFontRoleOverrides();
     void defaultIconGeometryTracksTextSizeAndExplicitSizesRemainAbsolute();
     void iconSingleClickIsTheOnlyPointerDisclosureAction();
     void rapidSecondClickReversesTheCurrentAnimationFrame();
@@ -220,6 +222,34 @@ class TreeViewTest final : public QObject {
     void contiguousRowMoveUsesOneFrameClockAndBoundedCache();
     void ownedModelCanOutliveAnimationChildrenDuringViewTeardown();
 };
+
+void TreeViewTest::defaultFontComesFromViewAndModelFontRoleOverrides() {
+    QStandardItemModel model;
+    auto* item = new QStandardItem(QStringLiteral("Typography source"));
+    model.appendRow(item);
+
+    vkui::VTreeView tree;
+    tree.setModel(&model);
+    QFont viewFont = tree.font();
+    viewFont.setPointSizeF(20.0);
+    tree.setFont(viewFont);
+
+    QStyleOptionViewItem staleOption;
+    staleOption.initFrom(&tree);
+    QFont staleFont = viewFont;
+    staleFont.setPointSizeF(8.0);
+    staleOption.font = staleFont;
+    staleOption.fontMetrics = QFontMetrics(staleFont);
+    staleOption.widget = &tree;
+    const QSize inheritedSize = tree.itemDelegate()->sizeHint(staleOption, model.index(0, 0));
+
+    QFont explicitModelFont = viewFont;
+    explicitModelFont.setPointSizeF(9.0);
+    item->setData(explicitModelFont, Qt::FontRole);
+    const QSize explicitSize = tree.itemDelegate()->sizeHint(staleOption, model.index(0, 0));
+
+    QVERIFY(inheritedSize.height() > explicitSize.height());
+}
 
 void TreeViewTest::defaultIconGeometryTracksTextSizeAndExplicitSizesRemainAbsolute() {
     auto* theme = vkui::VkThemeManager::instance();
@@ -301,8 +331,7 @@ void TreeViewTest::iconSingleClickIsTheOnlyPointerDisclosureAction() {
     const vkui::VTreeItemLayout layout = tree.itemLayout(folderIndex);
     QSignalSpy iconSpy(&tree, &vkui::VTreeView::expansionIconClicked);
 
-    QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier,
-                      layout.textRect.center());
+    QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier, layout.textRect.center());
     QVERIFY(!tree.isExpanded(folderIndex));
     QCOMPARE(iconSpy.size(), 0);
 
@@ -362,20 +391,17 @@ void TreeViewTest::rapidSecondClickReversesTheCurrentAnimationFrame() {
     QCoreApplication::sendEvent(tree.viewport(), &release);
 
     QVERIFY(!tree.isExpanded(folderIndex));
-    QCOMPARE(tree.viewport()->findChild<QWidget*>(
-                 QStringLiteral("vkDisclosureGroupTransition")),
+    QCOMPARE(tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition")),
              overlay);
     QCOMPARE(timeline->direction(), QTimeLine::Backward);
     QCOMPARE(timeline->currentTime(), interruptedTime);
-    QVERIFY(qFuzzyCompare(overlay->property("progress").toReal() + 1.0,
-                          interruptedProgress + 1.0));
+    QVERIFY(qFuzzyCompare(overlay->property("progress").toReal() + 1.0, interruptedProgress + 1.0));
 
     // A third press reverses the same paused frame again. No surface or
     // elapsed progress is rebuilt during repeated interruption.
     QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier, iconCenter);
     QVERIFY(tree.isExpanded(folderIndex));
-    QCOMPARE(tree.viewport()->findChild<QWidget*>(
-                 QStringLiteral("vkDisclosureGroupTransition")),
+    QCOMPARE(tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition")),
              overlay);
     QCOMPARE(timeline->direction(), QTimeLine::Forward);
     QCOMPARE(timeline->currentTime(), interruptedTime);
@@ -402,11 +428,9 @@ void TreeViewTest::standardCheckStateUsesItsOwnDelegateGeometry() {
     QVERIFY(layout.checkRect.isValid());
     QVERIFY(layout.textRect.left() > layout.checkRect.right());
 
-    QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier,
-                      layout.textRect.center());
+    QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier, layout.textRect.center());
     QCOMPARE(index.data(Qt::CheckStateRole).value<Qt::CheckState>(), Qt::Unchecked);
-    QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier,
-                      layout.checkRect.center());
+    QTest::mouseClick(tree.viewport(), Qt::LeftButton, Qt::NoModifier, layout.checkRect.center());
     QCOMPARE(index.data(Qt::CheckStateRole).value<Qt::CheckState>(), Qt::Checked);
 }
 
@@ -796,13 +820,11 @@ void TreeViewTest::rowInsertionAndRemovalUseOneLocalTimeline() {
     QCOMPARE(overlay->property("mutationKind").toString(), QStringLiteral("insert"));
     QVERIFY(overlay->geometry().top() > 0);
     QVERIFY(overlay->geometry().height() < tree.viewport()->height());
-    QVERIFY(overlay->property("surfaceArea").toInt() <
-            overlay->property("viewportArea").toInt());
+    QVERIFY(overlay->property("surfaceArea").toInt() < overlay->property("viewportArea").toInt());
     QCOMPARE(overlay->property("startScrollMaximum").toInt(), oldMaximum);
     const int insertedMaximum = overlay->property("targetScrollMaximum").toInt();
     QVERIFY(insertedMaximum > oldMaximum);
-    const QString mutationFrameDirectory =
-        qEnvironmentVariable("VKUI_MUTATION_FRAME_DIRECTORY");
+    const QString mutationFrameDirectory = qEnvironmentVariable("VKUI_MUTATION_FRAME_DIRECTORY");
     if (!mutationFrameDirectory.isEmpty()) {
         QVERIFY(QDir().mkpath(mutationFrameDirectory));
     }
@@ -813,8 +835,7 @@ void TreeViewTest::rowInsertionAndRemovalUseOneLocalTimeline() {
         QCoreApplication::processEvents();
         QCOMPARE(overlay->property("seamGap").toInt(), 0);
         const qreal progress = overlay->property("progress").toReal();
-        const int expected =
-            oldMaximum + qRound(progress * (insertedMaximum - oldMaximum));
+        const int expected = oldMaximum + qRound(progress * (insertedMaximum - oldMaximum));
         QCOMPARE(tree.verticalScrollBar()->maximum(), expected);
         QVERIFY(tree.verticalScrollBar()->maximum() >= previousMaximum);
         previousMaximum = tree.verticalScrollBar()->maximum();
@@ -822,8 +843,7 @@ void TreeViewTest::rowInsertionAndRemovalUseOneLocalTimeline() {
             (time == 0 || time == 96 || time == timeline->duration())) {
             QVERIFY(tree.viewport()->grab().save(
                 QDir(mutationFrameDirectory)
-                    .filePath(QStringLiteral("insert-%1.png")
-                                  .arg(time, 3, 10, QLatin1Char('0')))));
+                    .filePath(QStringLiteral("insert-%1.png").arg(time, 3, 10, QLatin1Char('0')))));
         }
     }
     tree.finishRowMutationAnimation();
@@ -874,15 +894,12 @@ void TreeViewTest::rowMutationInterruptionStartsAtThePaintedFrame() {
     auto* interrupted =
         tree.viewport()->findChild<QWidget*>(QStringLiteral("vkTreeMutationTransition"));
     QVERIFY(interrupted != nullptr);
-    const QVariantMap geometryBeforeInterruption =
-        interrupted->property("currentGeometry").toMap();
-    const QString mutationFrameDirectory =
-        qEnvironmentVariable("VKUI_MUTATION_FRAME_DIRECTORY");
+    const QVariantMap geometryBeforeInterruption = interrupted->property("currentGeometry").toMap();
+    const QString mutationFrameDirectory = qEnvironmentVariable("VKUI_MUTATION_FRAME_DIRECTORY");
     if (!mutationFrameDirectory.isEmpty()) {
         QVERIFY(QDir().mkpath(mutationFrameDirectory));
         QVERIFY(tree.viewport()->grab().save(
-            QDir(mutationFrameDirectory)
-                .filePath(QStringLiteral("interrupted-before.png"))));
+            QDir(mutationFrameDirectory).filePath(QStringLiteral("interrupted-before.png"))));
     }
 
     model.insertRow(2, new QStandardItem(QStringLiteral("Second mutation")));
@@ -892,15 +909,13 @@ void TreeViewTest::rowMutationInterruptionStartsAtThePaintedFrame() {
     timeline->setPaused(true);
     timeline->setCurrentTime(0);
     QCoreApplication::processEvents();
-    const QVariantMap geometryAfterInterruption =
-        replacement->property("currentGeometry").toMap();
+    const QVariantMap geometryAfterInterruption = replacement->property("currentGeometry").toMap();
     if (!mutationFrameDirectory.isEmpty()) {
         QVERIFY(tree.viewport()->grab().save(
-            QDir(mutationFrameDirectory)
-                .filePath(QStringLiteral("interrupted-after.png"))));
+            QDir(mutationFrameDirectory).filePath(QStringLiteral("interrupted-after.png"))));
     }
-    for (auto row = geometryBeforeInterruption.cbegin();
-         row != geometryBeforeInterruption.cend(); ++row) {
+    for (auto row = geometryBeforeInterruption.cbegin(); row != geometryBeforeInterruption.cend();
+         ++row) {
         if (!row.value().toRect().intersects(tree.viewport()->rect())) {
             continue;
         }
@@ -944,15 +959,14 @@ void TreeViewTest::hiddenUnrelatedMutationPreservesDisclosureTimeline() {
     timeline->setPaused(true);
     timeline->setCurrentTime(72);
     QCoreApplication::processEvents();
-    QWidget* expansionOverlay = tree.viewport()->findChild<QWidget*>(
-        QStringLiteral("vkDisclosureGroupTransition"));
+    QWidget* expansionOverlay =
+        tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition"));
     QVERIFY(expansionOverlay != nullptr);
     const qreal expansionProgress = expansionOverlay->property("progress").toReal();
 
     hiddenFolder->removeRow(0);
     QCOMPARE(hiddenFolder->rowCount(), 1);
-    QCOMPARE(tree.viewport()->findChild<QWidget*>(
-                 QStringLiteral("vkDisclosureGroupTransition")),
+    QCOMPARE(tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition")),
              expansionOverlay);
     QCOMPARE(expansionOverlay->property("progress").toReal(), expansionProgress);
 
@@ -966,14 +980,13 @@ void TreeViewTest::hiddenUnrelatedMutationPreservesDisclosureTimeline() {
     timeline->setPaused(true);
     timeline->setCurrentTime(128);
     QCoreApplication::processEvents();
-    QWidget* collapseOverlay = tree.viewport()->findChild<QWidget*>(
-        QStringLiteral("vkDisclosureGroupTransition"));
+    QWidget* collapseOverlay =
+        tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition"));
     QVERIFY(collapseOverlay != nullptr);
     const qreal collapseProgress = collapseOverlay->property("progress").toReal();
 
     hiddenFolder->appendRow(new QStandardItem(QStringLiteral("Replacement hidden child")));
-    QCOMPARE(tree.viewport()->findChild<QWidget*>(
-                 QStringLiteral("vkDisclosureGroupTransition")),
+    QCOMPARE(tree.viewport()->findChild<QWidget*>(QStringLiteral("vkDisclosureGroupTransition")),
              collapseOverlay);
     QCOMPARE(collapseOverlay->property("progress").toReal(), collapseProgress);
 
@@ -1012,8 +1025,8 @@ void TreeViewTest::contiguousRowMoveUsesOneFrameClockAndBoundedCache() {
 
     const QVariantMap from = overlay->property("fromGeometry").toMap();
     const QVariantMap to = overlay->property("toGeometry").toMap();
-    for (const QString& key : {QStringLiteral("Row 2"), QStringLiteral("Row 3"),
-                               QStringLiteral("Row 4")}) {
+    for (const QString& key :
+         {QStringLiteral("Row 2"), QStringLiteral("Row 3"), QStringLiteral("Row 4")}) {
         QVERIFY2(from.contains(key), qPrintable(key));
         QVERIFY2(to.contains(key), qPrintable(key));
     }
@@ -1036,8 +1049,8 @@ void TreeViewTest::contiguousRowMoveUsesOneFrameClockAndBoundedCache() {
         QCoreApplication::processEvents();
         const qreal progress = overlay->property("progress").toReal();
         const QVariantMap current = overlay->property("currentGeometry").toMap();
-        for (const QString& key : {QStringLiteral("Row 2"), QStringLiteral("Row 3"),
-                                   QStringLiteral("Row 4")}) {
+        for (const QString& key :
+             {QStringLiteral("Row 2"), QStringLiteral("Row 3"), QStringLiteral("Row 4")}) {
             const QRect start = from.value(key).toRect();
             const QRect finish = to.value(key).toRect();
             const int expectedY = qRound(start.top() + (finish.top() - start.top()) * progress);

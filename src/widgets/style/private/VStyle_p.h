@@ -6,6 +6,7 @@ namespace vkui {
 
 class VStyle;
 class VkPopupSurfaceStyler;
+class VkWidgetTypographyController;
 
 class VStylePrivate final {
   public:
@@ -14,6 +15,7 @@ class VStylePrivate final {
 
     VStyle* q = nullptr;
     VkPopupSurfaceStyler* popupSurfaces = nullptr;
+    VkWidgetTypographyController* typography = nullptr;
 };
 
 } // namespace vkui

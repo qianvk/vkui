@@ -42,9 +42,18 @@ namespace {
     if (view != nullptr && view->iconSize().isValid()) {
         return view->iconSize();
     }
-    const int extent = qRound(
-        VkThemeManager::instance()->theme().metrics().fixedControlExtentRegular);
+    const int extent =
+        qRound(VkThemeManager::instance()->theme().metrics().fixedControlExtentRegular);
     return {extent, extent};
+}
+
+void resolveDefaultItemFont(QStyleOptionViewItem& option, const QModelIndex& index,
+                            const VTreeView* view) {
+    if (view == nullptr || index.data(Qt::FontRole).isValid()) {
+        return;
+    }
+    option.font = view->font();
+    option.fontMetrics = QFontMetrics(option.font);
 }
 
 } // namespace
@@ -56,8 +65,8 @@ VTreeItemDelegate::VTreeItemDelegate(VTreeView* view, QObject* parent)
 
 VTreeItemDelegate::~VTreeItemDelegate() = default;
 
-VTreeItemPresentation VTreeItemDelegate::treeItemPresentation(
-    const QStyleOptionViewItem& option, const QModelIndex& index) const {
+VTreeItemPresentation VTreeItemDelegate::treeItemPresentation(const QStyleOptionViewItem& option,
+                                                              const QModelIndex& index) const {
     VTreeItemPresentation presentation;
     presentation.text = option.text;
     presentation.trailingText = index.data(VTreeTrailingTextRole).toString();
@@ -78,24 +87,21 @@ VTreeItemPresentation VTreeItemDelegate::treeItemPresentation(
         const bool pointsLeft = option.direction == Qt::RightToLeft;
         presentation.leadingIcon = icon(
             presentation.expanded ? VkSymbol::ChevronDown
-                                  : (pointsLeft ? VkSymbol::ChevronLeft
-                                                : VkSymbol::ChevronRight),
+                                  : (pointsLeft ? VkSymbol::ChevronLeft : VkSymbol::ChevronRight),
             VkIconRole::Secondary);
     }
     return presentation;
 }
 
-VTreeItemLayout VTreeItemDelegate::layoutTreeItem(
-    const QStyleOptionViewItem& option, const QModelIndex& index,
-    const VTreeItemPresentation& presentation) const {
+VTreeItemLayout VTreeItemDelegate::layoutTreeItem(const QStyleOptionViewItem& option,
+                                                  const QModelIndex& index,
+                                                  const VTreeItemPresentation& presentation) const {
     Q_UNUSED(index)
-    const QRect backgroundRect =
-        option.rect.adjusted(HorizontalInset, 2, -HorizontalInset, -2);
-    const QRect contentRect = backgroundRect.adjusted(ContentHorizontalPadding, 0,
-                                                      -ContentHorizontalPadding, 0);
+    const QRect backgroundRect = option.rect.adjusted(HorizontalInset, 2, -HorizontalInset, -2);
+    const QRect contentRect =
+        backgroundRect.adjusted(ContentHorizontalPadding, 0, -ContentHorizontalPadding, 0);
     const int leadingSlotWidth = resolvedIconSize(view_).width();
-    const QRect leadingRect =
-        logicalLeadingRect(contentRect, leadingSlotWidth, option.direction);
+    const QRect leadingRect = logicalLeadingRect(contentRect, leadingSlotWidth, option.direction);
     const QFontMetrics metrics(option.font);
     const int trailingWidth = presentation.trailingText.isEmpty()
                                   ? 0
@@ -107,8 +113,8 @@ VTreeItemLayout VTreeItemDelegate::layoutTreeItem(
     QRect textRect;
     if (option.direction == Qt::RightToLeft) {
         trailingRect = {contentRect.left(), contentRect.top(), trailingWidth, contentRect.height()};
-        const int textLeft = trailingRect.isEmpty() ? contentRect.left()
-                                                    : trailingRect.right() + ContentGap + 1;
+        const int textLeft =
+            trailingRect.isEmpty() ? contentRect.left() : trailingRect.right() + ContentGap + 1;
         int textRight = leadingRect.left() - ContentGap - 1;
         if (presentation.checkable) {
             checkRect = {textRight - leadingSlotWidth + 1, contentRect.top(), leadingSlotWidth,
@@ -125,8 +131,8 @@ VTreeItemLayout VTreeItemDelegate::layoutTreeItem(
             checkRect = {textLeft, contentRect.top(), leadingSlotWidth, contentRect.height()};
             textLeft = checkRect.right() + ContentGap + 1;
         }
-        const int textRight = trailingRect.isEmpty() ? contentRect.right()
-                                                     : trailingRect.left() - ContentGap - 1;
+        const int textRight =
+            trailingRect.isEmpty() ? contentRect.right() : trailingRect.left() - ContentGap - 1;
         textRect = {textLeft, contentRect.top(), std::max(0, textRight - textLeft + 1),
                     contentRect.height()};
     }
@@ -137,6 +143,7 @@ VTreeItemLayout VTreeItemDelegate::itemLayout(const QStyleOptionViewItem& option
                                               const QModelIndex& index) const {
     QStyleOptionViewItem resolved(option);
     initStyleOption(&resolved, index);
+    resolveDefaultItemFont(resolved, index, view_);
     resolved.state &= ~QStyle::State_HasFocus;
     return layoutTreeItem(resolved, index, treeItemPresentation(resolved, index));
 }
@@ -148,6 +155,7 @@ void VTreeItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
     }
     QStyleOptionViewItem resolved(option);
     initStyleOption(&resolved, index);
+    resolveDefaultItemFont(resolved, index, view_);
     resolved.state &= ~QStyle::State_HasFocus;
     const VTreeItemPresentation presentation = treeItemPresentation(resolved, index);
     const VTreeItemLayout layout = layoutTreeItem(resolved, index, presentation);
@@ -250,8 +258,8 @@ void VTreeItemDelegate::paintTreeItem(QPainter* painter, const QStyleOptionViewI
                                          std::max(0, layout.textRect.width())));
     if (!presentation.trailingText.isEmpty()) {
         painter->setPen(option.palette.color(group, QPalette::PlaceholderText));
-        const int trailingAlignment = option.direction == Qt::RightToLeft ? Qt::AlignLeft
-                                                                          : Qt::AlignRight;
+        const int trailingAlignment =
+            option.direction == Qt::RightToLeft ? Qt::AlignLeft : Qt::AlignRight;
         painter->drawText(layout.trailingRect, Qt::AlignVCenter | trailingAlignment,
                           presentation.trailingText);
     }
@@ -270,17 +278,16 @@ QSize VTreeItemDelegate::sizeHint(const QStyleOptionViewItem& option,
                                   const QModelIndex& index) const {
     QStyleOptionViewItem resolved(option);
     initStyleOption(&resolved, index);
+    resolveDefaultItemFont(resolved, index, view_);
     return treeItemSizeHint(resolved, index);
 }
 
 bool VTreeItemDelegate::editorEvent(QEvent* event, QAbstractItemModel* model,
-                                    const QStyleOptionViewItem& option,
-                                    const QModelIndex& index) {
+                                    const QStyleOptionViewItem& option, const QModelIndex& index) {
     if (event == nullptr || model == nullptr || !index.isValid()) {
         return false;
     }
-    if (event->type() != QEvent::MouseButtonPress &&
-        event->type() != QEvent::MouseButtonRelease &&
+    if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonRelease &&
         event->type() != QEvent::MouseButtonDblClick) {
         return QStyledItemDelegate::editorEvent(event, model, option, index);
     }
@@ -303,8 +310,7 @@ bool VTreeItemDelegate::editorEvent(QEvent* event, QAbstractItemModel* model,
     return true;
 }
 
-void VTreeItemDelegate::updateEditorGeometry(QWidget* editor,
-                                             const QStyleOptionViewItem& option,
+void VTreeItemDelegate::updateEditorGeometry(QWidget* editor, const QStyleOptionViewItem& option,
                                              const QModelIndex& index) const {
     if (editor != nullptr) {
         editor->setGeometry(itemLayout(option, index).textRect.adjusted(-2, 1, 2, -1));

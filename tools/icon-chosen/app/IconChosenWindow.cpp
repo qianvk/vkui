@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <vkui/widgets/VTextStyle.h>
 
 IconChosenWindow::IconChosenWindow(QWidget* parent) : QWidget(parent) {
     setWindowTitle(tr("Nerd Font icon chooser"));
@@ -37,10 +38,7 @@ IconChosenWindow::IconChosenWindow(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(12);
 
     auto* title = new QLabel(tr("Choose symbols for VkUI"), this);
-    QFont titleFont = title->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 6.0);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
+    vkui::setTextStyle(*title, vkui::VTextStyle::Title);
     layout->addWidget(title);
 
     auto* explanation = new QLabel(
@@ -164,9 +162,9 @@ void IconChosenWindow::loadSelection() {
     QString errorMessage;
     const auto selection = IconSelectionStore::load(path, &errorMessage);
     if (!selection) {
-        QMessageBox::warning(this, tr("Load failed"),
-                             tr("The selected icon manifest could not be loaded:\n%1")
-                                 .arg(errorMessage));
+        QMessageBox::warning(
+            this, tr("Load failed"),
+            tr("The selected icon manifest could not be loaded:\n%1").arg(errorMessage));
         return;
     }
 

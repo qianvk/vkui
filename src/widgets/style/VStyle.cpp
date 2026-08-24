@@ -4,6 +4,7 @@
 #include "private/VStyle_p.h"
 #include "private/VkPopupSurfaceStyler_p.h"
 #include "private/VkThemeRefreshCoordinator_p.h"
+#include "private/VkWidgetTypographyController_p.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -310,7 +311,8 @@ void drawComboBoxMenuItem(const QStyleOptionMenuItem& sourceOption, QPainter& pa
 namespace vkui {
 
 VStylePrivate::VStylePrivate(VStyle* owner)
-    : q(owner), popupSurfaces(new VkPopupSurfaceStyler(owner)) {}
+    : q(owner), popupSurfaces(new VkPopupSurfaceStyler(owner)),
+      typography(new VkWidgetTypographyController(owner)) {}
 
 VStylePrivate::~VStylePrivate() = default;
 
@@ -625,8 +627,11 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
             }
         }
 
-        const QString text = option->fontMetrics.elidedText(
+        const QFont resolvedFont = comboWidget->font();
+        const QFontMetrics resolvedFontMetrics(resolvedFont);
+        const QString text = resolvedFontMetrics.elidedText(
             combo->currentText, comboWidget->elideMode(), std::max(0, textRect.width()));
+        painter->setFont(resolvedFont);
         painter->setPen(enabled ? colors.textPrimary : colors.textDisabled);
         painter->drawText(textRect, Qt::AlignLeading | Qt::AlignVCenter | Qt::TextSingleLine, text);
         painter->restore();
@@ -715,7 +720,7 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
         if (!menuItem) {
             break;
         }
-        if (const auto* comboBox = qobject_cast<const VCombobox*>(widget)) {
+        if (const auto* comboBox = VkPopupSurfaceStyler::owningVCombobox(widget)) {
             drawComboBoxMenuItem(*menuItem, *painter, *comboBox, theme);
             return;
         }
@@ -777,6 +782,10 @@ void VStyle::drawControl(ControlElement element, const QStyleOption* option, QPa
             break;
         }
         QStyleOptionViewItem copy = *viewItem;
+        if (const auto* comboBox = VkPopupSurfaceStyler::owningVCombobox(widget)) {
+            copy.font = comboBox->font();
+            copy.fontMetrics = QFontMetrics(copy.font);
+        }
         if (selected) {
             QColor selection = colors.accent;
             selection.setAlphaF(theme.effectiveAppearance() == VkAppearance::Dark ? 0.28F : 0.16F);
@@ -1183,7 +1192,12 @@ QSize VStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
         break;
     case CT_ComboBox:
         if (const auto* comboBox = qobject_cast<const VCombobox*>(widget)) {
-            const QFontMetrics fontMetrics = option ? option->fontMetrics : comboBox->fontMetrics();
+            const QFontMetrics fontMetrics(comboBox->font());
+            if (const auto* comboOption = qstyleoption_cast<const QStyleOptionComboBox*>(option)) {
+                QStyleOptionComboBox resolvedOption(*comboOption);
+                resolvedOption.fontMetrics = fontMetrics;
+                result = QProxyStyle::sizeFromContents(type, &resolvedOption, contentsSize, widget);
+            }
             const ComboBoxMenuMetrics itemMetrics =
                 comboBoxMenuMetrics(fontMetrics, *comboBox, metrics);
             result.rheight() = std::max(result.height(), qRound(metrics.controlHeightRegular));
@@ -1239,7 +1253,7 @@ QSize VStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
         break;
     case CT_MenuItem: {
         const auto* menuItem = qstyleoption_cast<const QStyleOptionMenuItem*>(option);
-        const auto* comboBox = qobject_cast<const VCombobox*>(widget);
+        const auto* comboBox = VkPopupSurfaceStyler::owningVCombobox(widget);
         if (menuItem) {
             QStyleOptionMenuItem resolvedOption(*menuItem);
             resolvedOption.font = comboBox
@@ -1594,6 +1608,7 @@ void VStyle::polish(QApplication* application) {
 
 void VStyle::polish(QWidget* widget) {
     QProxyStyle::polish(widget);
+    d->typography->polish(widget);
     if (usesVkUiFocusRing(widget)) {
         // QStyleOption::State_MouseOver is defined for hover-aware widgets. Keep event delivery in
         // the style, as recommended by Qt, so every control receives the same behavior.
@@ -1611,6 +1626,7 @@ void VStyle::polish(QWidget* widget) {
 }
 
 void VStyle::unpolish(QApplication* application) {
+    d->typography->restoreAll();
     QProxyStyle::unpolish(application);
 }
 

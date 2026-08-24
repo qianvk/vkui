@@ -13,11 +13,11 @@ component-specific color. Blue is the default.
 
 `installVkUi()` applies a palette derived from the resolved color tokens. `themeChanged()` reports
 the exact changed groups through `VkThemeChanges`: `Colors`, `Metrics`, `Typography`, and `Motion`.
-Color-only updates repaint visible surfaces and never trigger a global widget-tree repolish.
-Typography updates use Qt's application-font propagation, which already delivers font changes,
-invalidates size hints, and activates affected layouts. A text-scale update therefore does not
-walk `QApplication::allWidgets()` or repolish every control. A future metrics-only change is
-coalesced to the next event-loop turn and rebuilds widget style geometry deterministically.
+Color-only updates repaint visible surfaces and never trigger a global widget-tree repolish. A
+central typography controller resolves the body font for polished widgets that have no application
+font override. This is required because platform class fonts can bypass ordinary application-font
+inheritance. A text-scale change also changes responsive metrics, so the font and geometry work is
+combined in one queued, coalesced structural pass rather than separate widget traversals.
 
 Semantic icon cache keys use `colorGeneration()` rather than the broader theme generation, so a
 future motion or metric update cannot evict unchanged rendered symbols. Application-wide QSS is not
@@ -50,8 +50,10 @@ The scale is responsive rather than a uniform transform:
 
 The manager captures the unscaled application font once when it attaches to `QGuiApplication`.
 Every level is resolved again from that baseline, so repeated or reversed adjustments never
-compound rounding or prior scale. Qt then propagates the body font efficiently to `QLabel`,
-`QGroupBox`, buttons, editors, item views, menus, and other widgets that inherit normally. No
+compound rounding or prior scale. `VStyle` enables `WA_WindowPropagation` at QWidget window
+boundaries and normalizes inherited fonts through one private controller. `QLabel`, `QGroupBox`,
+buttons, editors, item views, menus, popovers, and other descendants therefore use the same body
+size even when a platform class default would otherwise win. No
 VkUI-specific replacements for standard textual widgets are necessary. Use
 `setTextStyle(widget, VTextStyle::Title)` (or another semantic role) for explicitly styled text;
 the lightweight binding listens only for typography changes. Direct per-widget fonts remain an
@@ -75,9 +77,10 @@ handle, so semantic appearance follows Qt's existing `tickPosition` contract rat
 widget subclass or style property.
 
 A level change updates typography and responsive geometry together. Font inheritance remains owned
-by Qt, while one queued, coalesced structural refresh invalidates style-derived metrics for widgets
-whose own font does not change, including platform popup internals. Color-only changes stay on the
-cheap top-level repaint path and never trigger this traversal.
+by Qt after the controller resolves platform font exceptions. One queued, coalesced structural
+refresh updates inherited fonts and invalidates style-derived metrics, including platform popup
+internals. The 12 discrete levels bound this O(widget-count) work; color-only changes stay on the
+cheap top-level repaint path and never trigger it.
 
 Surface metrics remain component-scoped where their geometry is intentionally independent:
 `popoverCornerRadius`, `menuCornerRadius`, `comboBoxCornerRadius`, and

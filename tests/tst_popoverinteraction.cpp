@@ -2,16 +2,22 @@
 
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QWidget>
+#include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/overlays/VPopover.h>
+#include <vkui/widgets/style/VStyle.h>
 
 class PopoverInteractionTest : public QObject {
     Q_OBJECT
 
   private slots:
+    void initTestCase();
     void currentAnchorClickTogglesClosed();
     void anotherAnchorClickSurvivesOldPopoverClose();
+    void popupContentInheritsResponsiveFont();
 };
 
 namespace {
@@ -22,6 +28,10 @@ void clickThroughPopover(vkui::VPopover& popover, const QWidget& target) {
 }
 
 } // namespace
+
+void PopoverInteractionTest::initTestCase() {
+    vkui::installVkUi(*qApp);
+}
 
 void PopoverInteractionTest::currentAnchorClickTogglesClosed() {
     QWidget window;
@@ -82,6 +92,34 @@ void PopoverInteractionTest::anotherAnchorClickSurvivesOldPopoverClose() {
     QTRY_VERIFY(popover.isOpen());
     QTRY_VERIFY(second.underMouse());
     QVERIFY(!first.underMouse());
+}
+
+void PopoverInteractionTest::popupContentInheritsResponsiveFont() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int originalLevel = manager->textSizeLevel();
+    manager->setTextSizeLevel(vkui::VkMinimumTextSizeLevel);
+
+    QWidget window;
+    window.show();
+    vkui::VPopover popover(&window);
+    auto* content = new QWidget;
+    auto* label = new QLabel(QStringLiteral("Popover typography"), content);
+    popover.setContentWidget(content);
+    QCoreApplication::processEvents();
+    const int smallHeight = label->fontMetrics().height();
+    QCOMPARE(popover.font(), window.font());
+    QCOMPARE(content->font(), window.font());
+    QCOMPARE(label->font(), window.font());
+
+    manager->setTextSizeLevel(vkui::VkMaximumTextSizeLevel);
+    QCoreApplication::processEvents();
+    QCOMPARE(popover.font(), window.font());
+    QCOMPARE(content->font(), window.font());
+    QCOMPARE(label->font(), window.font());
+    QVERIFY(label->fontMetrics().height() > smallHeight);
+
+    manager->setTextSizeLevel(originalLevel);
+    QCoreApplication::processEvents();
 }
 
 QTEST_MAIN(PopoverInteractionTest)
