@@ -3,11 +3,14 @@
 #pragma once
 
 #include <QtCore/QHash>
+#include <QtCore/QList>
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 #include <QtGui/QPalette>
 #include <QtGui/QRegion>
 
 class QMenu;
+class QPainter;
 class QWidget;
 
 namespace vkui {
@@ -27,6 +30,7 @@ class VkPopupSurfaceStyler final : public QObject {
     [[nodiscard]] static bool isMenuPopup(const QWidget* widget);
     [[nodiscard]] static bool isPopupContainer(const QWidget* widget);
     [[nodiscard]] bool isPopupPart(const QWidget* widget) const;
+    void drawPopupSurface(const QWidget& popup, QPainter& painter) const;
 
     void polish(QWidget* widget);
     void unpolish(QWidget* widget);
@@ -35,6 +39,16 @@ class VkPopupSurfaceStyler final : public QObject {
     bool eventFilter(QObject* watched, QEvent* event) override;
 
   private:
+    struct ContentWidgetState final {
+        QPointer<QWidget> widget;
+        bool noSystemBackground = false;
+        bool opaquePaintEvent = false;
+        bool styledBackground = false;
+        bool autoFillBackground = false;
+        QPalette::ColorRole backgroundRole = QPalette::NoRole;
+        QPalette palette;
+    };
+
     struct PopupState final {
         bool translucentBackground = false;
         bool noSystemBackground = false;
@@ -44,6 +58,7 @@ class VkPopupSurfaceStyler final : public QObject {
         QPalette palette;
         QRegion mask;
         Qt::WindowFlags windowFlags;
+        QList<ContentWidgetState> contentWidgets;
         VLiquidGlassBackdrop* glassBackdrop = nullptr;
         VLiquidGlassSurface* glassSurface = nullptr;
     };
@@ -52,6 +67,9 @@ class VkPopupSurfaceStyler final : public QObject {
     [[nodiscard]] static bool hasMenuTransientParent(const QMenu* menu);
     static void scheduleMenuStackRestore(QMenu* menu, bool raiseMenu);
     static void applyTransparentPalette(QWidget& widget);
+    static void makeContentWidgetTransparent(QWidget& widget, PopupState& state);
+    static void syncTransparentContent(QWidget& popup, PopupState& state);
+    static void restoreContentWidgets(const PopupState& state);
     [[nodiscard]] static QWidget* backdropSourceFor(QWidget& popup);
     void syncLiquidGlassSurface(QWidget& popup);
 

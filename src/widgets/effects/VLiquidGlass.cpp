@@ -315,7 +315,7 @@ class VLiquidGlassSurfacePrivate final {
         material = VkLiquidGlassRenderer::render(frame, q->size(), effectiveStyle, glassTint());
     }
 
-    void paint() {
+    void paint(QPainter& painter) {
         if (!enabled) {
             return;
         }
@@ -327,11 +327,11 @@ class VLiquidGlassSurfacePrivate final {
         if (bounds.isEmpty()) {
             return;
         }
+        painter.save();
         const qreal radius = resolvedCornerRadius(style, bounds);
         QPainterPath path;
         path.addRoundedRect(bounds, radius, radius);
 
-        QPainter painter(q);
         painter.setRenderHint(QPainter::Antialiasing);
         const auto* manager = VkThemeManager::instance();
         if (!manager->liquidGlassEnabled()) {
@@ -342,6 +342,7 @@ class VLiquidGlassSurfacePrivate final {
                 painter.setBrush(Qt::NoBrush);
                 painter.drawPath(path);
             }
+            painter.restore();
             return;
         }
         painter.save();
@@ -383,6 +384,7 @@ class VLiquidGlassSurfacePrivate final {
             painter.setPen(QPen(QColor(255, 255, 255, dark ? 30 : 62), 1.0));
             painter.drawPath(innerPath);
         }
+        painter.restore();
     }
 
     VLiquidGlassSurface* q = nullptr;
@@ -449,7 +451,12 @@ bool VLiquidGlassSurface::isGlassEnabled() const noexcept {
 }
 
 void VLiquidGlassSurface::paintEvent(QPaintEvent*) {
-    d->paint();
+    QPainter painter(this);
+    d->paint(painter);
+}
+
+void VLiquidGlassSurface::paintMaterial(QPainter& painter) {
+    d->paint(painter);
 }
 
 bool VLiquidGlassSurface::event(QEvent* event) {

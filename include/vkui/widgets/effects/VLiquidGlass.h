@@ -9,6 +9,8 @@
 #include <memory>
 #include <vkui/VkUiGlobal.h>
 
+class QPainter;
+
 namespace vkui {
 
 /** Controls the CPU sampling resolution used by the liquid-glass renderer. */
@@ -44,6 +46,7 @@ struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
 
 class VLiquidGlassBackdropPrivate;
 class VLiquidGlassSurfacePrivate;
+class VkPopupSurfaceStyler;
 
 /**
  * Observes a backdrop source and shares local captures between glass surfaces.
@@ -116,6 +119,9 @@ class VKUI_WIDGETS_EXPORT VLiquidGlassSurface final : public QWidget {
 
   private:
     Q_DISABLE_COPY_MOVE(VLiquidGlassSurface)
+    friend class VkPopupSurfaceStyler;
+
+    void paintMaterial(QPainter& painter);
 
     std::unique_ptr<VLiquidGlassSurfacePrivate> d;
 };

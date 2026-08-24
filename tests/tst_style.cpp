@@ -549,6 +549,10 @@ void StyleTest::comboPopupRealignsCommittedItemAfterHover() {
 }
 
 void StyleTest::comboPopupUsesOneRoundedSurface() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool originalGlassEnabled = manager->liquidGlassEnabled();
+    manager->setLiquidGlassEnabled(false);
+
     InspectableComboBox combo;
     combo.addItems({QStringLiteral("One"), QStringLiteral("Two"), QStringLiteral("Three")});
     combo.setCurrentIndex(1);
@@ -557,10 +561,19 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     combo.show();
     QCoreApplication::processEvents();
 
-    const QPalette viewPalette = combo.view()->palette();
-    const QPalette viewportPalette = combo.view()->viewport()->palette();
-    const bool viewAutoFillBackground = combo.view()->autoFillBackground();
-    const bool viewportAutoFillBackground = combo.view()->viewport()->autoFillBackground();
+    const QColor hostileBackground(255, 0, 180);
+    const auto makeOpaque = [hostileBackground](QWidget& widget) {
+        QPalette palette = widget.palette();
+        palette.setColor(QPalette::Base, hostileBackground);
+        palette.setColor(QPalette::AlternateBase, hostileBackground);
+        palette.setColor(QPalette::Window, hostileBackground);
+        widget.setPalette(palette);
+        widget.setBackgroundRole(QPalette::Base);
+        widget.setAutoFillBackground(true);
+        widget.setAttribute(Qt::WA_OpaquePaintEvent, true);
+    };
+    makeOpaque(*combo.view());
+    makeOpaque(*combo.view()->viewport());
 
     combo.showPopup();
     QTRY_VERIFY(combo.view()->isVisible());
@@ -573,10 +586,15 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     QVERIFY(popup->testAttribute(Qt::WA_TranslucentBackground));
     QVERIFY(popup->mask().isEmpty());
     QCOMPARE(combo.view()->frameShape(), QFrame::NoFrame);
-    QCOMPARE(combo.view()->palette(), viewPalette);
-    QCOMPARE(combo.view()->viewport()->palette(), viewportPalette);
-    QCOMPARE(combo.view()->autoFillBackground(), viewAutoFillBackground);
-    QCOMPARE(combo.view()->viewport()->autoFillBackground(), viewportAutoFillBackground);
+    for (QWidget* content : {static_cast<QWidget*>(combo.view()), combo.view()->viewport()}) {
+        QCOMPARE(content->palette().color(QPalette::Base), QColor(Qt::transparent));
+        QCOMPARE(content->palette().color(QPalette::AlternateBase), QColor(Qt::transparent));
+        QCOMPARE(content->palette().color(QPalette::Window), QColor(Qt::transparent));
+        QCOMPARE(content->palette().color(content->backgroundRole()), QColor(Qt::transparent));
+        QVERIFY(!content->autoFillBackground());
+        QVERIFY(content->testAttribute(Qt::WA_NoSystemBackground));
+        QVERIFY(!content->testAttribute(Qt::WA_OpaquePaintEvent));
+    }
 
     const QModelIndex selectedIndex = combo.model()->index(combo.currentIndex(), 0);
     const QRect selectedRect = combo.view()->visualRect(selectedIndex);
@@ -610,7 +628,16 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     QCOMPARE(matchingComponents(popupImage, selectedCheckColumn,
                                 vkui::VStylePainter::contrastingText(theme.colors().accent)),
              1);
+
+    const QModelIndex normalIndex = combo.model()->index(0, 0);
+    const QRect normalRect = combo.view()->visualRect(normalIndex);
+    const QPoint normalBackgroundGlobal =
+        combo.view()->viewport()->mapToGlobal(QPoint(4, normalRect.center().y()));
+    const QPoint normalBackgroundLocal = popup->mapFromGlobal(normalBackgroundGlobal);
+    QCOMPARE(popupImage.pixelColor(normalBackgroundLocal), theme.colors().elevatedBackground);
+    QVERIFY(popupImage.pixelColor(normalBackgroundLocal) != hostileBackground);
     combo.hidePopup();
+    manager->setLiquidGlassEnabled(originalGlassEnabled);
 }
 
 void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
@@ -630,25 +657,33 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     auto* comboGlass = comboPopup->findChild<vkui::VLiquidGlassSurface*>(
         QStringLiteral("vkuiPopupLiquidGlassSurface"));
     QVERIFY(comboGlass != nullptr);
-    QVERIFY(comboGlass->isVisible());
+    QVERIFY(comboGlass->isHidden());
     QVERIFY(comboGlass->backdrop() != nullptr);
     QCOMPARE(comboGlass->backdrop()->sourceWidget(), &owner);
 
     manager->setLiquidGlassEnabled(false);
-    QTRY_VERIFY(!comboGlass->isVisible());
+    QVERIFY(comboGlass->isHidden());
     manager->setLiquidGlassEnabled(true);
-    QTRY_VERIFY(comboGlass->isVisible());
+    QVERIFY(comboGlass->isHidden());
     combo.hidePopup();
 
     QMenu menu(&owner);
-    menu.addAction(QStringLiteral("Menu item"));
+    const QColor markerColor(255, 0, 180);
+    QPixmap marker(12, 12);
+    marker.fill(markerColor);
+    QAction* menuAction = menu.addAction(QIcon(marker), QStringLiteral("Menu item"));
     menu.popup(owner.mapToGlobal(QPoint(24, 24)));
     QTRY_VERIFY(menu.isVisible());
     auto* menuGlass =
         menu.findChild<vkui::VLiquidGlassSurface*>(QStringLiteral("vkuiPopupLiquidGlassSurface"));
     QVERIFY(menuGlass != nullptr);
-    QVERIFY(menuGlass->isVisible());
+    QVERIFY(menuGlass->isHidden());
     QCOMPARE(menuGlass->backdrop()->sourceWidget(), &owner);
+
+    QImage menuImage(menu.size(), QImage::Format_ARGB32_Premultiplied);
+    menuImage.fill(Qt::transparent);
+    menu.render(&menuImage);
+    QCOMPARE(matchingComponents(menuImage, menu.actionGeometry(menuAction), markerColor), 1);
     menu.close();
 }
 
