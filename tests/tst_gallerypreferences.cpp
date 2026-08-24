@@ -4,10 +4,14 @@
 
 #include <QDialog>
 #include <QGuiApplication>
+#include <QLabel>
 #include <QPointer>
+#include <QSlider>
 #include <QWidget>
 #include <QtTest>
 #include <type_traits>
+#include <vkui/core/VkTextSize.h>
+#include <vkui/core/VkThemeManager.h>
 
 #if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
 int macVisibleSystemButtons(WId nativeViewId);
@@ -22,6 +26,7 @@ class GalleryPreferencesTest final : public QObject {
 
   private slots:
     void closeDestroysTheSingleLiveWindow();
+    void textSizeControlUsesTheApplicationTheme();
 };
 
 void GalleryPreferencesTest::closeDestroysTheSingleLiveWindow() {
@@ -53,6 +58,31 @@ void GalleryPreferencesTest::closeDestroysTheSingleLiveWindow() {
     preferences->close();
 #endif
     QTRY_VERIFY(preferences.isNull());
+}
+
+void GalleryPreferencesTest::textSizeControlUsesTheApplicationTheme() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int originalLevel = manager->textSizeLevel();
+    manager->resetTextSizeLevel();
+
+    GalleryPreferencesWindow preferences;
+    auto* slider = preferences.findChild<QSlider*>(QStringLiteral("preferencesTextSizeSlider"));
+    auto* value = preferences.findChild<QLabel*>(QStringLiteral("preferencesTextSizeValue"));
+    QVERIFY(slider != nullptr);
+    QVERIFY(value != nullptr);
+    QCOMPARE(slider->minimum(), vkui::VkMinimumTextSizeLevel);
+    QCOMPARE(slider->maximum(), vkui::VkMaximumTextSizeLevel);
+    QCOMPARE(slider->singleStep(), 1);
+    QCOMPARE(slider->tickPosition(), QSlider::TicksBelow);
+
+    slider->setValue(7);
+    QCOMPARE(manager->textSizeLevel(), 7);
+    QVERIFY(value->text().contains(QString::number(7)));
+
+    manager->setTextSizeLevel(9);
+    QCOMPARE(slider->value(), 9);
+    QVERIFY(value->text().contains(QString::number(9)));
+    manager->setTextSizeLevel(originalLevel);
 }
 
 QTEST_MAIN(GalleryPreferencesTest)

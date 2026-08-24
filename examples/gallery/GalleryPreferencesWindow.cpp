@@ -13,13 +13,14 @@
 #include <QPalette>
 #include <QScreen>
 #include <QSignalBlocker>
-#include <QSlider>
 #include <QVBoxLayout>
 #include <QtMath>
 #include <vkui/core/VkAppearance.h>
+#include <vkui/core/VkTextSize.h>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/VTextStyle.h>
+#include <vkui/widgets/controls/VSlider.h>
 
 namespace {
 
@@ -119,18 +120,24 @@ void GalleryPreferencesWindow::buildUi() {
     animationsBox_->setChecked(themeManager->animationsEnabled());
     form->addRow(animationsBox_);
 
-    scaleLabel_ = new QLabel(generalGroup_);
-    auto* scaleControl = new QWidget(generalGroup_);
-    auto* scaleLayout = new QHBoxLayout(scaleControl);
-    scaleLayout->setContentsMargins(0, 0, 0, 0);
-    scaleSlider_ = new QSlider(Qt::Horizontal, scaleControl);
-    scaleSlider_->setRange(80, 140);
-    scaleSlider_->setValue(100);
-    scaleValue_ = new QLabel(scaleControl);
-    scaleValue_->setMinimumWidth(46);
-    scaleLayout->addWidget(scaleSlider_, 1);
-    scaleLayout->addWidget(scaleValue_);
-    form->addRow(scaleLabel_, scaleControl);
+    textSizeLabel_ = new QLabel(generalGroup_);
+    auto* textSizeControl = new QWidget(generalGroup_);
+    auto* textSizeLayout = new QHBoxLayout(textSizeControl);
+    textSizeLayout->setContentsMargins(0, 0, 0, 0);
+    textSizeSlider_ = new vkui::VSlider(Qt::Horizontal, textSizeControl);
+    textSizeSlider_->setObjectName(QStringLiteral("preferencesTextSizeSlider"));
+    textSizeSlider_->setRange(vkui::VkMinimumTextSizeLevel, vkui::VkMaximumTextSizeLevel);
+    textSizeSlider_->setSingleStep(1);
+    textSizeSlider_->setPageStep(1);
+    textSizeSlider_->setTickInterval(1);
+    textSizeSlider_->setTickPosition(QSlider::TicksBelow);
+    textSizeSlider_->setValue(themeManager->textSizeLevel());
+    textSizeValue_ = new QLabel(textSizeControl);
+    textSizeValue_->setObjectName(QStringLiteral("preferencesTextSizeValue"));
+    textSizeValue_->setMinimumWidth(56);
+    textSizeLayout->addWidget(textSizeSlider_, 1);
+    textSizeLayout->addWidget(textSizeValue_);
+    form->addRow(textSizeLabel_, textSizeControl);
     contentLayout->addWidget(generalGroup_);
 
     noteLabel_ = new QLabel(content_);
@@ -157,8 +164,14 @@ void GalleryPreferencesWindow::buildUi() {
                 const QSignalBlocker blocker(animationsBox_);
                 animationsBox_->setChecked(enabled);
             });
-    connect(scaleSlider_, &QSlider::valueChanged, this,
-            [this](const int value) { scaleValue_->setText(tr("%1%").arg(value)); });
+    connect(textSizeSlider_, &QSlider::valueChanged, themeManager,
+            &vkui::VkThemeManager::setTextSizeLevel);
+    connect(themeManager, &vkui::VkThemeManager::textSizeLevelChanged, this,
+            [this](const int level) {
+                const QSignalBlocker blocker(textSizeSlider_);
+                textSizeSlider_->setValue(level);
+                textSizeValue_->setText(tr("Level %1").arg(level));
+            });
 }
 
 void GalleryPreferencesWindow::configureWindowChrome() {
@@ -205,8 +218,8 @@ void GalleryPreferencesWindow::retranslateUi() {
     appearanceBox_->setItemText(1, tr("Light"));
     appearanceBox_->setItemText(2, tr("Dark"));
     animationsBox_->setText(tr("Enable interface animations"));
-    scaleLabel_->setText(tr("Text preview scale"));
-    scaleValue_->setText(tr("%1%").arg(scaleSlider_->value()));
+    textSizeLabel_->setText(tr("Text size"));
+    textSizeValue_->setText(tr("Level %1").arg(textSizeSlider_->value()));
     noteLabel_->setText(
         tr("The Gallery application owns this lazily created window. Closing it releases the "
            "instance; reopening Preferences creates a fresh window with the current settings."));

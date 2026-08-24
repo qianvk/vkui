@@ -74,6 +74,11 @@ and a subtle elevated capsule handle. Continuous sliders retain the accent-fille
 handle, so semantic appearance follows Qt's existing `tickPosition` contract rather than another
 widget subclass or style property.
 
+A level change updates typography and responsive geometry together. Font inheritance remains owned
+by Qt, while one queued, coalesced structural refresh invalidates style-derived metrics for widgets
+whose own font does not change, including platform popup internals. Color-only changes stay on the
+cheap top-level repaint path and never trigger this traversal.
+
 Surface metrics remain component-scoped where their geometry is intentionally independent:
 `popoverCornerRadius`, `menuCornerRadius`, `comboBoxCornerRadius`, and
 `comboBoxPopupCornerRadius` must not be substituted for one another even when two defaults currently

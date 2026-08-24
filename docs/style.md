@@ -52,8 +52,13 @@ surface never composites a second border. These surfaces are painted through `QS
 every row. The active row uses the resolved theme accent as a solid background with automatically
 contrasting text and checkmark colors. Item icons share the state column, preserving one stable text
 origin without per-row geometry or model scans. The state column, checkmark stroke, row height, and
-margins scale from the active font and icon size. The compact gutter owns its spacing once; Qt's
-menu-delegate icon padding is not added again on top of VkUI's explicit column gap.
+margins scale from the owning `VCombobox` font and icon size. This is intentional: on Cocoa, Qt's
+private popup view retains the platform `QMenu` class font even after the application font changes.
+The style resolves both painting and `sizeFromContents()` from the public combo-box owner instead of
+mutating or replacing that private view. General `QMenu` rows similarly take their point/pixel size
+from the theme body font while preserving the action font's family and emphasis. The compact gutter
+owns its spacing once; Qt's menu-delegate icon padding is not added again on top of VkUI's explicit
+column gap.
 
 Checked checkbox and radio indicators use device-pixel-aligned outlines, accent-colored selected
 edges, and white marks. `vkui::setControlSize()` gives these standard widgets Small, Regular, and

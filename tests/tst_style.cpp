@@ -166,10 +166,13 @@ class StyleTest final : public QObject {
     void comboBoxUsesTwoChevronGlyphs();
     void comboBoxCollapsedSurfaceAppearsOnlyOnHover();
     void comboBoxUsesQtMenuDelegateAndPreservesCustomDelegates();
+    void comboBoxPopupUsesOwnerTypography();
     void comboPopupUsesMacStyleItems();
     void comboPopupUsesOneRoundedSurface();
+    void menuRenderingUsesThemeTypography();
     void submenuStaysAboveItsRestackedParent();
     void colorChangesAvoidStructuralRepolish();
+    void metricChangesTriggerOneCoalescedStructuralRefresh();
     void embeddedEditorsDoNotPaintASecondFrame();
     void comboBoxSizingAndElisionProtectTheChevronColumn();
     void fixedControlsHonorSizeClasses();
@@ -303,6 +306,44 @@ void StyleTest::comboBoxUsesQtMenuDelegateAndPreservesCustomDelegates() {
     customizedCombo.setItemDelegate(applicationDelegate);
     customizedCombo.ensurePolished();
     QCOMPARE(customizedCombo.itemDelegate(), applicationDelegate);
+}
+
+void StyleTest::comboBoxPopupUsesOwnerTypography() {
+    InspectableComboBox combo;
+    combo.addItems({QStringLiteral("One"), QStringLiteral("Two")});
+    QFont ownerFont = combo.font();
+    ownerFont.setPointSizeF(19.0);
+    combo.setFont(ownerFont);
+
+    QStyleOptionMenuItem ownerOption;
+    ownerOption.initFrom(&combo);
+    ownerOption.rect = QRect(0, 0, 240, 48);
+    ownerOption.state |= QStyle::State_Enabled | QStyle::State_Active;
+    ownerOption.menuItemType = QStyleOptionMenuItem::Normal;
+    ownerOption.text = QStringLiteral("Owner typography");
+    ownerOption.font = ownerFont;
+    ownerOption.fontMetrics = QFontMetrics(ownerFont);
+
+    QStyleOptionMenuItem staleOption(ownerOption);
+    QFont staleMenuFont = ownerFont;
+    staleMenuFont.setPointSizeF(10.0);
+    staleOption.font = staleMenuFont;
+    staleOption.fontMetrics = QFontMetrics(staleMenuFont);
+
+    const auto renderItem = [&combo](const QStyleOptionMenuItem& option) {
+        QImage image(option.rect.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        combo.style()->drawControl(QStyle::CE_MenuItem, &option, &painter, &combo);
+        return image;
+    };
+    QCOMPARE(renderItem(staleOption), renderItem(ownerOption));
+
+    const QSize staleSize =
+        combo.style()->sizeFromContents(QStyle::CT_MenuItem, &staleOption, QSize(40, 10), &combo);
+    const QSize ownerSize =
+        combo.style()->sizeFromContents(QStyle::CT_MenuItem, &ownerOption, QSize(40, 10), &combo);
+    QCOMPARE(staleSize, ownerSize);
 }
 
 void StyleTest::comboPopupUsesMacStyleItems() {
@@ -445,6 +486,42 @@ void StyleTest::comboPopupUsesOneRoundedSurface() {
     combo.hidePopup();
 }
 
+void StyleTest::menuRenderingUsesThemeTypography() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int originalLevel = manager->textSizeLevel();
+    manager->setTextSizeLevel(vkui::VkMinimumTextSizeLevel);
+
+    QMenu menu;
+    menu.addAction(QStringLiteral("Menu item"));
+    QStyleOptionMenuItem themeOption;
+    themeOption.initFrom(&menu);
+    themeOption.rect = QRect(0, 0, 220, 40);
+    themeOption.state |= QStyle::State_Enabled | QStyle::State_Active;
+    themeOption.menuItemType = QStyleOptionMenuItem::Normal;
+    themeOption.text = QStringLiteral("Menu item");
+    themeOption.font = manager->theme().typography().body;
+    themeOption.fontMetrics = QFontMetrics(themeOption.font);
+
+    QStyleOptionMenuItem staleOption(themeOption);
+    staleOption.font.setPointSizeF(19.0);
+    staleOption.fontMetrics = QFontMetrics(staleOption.font);
+    const auto renderItem = [&menu](const QStyleOptionMenuItem& option) {
+        QImage image(option.rect.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        menu.style()->drawControl(QStyle::CE_MenuItem, &option, &painter, &menu);
+        return image;
+    };
+    QCOMPARE(renderItem(staleOption), renderItem(themeOption));
+
+    const QSize staleSize =
+        menu.style()->sizeFromContents(QStyle::CT_MenuItem, &staleOption, QSize(40, 10), &menu);
+    const QSize themeSize =
+        menu.style()->sizeFromContents(QStyle::CT_MenuItem, &themeOption, QSize(40, 10), &menu);
+    QCOMPARE(staleSize, themeSize);
+    manager->setTextSizeLevel(originalLevel);
+}
+
 void StyleTest::submenuStaysAboveItsRestackedParent() {
 #if defined(Q_OS_MACOS)
     if (QGuiApplication::platformName() != QStringLiteral("cocoa")) {
@@ -503,6 +580,31 @@ void StyleTest::colorChangesAvoidStructuralRepolish() {
     QCOMPARE(probeStyle->polishCount, polishCount);
     QCOMPARE(qApp->palette().color(QPalette::Base), manager->theme().colors().contentBackground);
     QCOMPARE(qApp->palette().color(QPalette::Accent), manager->theme().colors().accent);
+}
+
+void StyleTest::metricChangesTriggerOneCoalescedStructuralRefresh() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const int originalLevel = manager->textSizeLevel();
+    manager->resetTextSizeLevel();
+
+    QWidget probe;
+    auto* probeStyle = new PolishProbeStyle;
+    probeStyle->setParent(&probe);
+    probe.setStyle(probeStyle);
+    probe.resize(80, 40);
+    probe.show();
+    probe.ensurePolished();
+    QCoreApplication::processEvents();
+
+    const int polishCount = probeStyle->polishCount;
+    const int unpolishCount = probeStyle->unpolishCount;
+    manager->setTextSizeLevel(vkui::VkMaximumTextSizeLevel);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(probeStyle->unpolishCount, unpolishCount + 1);
+    QCOMPARE(probeStyle->polishCount, polishCount + 1);
+    manager->setTextSizeLevel(originalLevel);
+    QCoreApplication::processEvents();
 }
 
 void StyleTest::embeddedEditorsDoNotPaintASecondFrame() {
@@ -580,8 +682,9 @@ void StyleTest::comboBoxSizingAndElisionProtectTheChevronColumn() {
     QFont largeFont = combo.font();
     largeFont.setPointSizeF(largeFont.pointSizeF() + 10.0);
     QStyleOptionMenuItem largeItem = regularItem;
-    largeItem.font = largeFont;
-    largeItem.fontMetrics = QFontMetrics(largeFont);
+    combo.setFont(largeFont);
+    // The private popup view can still report its stale platform-menu font. Sizing follows the
+    // public combo-box owner, matching the painting contract exercised above.
     const QSize largeItemSize =
         combo.style()->sizeFromContents(QStyle::CT_MenuItem, &largeItem, QSize(), &combo);
     QVERIFY(largeItemSize.width() > regularItemSize.width());
