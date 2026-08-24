@@ -8,6 +8,7 @@
 #include <QtCore/QList>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
+#include <QtCore/QRect>
 #include <QtGui/QPalette>
 #include <QtGui/QRegion>
 
@@ -20,6 +21,7 @@ namespace vkui {
 class VCombobox;
 class VLiquidGlassBackdrop;
 class VLiquidGlassSurface;
+struct VkMetricTokens;
 
 class VkPopupSurfaceStyler final : public QObject {
   public:
@@ -31,6 +33,11 @@ class VkPopupSurfaceStyler final : public QObject {
     [[nodiscard]] static const VCombobox* owningVCombobox(const QWidget* widget);
     [[nodiscard]] static bool isMenuPopup(const QWidget* widget);
     [[nodiscard]] static bool isPopupContainer(const QWidget* widget);
+    [[nodiscard]] static int shadowMargin(const VkMetricTokens& metrics) noexcept;
+    [[nodiscard]] static int contentMargin(const VkMetricTokens& metrics) noexcept;
+    [[nodiscard]] static int layoutMargin(const VkMetricTokens& metrics) noexcept;
+    [[nodiscard]] static QRect surfaceRect(const QWidget& popup,
+                                           const VkMetricTokens& metrics) noexcept;
     [[nodiscard]] bool isPopupPart(const QWidget* widget) const;
     void drawPopupSurface(const QWidget& popup, QPainter& painter) const;
 

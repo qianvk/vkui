@@ -13,6 +13,7 @@
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QWidget>
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
@@ -23,11 +24,6 @@ namespace {
 qreal deviceHairlineWidth(const QPainter& painter) {
     const QPaintDevice* device = painter.device();
     return 1.0 / std::max<qreal>(1.0, device ? device->devicePixelRatioF() : 1.0);
-}
-
-QRect popupSurfaceRect(const QWidget& popup, const vkui::VkMetricTokens& metrics) {
-    const int inset = qMax(0, qRound(metrics.spacing6));
-    return popup.rect().adjusted(inset, inset, -inset, -inset);
 }
 
 } // namespace
@@ -90,6 +86,28 @@ bool VkPopupSurfaceStyler::isPopupContainer(const QWidget* widget) {
     return isVComboboxPopup(widget) || isMenuPopup(widget);
 }
 
+int VkPopupSurfaceStyler::shadowMargin(const VkMetricTokens& metrics) noexcept {
+    // The cached shadow uses spacing8 blur and a downward spacing2 offset. Reserve their combined
+    // logical support so the backing-store boundary never clips the lower or side falloff.
+    return qMax(0, qCeil(metrics.spacing8 + std::abs(metrics.spacing2)));
+}
+
+int VkPopupSurfaceStyler::contentMargin(const VkMetricTokens& metrics) noexcept {
+    return qMax(0, qRound(metrics.spacing6));
+}
+
+int VkPopupSurfaceStyler::layoutMargin(const VkMetricTokens& metrics) noexcept {
+    // Qt uses PM_Menu*Margin for both menu action geometry and combo popup placement. Preserve a
+    // separate transparent shadow gutter outside the material and content padding inside it.
+    return shadowMargin(metrics) + contentMargin(metrics);
+}
+
+QRect VkPopupSurfaceStyler::surfaceRect(const QWidget& popup,
+                                        const VkMetricTokens& metrics) noexcept {
+    const int inset = shadowMargin(metrics);
+    return popup.rect().adjusted(inset, inset, -inset, -inset);
+}
+
 bool VkPopupSurfaceStyler::isPopupPart(const QWidget* widget) const {
     for (const QWidget* candidate = widget; candidate; candidate = candidate->parentWidget()) {
         if (isPopupContainer(candidate)) {
@@ -105,7 +123,7 @@ void VkPopupSurfaceStyler::drawPopupSurface(const QWidget& popup, QPainter& pain
     const bool comboBoxPopup = isVComboboxPopup(&popup);
     const qreal radius =
         comboBoxPopup ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
-    const QRect surfaceRect = popupSurfaceRect(popup, metrics);
+    const QRect surfaceRect = VkPopupSurfaceStyler::surfaceRect(popup, metrics);
     if (surfaceRect.isEmpty()) {
         return;
     }
@@ -420,7 +438,7 @@ void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
     style.cornerRadius =
         isVComboboxPopup(&popup) ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
     state.glassSurface->setGlassStyle(style);
-    state.glassSurface->setGeometry(popupSurfaceRect(popup, metrics));
+    state.glassSurface->setGeometry(surfaceRect(popup, metrics));
     state.glassSurface->hide();
 }
 
