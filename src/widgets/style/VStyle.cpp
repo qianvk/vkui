@@ -3,6 +3,7 @@
 #include "private/VStylePainter_p.h"
 #include "private/VStyle_p.h"
 #include "private/VkPopupSurfaceStyler_p.h"
+#include "private/VkScrollBarActivityController_p.h"
 #include "private/VkThemeRefreshCoordinator_p.h"
 #include "private/VkWidgetTypographyController_p.h"
 
@@ -17,6 +18,7 @@
 #include <QFrame>
 #include <QLayout>
 #include <QPainter>
+#include <QScrollBar>
 #include <QSlider>
 #include <QStyleFactory>
 #include <QStyleHintReturn>
@@ -338,6 +340,7 @@ namespace vkui {
 
 VStylePrivate::VStylePrivate(VStyle* owner)
     : q(owner), popupSurfaces(new VkPopupSurfaceStyler(owner)),
+      scrollBars(new VkScrollBarActivityController(owner)),
       typography(new VkWidgetTypographyController(owner)) {}
 
 VStylePrivate::~VStylePrivate() = default;
@@ -1087,9 +1090,12 @@ void VStyle::drawComplexControl(ComplexControl control, const QStyleOptionComple
         if (!scrollBar) {
             break;
         }
-        const QRect groove = subControlRect(CC_ScrollBar, scrollBar, SC_ScrollBarGroove, widget);
         const QRect slider = subControlRect(CC_ScrollBar, scrollBar, SC_ScrollBarSlider, widget);
-        painter->fillRect(groove, VStylePainter::multiplyAlpha(colors.controlFill, 0.45));
+        const auto* scrollBarWidget = qobject_cast<const QScrollBar*>(widget);
+        const qreal visibility = d->scrollBars->opacity(scrollBarWidget);
+        if (!slider.isValid() || visibility <= 0.0 || scrollBar->minimum >= scrollBar->maximum) {
+            return;
+        }
         const qreal inset = progress.hover > 0.0 ? metrics.spacing2 : metrics.spacing4;
         const QRectF thumb = scrollBar->orientation == Qt::Horizontal
                                  ? QRectF(slider).adjusted(0.0, inset, 0.0, -inset)
@@ -1099,9 +1105,11 @@ void VStyle::drawComplexControl(ComplexControl control, const QStyleOptionComple
         if (progress.press > 0.0) {
             thumbColor = VStylePainter::mix(thumbColor, colors.textSecondary, progress.press);
         }
+        thumbColor = VStylePainter::multiplyAlpha(
+            enabled ? thumbColor : colors.controlFillDisabled, visibility);
         VStylePainter::drawRoundedPanel(
             *painter, thumb, std::min(thumb.width(), thumb.height()) * 0.5,
-            enabled ? thumbColor : colors.controlFillDisabled, Qt::transparent, 0.0);
+            thumbColor, Qt::transparent, 0.0);
         return;
     }
     default:
@@ -1630,6 +1638,9 @@ void VStyle::polish(QWidget* widget) {
         // the style, as recommended by Qt, so every control receives the same behavior.
         widget->setAttribute(Qt::WA_Hover, true);
     }
+    if (auto* scrollBar = qobject_cast<QScrollBar*>(widget)) {
+        d->scrollBars->polish(scrollBar);
+    }
     if (VkPopupSurfaceStyler::isVComboboxPopup(widget)) {
         // Breeze uses the same narrow private-container seam. Translucency is a window-system
         // prerequisite for antialiased corners; item painting remains owned by Qt's view/delegate.
@@ -1649,6 +1660,9 @@ void VStyle::unpolish(QApplication* application) {
 
 void VStyle::unpolish(QWidget* widget) {
     d->popupSurfaces->unpolish(widget);
+    if (auto* scrollBar = qobject_cast<QScrollBar*>(widget)) {
+        d->scrollBars->unpolish(scrollBar);
+    }
     if (VkPopupSurfaceStyler::isVComboboxPopup(widget)) {
         if (QLayout* layout = widget->layout()) {
             layout->setContentsMargins(0, 0, 0, 0);
