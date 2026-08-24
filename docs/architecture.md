@@ -99,10 +99,12 @@ creates a whole-document subject string. Unsupported/invalid ICU patterns produc
 appearance, semantic token value types, icon rendering, and motion policy. Non-widget code can use
 this layer without taking a Qt Widgets dependency.
 
-`VkUI::Widgets` publicly links Core and depends on Qt Widgets. Its three distinct subsystems are:
+`VkUI::Widgets` publicly links Core and depends on Qt Widgets. Its four distinct subsystems are:
 
 - `VStyle`, which integrates with Qt's standard style contracts;
-- controls, which add missing input behaviors while building on Qt button semantics; and
+- controls, which add missing input behaviors while building on Qt button semantics;
+- effects, where liquid-glass providers and surfaces keep backdrop capture separate from content;
+  and
 - overlays, where `VPopover` owns independent top-level-window and anchor-monitoring behavior.
 
 The Popover is not owned by `VStyle`: opening, placement, focus, and close policy are component
@@ -162,6 +164,7 @@ same semantic tokens and palette roles.
 
 Installed headers live under `include/vkui`. `Core.h`, `Widgets.h`, `Window.h`, `Buffer.h`,
 `Interaction.h`, `Panel.h`, and `InteractionWidgets.h` are convenience umbrellas;
-the headers beneath `core`, `widgets/style`, `widgets/controls`, and `widgets/overlays` are the
-public API. Headers beneath any `src/**/private` directory are implementation details, may change
-without notice, and are never installed. No ABI stability is promised before 1.0.0.
+the headers beneath `core`, `widgets/style`, `widgets/controls`, `widgets/effects`, and
+`widgets/overlays` are the public API. Headers beneath any `src/**/private` directory are
+implementation details, may change without notice, and are never installed. No ABI stability is
+promised before 1.0.0.

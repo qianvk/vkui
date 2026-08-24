@@ -10,5 +10,9 @@ int main(int argc, char* argv[]) {
     control.addSegment(QStringLiteral("One"));
     control.addSegment(QStringLiteral("Two"));
     control.setCurrentIndex(1);
-    return control.currentIndex() == 1 ? 0 : 1;
+    QWidget source;
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface glass;
+    glass.setBackdrop(&backdrop);
+    return control.currentIndex() == 1 && glass.backdrop() == &backdrop ? 0 : 1;
 }

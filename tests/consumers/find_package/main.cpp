@@ -44,27 +44,34 @@ int main(int argc, char* argv[]) {
     if (!windowAgent.addTitleBar(&firstTitleBar) || !windowAgent.addTitleBar(&secondTitleBar)) {
         return 1;
     }
-    vkui::VMessageDialog prompt(vkui::VMessageDialog::Icon::Information,
-                                QStringLiteral("Installed API"),
-                                QStringLiteral("The installed Window component is available."),
-                                QDialogButtonBox::NoButton);
+    vkui::VMessageDialog prompt(
+        vkui::VMessageDialog::Icon::Information, QStringLiteral("Installed API"),
+        QStringLiteral("The installed Window component is available."), QDialogButtonBox::NoButton);
     auto* dismiss = prompt.addButton(QDialogButtonBox::Cancel);
     prompt.setDefaultButton(dismiss);
     prompt.setEscapeButton(dismiss);
     const bool windowApiValid = windowAgent.titleBars().size() == 2 &&
                                 windowAgent.systemButtons() == vkui::VSystemButton::Close &&
                                 prompt.buttons() == QList<QAbstractButton*>({dismiss}) &&
-                                prompt.defaultButton() == dismiss && prompt.escapeButton() == dismiss;
+                                prompt.defaultButton() == dismiss &&
+                                prompt.escapeButton() == dismiss;
 #else
     const bool windowApiValid = true;
 #endif
 
     vkui::VSwitch control;
     control.setChecked(true);
+    QWidget backdropSource;
+    vkui::VLiquidGlassBackdrop backdrop(&backdropSource);
+    vkui::VLiquidGlassSurface glass;
+    glass.setBackdrop(&backdrop);
+    glass.setGlassStyle(vkui::VLiquidGlassStyle::clear());
     QCheckBox checkBox;
     vkui::setControlSize(checkBox, vkui::VControlSize::Large);
     vkui::setControlExtent(checkBox, 27);
     return windowApiValid && typographyApiValid && control.isChecked() &&
+                   glass.backdrop() == &backdrop &&
+                   glass.glassStyle().quality == vkui::VLiquidGlassQuality::High &&
                    vkui::controlSize(checkBox) == vkui::VControlSize::Large &&
                    vkui::controlExtent(checkBox) == 27 &&
                    themeManager->theme().colorGeneration() > previousColorGeneration &&

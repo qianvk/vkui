@@ -167,6 +167,7 @@ target_sources(vkui_widgets
         include/vkui/widgets/controls/VSlider.h
         include/vkui/widgets/controls/VSwitch.h
         include/vkui/widgets/controls/VSegmentedControl.h
+        include/vkui/widgets/effects/VLiquidGlass.h
         include/vkui/widgets/overlays/VPopover.h
         include/vkui/widgets/views/VTreeItemDelegate.h
         include/vkui/widgets/views/VTreeView.h
@@ -192,6 +193,9 @@ target_sources(vkui_widgets
         src/widgets/controls/VSegmentedControl.cpp
         src/widgets/controls/private/VSwitch_p.h
         src/widgets/controls/private/VSegmentedControl_p.h
+        src/widgets/effects/VLiquidGlass.cpp
+        src/widgets/effects/private/VkLiquidGlassRenderer_p.h
+        src/widgets/effects/private/VkLiquidGlassRenderer.cpp
         src/widgets/overlays/VPopover.cpp
         src/widgets/overlays/private/VPopover_p.h
         src/widgets/overlays/private/VPopoverPlacementEngine_p.h

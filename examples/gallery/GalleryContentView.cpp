@@ -11,6 +11,7 @@
 #include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <vkui/widgets/effects/VLiquidGlass.h>
 
 GalleryContentView::GalleryContentView(QWidget* parent) : QWidget(parent) {
     auto* overlayLayout = new QGridLayout(this);
@@ -30,6 +31,8 @@ GalleryContentView::GalleryContentView(QWidget* parent) : QWidget(parent) {
     pages_ = new QStackedWidget(this);
     pages_->setObjectName(QStringLiteral("galleryPages"));
     overlayLayout->addWidget(pages_, 0, 0);
+    liquidGlassBackdrop_ = new vkui::VLiquidGlassBackdrop(pages_, this);
+    liquidGlassBackdrop_->setObjectName(QStringLiteral("galleryContentBackdrop"));
 
     // The logical title-bar widget stays behind page painting. Controls are
     // direct children of this view and are positioned by a non-painting layout.
@@ -46,6 +49,10 @@ QWidget* GalleryContentView::titleBar() const noexcept {
 
 QHBoxLayout* GalleryContentView::titleBarLayout() const noexcept {
     return titleBarLayout_;
+}
+
+vkui::VLiquidGlassBackdrop* GalleryContentView::liquidGlassBackdrop() const noexcept {
+    return liquidGlassBackdrop_;
 }
 
 void GalleryContentView::addPage(QWidget* page) {
@@ -78,8 +85,7 @@ void GalleryContentView::addPage(QWidget* page) {
     // Initial focus assignment can ask QScrollArea to reveal a child before
     // the top-level window is shown. Restore the designed resting inset once.
     QTimer::singleShot(0, scrollArea, [scrollArea] {
-        scrollArea->verticalScrollBar()->setValue(
-            scrollArea->verticalScrollBar()->minimum());
+        scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->minimum());
     });
 }
 

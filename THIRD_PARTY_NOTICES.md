@@ -23,3 +23,12 @@ headers. A copy of the upstream license is preserved at
 commit `f593b4d8e13f6c4b954b913758abc9d49bfeb8f2`.
 
 - QWindowKit: <https://github.com/qianvk/qwindowkit>
+
+## Liquid-glass architecture reference
+
+VkUI's liquid-glass module uses an original C++/Qt renderer. Its explicit backdrop-provider and
+surface separation, local capture model, and rounded-rectangle lens terminology were informed by
+Kyant0's AndroidLiquidGlass project. No AndroidLiquidGlass source or binary is copied, linked, or
+distributed by VkUI.
+
+- AndroidLiquidGlass: <https://github.com/Kyant0/AndroidLiquidGlass> (Apache-2.0)
