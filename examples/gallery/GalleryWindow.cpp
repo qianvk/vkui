@@ -24,6 +24,7 @@
 #include <QStandardItemModel>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <vkui/core/VkAppearance.h>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
@@ -40,13 +41,15 @@ constexpr QPoint GalleryTrafficLightOrigin{15, 15};
 
 } // namespace
 
-GalleryWindow::GalleryWindow(QWidget* parent) : QWidget(parent, Qt::Window), windowAgent_(*this) {
+GalleryWindow::GalleryWindow(QWidget* parent)
+    : QWidget(parent, Qt::Window), panelManager_(*this), windowAgent_(*this) {
     auto* windowLayout = new QVBoxLayout(this);
     windowLayout->setContentsMargins(0, 0, 0, 0);
     windowLayout->setSpacing(0);
 #if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
     windowAgent_.setTrafficLightOrigin(GalleryTrafficLightOrigin);
 #endif
+    panelManager_.setObjectName(QStringLiteral("galleryPanelManager"));
     language_ = Language::System;
     applyLanguage(language_);
     setMinimumSize(880, 620);
@@ -94,10 +97,13 @@ void GalleryWindow::rebuildCentralWidget() {
     if (pages_ != nullptr) {
         currentPage_ = pages_->currentIndex();
     }
-    if (splitter_ != nullptr && !splitter_->sizes().isEmpty()) {
-        navigationWidth_ = splitter_->sizes().constFirst();
+    if (splitter_ != nullptr && splitter_->sizes().size() == 2 &&
+        panelManager_.isPanelExpanded(QStringLiteral("navigation")) &&
+        panelManager_.isPanelExpanded(QStringLiteral("content"))) {
+        navigationWidth_ = std::max(1, splitter_->sizes().constFirst());
     }
 
+    panelManager_.closePanelChooser();
     windowAgent_.clearTitleBars();
     delete central_;
     central_ = nullptr;
@@ -110,8 +116,10 @@ void GalleryWindow::rebuildCentralWidget() {
 
     splitter_ = new vkui::VSplitter(Qt::Horizontal, central_);
     splitter_->setObjectName(QStringLiteral("galleryPanelSplitter"));
-    splitter_->setChildrenCollapsible(false);
+    splitter_->setChildrenCollapsible(true);
     splitter_->setOpaqueResize(true);
+    const bool rootAccepted = panelManager_.setLayoutRoot(splitter_);
+    Q_ASSERT(rootAccepted);
     rootLayout->addWidget(splitter_);
 
     auto* navigationPanel = new QWidget(splitter_);
@@ -263,6 +271,15 @@ void GalleryWindow::rebuildCentralWidget() {
     splitter_->setStretchFactor(0, 0);
     splitter_->setStretchFactor(1, 1);
     splitter_->setSizes({navigationWidth_, qMax(520, width() - navigationWidth_)});
+    splitter_->setCollapsible(0, true);
+    splitter_->setCollapsible(1, true);
+
+    const bool navigationRegistered = panelManager_.registerPanel(
+        QStringLiteral("navigation"), tr("Navigation"), navigationPanel, 1);
+    const bool contentRegistered =
+        panelManager_.registerPanel(QStringLiteral("content"), tr("Content"), contentPanel, 2);
+    Q_ASSERT(navigationRegistered);
+    Q_ASSERT(contentRegistered);
 
     connect(navigation_->selectionModel(), &QItemSelectionModel::currentChanged, this,
             [this](const QModelIndex& current) {
@@ -301,6 +318,7 @@ void GalleryWindow::rebuildCentralWidget() {
     layout()->addWidget(central_);
 
     interactiveWidgets.append(splitter_->handle(1));
+    interactiveWidgets.append(panelManager_.windowEdgeHandles());
     registerWindowChrome(navigationTitleBar, contentTitleBar, interactiveWidgets);
 }
 

@@ -164,6 +164,25 @@
         <source>vkui Gallery</source>
         <translation>vkui 画廊</translation>
     </message>
+    <message>
+        <source>Navigation</source>
+        <translation>导航</translation>
+    </message>
+    <message>
+        <source>Content</source>
+        <translation>内容</translation>
+    </message>
+</context>
+<context>
+    <name>VPanelManager</name>
+    <message>
+        <source>Panel %1</source>
+        <translation>面板 %1</translation>
+    </message>
+    <message>
+        <source>Panel edge handle</source>
+        <translation>面板边缘手柄</translation>
+    </message>
 </context>
 <context>
     <name>IconsPage</name>

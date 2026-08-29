@@ -10,9 +10,10 @@ and delegates unsupported elements to its explicit Fusion base style.
 
 Public widget subclasses are reserved for explicit behavior gaps. They retain the closest Qt base
 class as their behavioral contract; for example, `VSplitter` customizes `QSplitter::createHandle()`
-without replacing Qt's resizing, cursor, saved-state, or right-to-left behavior. Search fields,
-navigation sidebars, cards, and settings rows remain compositions made from standard widgets in
-application code.
+without replacing Qt's resizing, saved-state, or right-to-left behavior. Its handle corrects only
+boundary cursor ownership through the owning `QWindow`'s public event and cursor APIs. Search
+fields, navigation sidebars, cards, and settings rows remain compositions made from standard
+widgets in application code.
 
 ## Module graph
 
@@ -132,9 +133,11 @@ stable theme API.
 `VSwitch` inherits `QAbstractButton`, so checked state, signals, mouse activation, Space-key use,
 focus, and accessible button semantics have one source of truth. `VSegmentedControl` composes
 private checkable `QAbstractButton` children in an exclusive `QButtonGroup`; it does not reimplement
-generic button behavior or expose the child type. `VSplitter` inherits `QSplitter` and replaces
-only its handle painter; Qt continues to own hit testing and expands the one-pixel layout handle
-over adjacent panels to provide a practical grab area without a gutter.
+generic button behavior or expose the child type. `VSplitter` inherits `QSplitter`; Qt continues
+to own resizing and hit testing through a non-overlapping five-pixel handle while vkui paints only
+the center pixel. The handle tracks current pointer geometry on the owning `QWindow` instead of
+trusting potentially queued mouse coordinates. A scoped inherited cursor guard prevents alien
+receiver transitions from applying Arrow while the pointer is still inside the handle.
 
 ## Theme generations and caches
 
