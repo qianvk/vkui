@@ -5,6 +5,7 @@
 #include <QTranslator>
 #include <QWidget>
 #include <optional>
+#include <vkui/widgets/panels/VPanelManager.h>
 #include <vkui/window/VWindowAgent.h>
 
 class QLabel;
@@ -55,6 +56,8 @@ class GalleryWindow final : public QWidget {
     QStandardItemModel* navigationModel_ = nullptr;
     vkui::VCombobox* appearanceBox_ = nullptr;
     vkui::VCombobox* languageBox_ = nullptr;
+    // Window-scoped panel state survives application-level view reconstruction.
+    vkui::VPanelManager panelManager_;
     // Declared last so native teardown precedes QWidget base destruction.
     vkui::VWindowAgent windowAgent_;
 };

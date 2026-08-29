@@ -16,7 +16,8 @@ symbol artwork.
 - `VkUI::Core` contains appearance resolution, immutable semantic tokens, theme-aware SVG and
   named file icons, and motion specifications. It has no QWidget subclasses.
 - `VkUI::Widgets` contains `VStyle` plus focused controls, views, effects, and overlays such as
-  `VSwitch`, `VSegmentedControl`, `VSplitter`, `VTreeView`, `VLiquidGlassSurface`, and `VPopover`.
+  `VSwitch`, `VSegmentedControl`, `VSplitter`, `VPanelManager`, `VTreeView`,
+  `VLiquidGlassSurface`, and `VPopover`.
 - `VkUI::Buffer` is the renderer-independent owned/provider-backed text data plane.
 - `VkUI::Interaction` owns canonical key input, modal grammar, commands, registers, buffers,
   semantic windows, and trusted interaction-plugin lifecycle. It never depends on QWidget.

@@ -195,6 +195,7 @@ target_sources(vkui_widgets
         include/vkui/widgets/controls/VSegmentedControl.h
         include/vkui/widgets/effects/VLiquidGlass.h
         include/vkui/widgets/overlays/VPopover.h
+        include/vkui/widgets/panels/VPanelManager.h
         include/vkui/widgets/views/VTreeItemDelegate.h
         include/vkui/widgets/views/VTreeView.h
         include/vkui/widgets/views/VFileTreeView.h
@@ -233,6 +234,11 @@ target_sources(vkui_widgets
         src/widgets/overlays/private/VPopoverPlacementEngine.cpp
         src/widgets/overlays/private/VPopoverPath_p.h
         src/widgets/overlays/private/VPopoverPath.cpp
+        src/widgets/panels/VPanelManager.cpp
+        src/widgets/panels/private/VPanelEdgeHandleController_p.h
+        src/widgets/panels/private/VPanelEdgeHandleController.cpp
+        src/widgets/panels/private/VPanelLayoutDialog_p.h
+        src/widgets/panels/private/VPanelLayoutDialog.cpp
         src/widgets/views/VTreeItemDelegate.cpp
         src/widgets/views/VTreeView.cpp
         src/widgets/views/VFileTreeView.cpp
