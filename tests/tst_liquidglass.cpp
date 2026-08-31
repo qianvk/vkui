@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-#include "widgets/effects/private/VkPopupGlassStyle_p.h"
-
 #include <QPainter>
 #include <QSignalSpy>
 #include <QtTest>
@@ -193,7 +191,8 @@ void LiquidGlassTest::disabledSurfaceDoesNotPaintMaterial() {
 void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     const vkui::VLiquidGlassStyle regular = vkui::VLiquidGlassStyle::regular();
     const vkui::VLiquidGlassStyle clear = vkui::VLiquidGlassStyle::clear();
-    const vkui::VLiquidGlassStyle popup = vkui::detail::popupGlassStyle();
+    const vkui::VLiquidGlassStyle control = vkui::VLiquidGlassStyle::control();
+    const vkui::VLiquidGlassStyle popup = vkui::VLiquidGlassStyle::popup();
 
     QCOMPARE(regular.blurRadius, 1.0);
     QCOMPARE(regular.refractionHeight, 12.0);
@@ -202,12 +201,17 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QVERIFY(clear.blurRadius < regular.blurRadius);
     QVERIFY(clear.refractionHeight > regular.refractionHeight);
     QVERIFY(clear.refractionAmount > regular.refractionAmount);
-    QVERIFY(popup.blurRadius > regular.blurRadius);
-    QVERIFY(popup.tintOpacity > regular.tintOpacity);
+    QCOMPARE(control.blurRadius, regular.blurRadius);
+    QCOMPARE(control.refractionHeight, regular.refractionHeight);
+    QCOMPARE(control.opticalEdgeIntensity, 0.0);
+    QVERIFY(!control.drawsBorder);
+    QCOMPARE(popup.blurRadius, 20.0);
+    QCOMPARE(popup.tintOpacity, 0.40);
     QCOMPARE(popup.refractionHeight, 0.0);
     QCOMPARE(popup.refractionAmount, 0.0);
     QCOMPARE(popup.chromaticAberration, 0.0);
-    QVERIFY(popup.saturation < regular.saturation);
+    QCOMPARE(popup.saturation, 0.82);
+    QVERIFY(popup.tintOpacity > control.tintOpacity);
     QCOMPARE(popup.opticalEdgeIntensity, 0.0);
 }
 
@@ -220,8 +224,7 @@ void LiquidGlassTest::popupMaterialHasNoPerimeterBand() {
     vkui::VLiquidGlassBackdrop backdrop(&source);
     vkui::VLiquidGlassSurface surface(&host);
     surface.setGeometry(20, 16, 200, 64);
-    auto style = vkui::detail::popupGlassStyle();
-    style.cornerRadius = 16.0;
+    const auto style = vkui::VLiquidGlassStyle::popup(16.0);
     surface.setGlassStyle(style);
     surface.setBackdrop(&backdrop);
     surface.raise();
@@ -245,8 +248,7 @@ void LiquidGlassTest::popupMaterialBlursBackdrop() {
     vkui::VLiquidGlassBackdrop backdrop(&source);
     vkui::VLiquidGlassSurface surface(&host);
     surface.setGeometry(20, 16, 200, 64);
-    auto style = vkui::detail::popupGlassStyle();
-    style.cornerRadius = 0.0;
+    auto style = vkui::VLiquidGlassStyle::popup(0.0);
     style.tintOpacity = 0.0;
     style.adaptiveLuminance = false;
     surface.setGlassStyle(style);

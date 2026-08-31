@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+#include "../animation/private/VkWidgetAnimation_p.h"
 #include "private/VPanelEdgeHandleController_p.h"
 #include "private/VPanelLayoutDialog_p.h"
 
 #include <QHash>
 #include <QPointer>
+#include <QResizeEvent>
 #include <QSplitterHandle>
 #include <QTimer>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <utility>
@@ -18,11 +21,138 @@ namespace vkui {
 
 namespace {
 
+class VPanelAnimationSlot final : public QWidget {
+  public:
+    explicit VPanelAnimationSlot(QWidget* content) : QWidget(nullptr), content_(content) {
+        Q_ASSERT(content_ != nullptr);
+        setObjectName(QStringLiteral("vkuiPanelAnimationSlot"));
+        setAutoFillBackground(false);
+        setFocusPolicy(Qt::NoFocus);
+        setSizePolicy(content_->sizePolicy());
+    }
+
+    void adoptContent() {
+        if (content_ == nullptr) {
+            return;
+        }
+        content_->setParent(this);
+        content_->installEventFilter(this);
+        content_->show();
+        synchronizeMinimumConstraint();
+        updateContentGeometry();
+        updateGeometry();
+    }
+
+    void adoptContent(QWidget* content) {
+        content_ = content;
+        adoptContent();
+    }
+
+    [[nodiscard]] QWidget* releaseContent() {
+        QWidget* content = content_.data();
+        if (content == nullptr) {
+            return nullptr;
+        }
+        content->removeEventFilter(this);
+        content_.clear();
+        content->hide();
+        content->setParent(nullptr);
+        setMinimumSize(0, 0);
+        updateGeometry();
+        return content;
+    }
+
+    void setConstraintRelaxed(const bool relaxed) {
+        if (constraintRelaxed_ == relaxed) {
+            return;
+        }
+        constraintRelaxed_ = relaxed;
+        synchronizeMinimumConstraint();
+        updateGeometry();
+    }
+
+    [[nodiscard]] QSize sizeHint() const override {
+        if (content_ == nullptr) {
+            return {};
+        }
+        QSize hint = content_->sizeHint();
+        hint.setWidth(std::max(0, hint.width()));
+        hint.setHeight(std::max(0, hint.height()));
+        return hint.expandedTo(contentMinimumSize());
+    }
+
+    [[nodiscard]] QSize minimumSizeHint() const override {
+        return constraintRelaxed_ ? QSize(0, 0) : contentMinimumSize();
+    }
+
+  protected:
+    bool event(QEvent* event) override {
+        const bool handled = QWidget::event(event);
+        if (event != nullptr && event->type() == QEvent::LayoutRequest) {
+            synchronizeMinimumConstraint();
+            updateContentGeometry();
+        }
+        return handled;
+    }
+
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched == content_ && event != nullptr) {
+            switch (event->type()) {
+            case QEvent::FontChange:
+            case QEvent::StyleChange:
+            case QEvent::LayoutRequest:
+                synchronizeMinimumConstraint();
+                updateContentGeometry();
+                break;
+            default:
+                break;
+            }
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+    void resizeEvent(QResizeEvent* event) override {
+        QWidget::resizeEvent(event);
+        updateContentGeometry();
+    }
+
+  private:
+    [[nodiscard]] QSize contentMinimumSize() const {
+        if (content_ == nullptr) {
+            return {};
+        }
+        QSize hint = content_->minimumSizeHint();
+        hint.setWidth(std::max(0, hint.width()));
+        hint.setHeight(std::max(0, hint.height()));
+        return hint.expandedTo(content_->minimumSize());
+    }
+
+    void updateContentGeometry() {
+        if (content_ == nullptr) {
+            return;
+        }
+        // The slot supplies continuous splitter geometry below the content minimum. Keeping the
+        // content at its own minimum and clipping it avoids mutating application-owned constraints.
+        content_->setGeometry(QRect(QPoint(), size().expandedTo(contentMinimumSize())));
+    }
+
+    void synchronizeMinimumConstraint() {
+        const QSize minimum = constraintRelaxed_ ? QSize(0, 0) : contentMinimumSize();
+        if (minimumSize() != minimum) {
+            setMinimumSize(minimum);
+        }
+    }
+
+    QPointer<QWidget> content_;
+    bool constraintRelaxed_ = false;
+};
+
 struct PanelBinding final {
     QString id;
     QString title;
     int number = 0;
     QPointer<QWidget> widget;
+    QPointer<VPanelAnimationSlot> animationSlot;
     QRectF normalizedRect;
     bool expanded = true;
 };
@@ -35,11 +165,18 @@ struct SplitterBinding final {
     QMetaObject::Connection destroyedConnection;
 };
 
+struct SplitterTransition final {
+    QPointer<VSplitter> splitter;
+    QList<int> startSizes;
+    QList<int> targetSizes;
+};
+
 } // namespace
 
 class VPanelManagerPrivate final {
   public:
-    VPanelManagerPrivate(VPanelManager* owner, QWidget& host) : q(owner), window(&host) {}
+    VPanelManagerPrivate(VPanelManager* owner, QWidget& host)
+        : q(owner), window(&host), layoutAnimation(std::make_unique<VkWidgetAnimation>(&host)) {}
 
     [[nodiscard]] PanelBinding* binding(const QStringView id) {
         const auto iterator = panels.find(id.toString());
@@ -77,6 +214,67 @@ class VPanelManagerPrivate final {
             replacement->expanded = true;
         }
         return replacement;
+    }
+
+    void attachAnimationSlot(PanelBinding& panel) {
+        if (panel.widget == nullptr || panel.animationSlot != nullptr) {
+            return;
+        }
+        auto* splitter = qobject_cast<VSplitter*>(panel.widget->parentWidget());
+        const int index = splitter != nullptr ? splitter->indexOf(panel.widget) : -1;
+        if (index < 0) {
+            return;
+        }
+
+        auto* slot = new VPanelAnimationSlot(panel.widget);
+        QWidget* replaced = splitter->replaceWidget(index, slot);
+        if (replaced != panel.widget) {
+            delete slot;
+            return;
+        }
+        slot->adoptContent();
+        slot->show();
+        panel.animationSlot = slot;
+    }
+
+    void detachAnimationSlot(PanelBinding& panel) {
+        VPanelAnimationSlot* slot = panel.animationSlot.data();
+        QWidget* content = panel.widget.data();
+        auto* splitter = slot != nullptr ? qobject_cast<VSplitter*>(slot->parentWidget()) : nullptr;
+        const int index = splitter != nullptr ? splitter->indexOf(slot) : -1;
+        if (slot == nullptr || content == nullptr || index < 0) {
+            return;
+        }
+
+        const bool visible = slot->isVisible();
+        QWidget* released = slot->releaseContent();
+        QWidget* replaced =
+            released != nullptr ? splitter->replaceWidget(index, released) : nullptr;
+        if (replaced != slot) {
+            if (released != nullptr) {
+                slot->adoptContent(released);
+            }
+            return;
+        }
+        panel.animationSlot.clear();
+        delete slot;
+        if (visible) {
+            content->show();
+        }
+    }
+
+    void detachAllAnimationSlots() {
+        for (const QString& id : std::as_const(order)) {
+            detachAnimationSlot(panels[id]);
+        }
+    }
+
+    void setAnimationConstraintsRelaxed(const bool relaxed) {
+        for (const QString& id : std::as_const(order)) {
+            if (VPanelAnimationSlot* slot = panels[id].animationSlot.data()) {
+                slot->setConstraintRelaxed(relaxed);
+            }
+        }
     }
 
     void attachAncestorSplitters(QWidget* panel) {
@@ -126,7 +324,8 @@ class VPanelManagerPrivate final {
         }
         for (const QString& id : order) {
             PanelBinding& panel = panels[id];
-            if (panel.widget == slot) {
+            if (panel.animationSlot == slot ||
+                (panel.animationSlot == nullptr && panel.widget == slot)) {
                 return &panel;
             }
         }
@@ -196,6 +395,9 @@ class VPanelManagerPrivate final {
         if (applying || splitter == nullptr) {
             return;
         }
+        // Direct manipulation takes authority from an in-flight programmatic transition.
+        layoutAnimation->stop();
+        setAnimationConstraintsRelaxed(false);
         auto iterator = splitters.find(splitter);
         if (iterator == splitters.end()) {
             return;
@@ -251,14 +453,16 @@ class VPanelManagerPrivate final {
             return {};
         }
 
-        const QPoint origin = panel.widget->mapTo(root, QPoint(0, 0));
-        QRectF geometry(origin, panel.widget->size());
-        auto* splitter = qobject_cast<VSplitter*>(panel.widget->parentWidget());
+        QWidget* geometryWidget =
+            panel.animationSlot != nullptr ? panel.animationSlot.data() : panel.widget.data();
+        const QPoint origin = geometryWidget->mapTo(root, QPoint(0, 0));
+        QRectF geometry(origin, geometryWidget->size());
+        auto* splitter = qobject_cast<VSplitter*>(geometryWidget->parentWidget());
         if (splitter == nullptr || !splitters.contains(splitter)) {
             return geometry;
         }
 
-        const QRectF slotGeometry(panel.widget->geometry());
+        const QRectF slotGeometry(geometryWidget->geometry());
         for (int index = 1; index < splitter->count(); ++index) {
             QSplitterHandle* handle = splitter->handle(index);
             if (handle == nullptr) {
@@ -294,8 +498,10 @@ class VPanelManagerPrivate final {
         const qreal rootHeight = root->height();
         for (const QString& id : order) {
             PanelBinding& panel = panels[id];
-            if (panel.widget == nullptr || panel.widget->width() <= 0 ||
-                panel.widget->height() <= 0) {
+            QWidget* geometryWidget =
+                panel.animationSlot != nullptr ? panel.animationSlot.data() : panel.widget.data();
+            if (geometryWidget == nullptr || geometryWidget->width() <= 0 ||
+                geometryWidget->height() <= 0) {
                 return;
             }
             const QRectF logicalGeometry = logicalPanelGeometry(panel);
@@ -321,14 +527,14 @@ class VPanelManagerPrivate final {
         return result;
     }
 
-    void applySplitterState(SplitterBinding& binding) {
+    [[nodiscard]] QList<int> targetSplitterSizes(SplitterBinding& binding) {
         VSplitter* splitter = binding.splitter.data();
         if (splitter == nullptr || splitter->count() == 0) {
-            return;
+            return {};
         }
         const QList<int> current = splitter->sizes();
         if (current.size() != splitter->count()) {
-            return;
+            return {};
         }
         if (binding.expandedSizes.size() != current.size() &&
             std::all_of(current.cbegin(), current.cend(),
@@ -362,7 +568,7 @@ class VPanelManagerPrivate final {
             weights.append(std::max<qreal>(1.0, weight));
         }
         if (!hasManagedSlot) {
-            return;
+            return {};
         }
 
         int total = std::accumulate(current.cbegin(), current.cend(), 0);
@@ -380,7 +586,7 @@ class VPanelManagerPrivate final {
             }
         }
         if (lastVisible < 0 || totalWeight <= 0.0) {
-            return;
+            return {};
         }
 
         QList<int> target(current.size(), 0);
@@ -395,16 +601,74 @@ class VPanelManagerPrivate final {
             target[index] = std::max(1, extent);
             assigned += target.at(index);
         }
+        return target;
+    }
+
+    void applySplitterState(SplitterBinding& binding) {
+        VSplitter* splitter = binding.splitter.data();
+        const QList<int> target = targetSplitterSizes(binding);
+        if (splitter == nullptr || target.isEmpty()) {
+            return;
+        }
         splitter->setSizes(target);
     }
 
     void applyAllSplitterStates() {
+        layoutAnimation->stop();
+        setAnimationConstraintsRelaxed(false);
         applying = true;
         for (auto iterator = splitters.begin(); iterator != splitters.end(); ++iterator) {
             applySplitterState(iterator.value());
         }
         applying = false;
         scheduleSynchronize(false);
+    }
+
+    void animateAllSplitterStates(const VkMotionRole role) {
+        layoutAnimation->stop();
+        setAnimationConstraintsRelaxed(true);
+
+        QList<SplitterTransition> transitions;
+        transitions.reserve(splitters.size());
+        for (auto iterator = splitters.begin(); iterator != splitters.end(); ++iterator) {
+            VSplitter* splitter = iterator->splitter.data();
+            const QList<int> target = targetSplitterSizes(iterator.value());
+            if (splitter == nullptr || target.isEmpty()) {
+                continue;
+            }
+            const QList<int> start = splitter->sizes();
+            if (start == target || start.size() != target.size()) {
+                continue;
+            }
+            transitions.append({splitter, start, target});
+        }
+
+        if (transitions.isEmpty()) {
+            setAnimationConstraintsRelaxed(false);
+            scheduleSynchronize(false);
+            return;
+        }
+
+        layoutAnimation->start(
+            0.0, 1.0, role,
+            [this, transitions](const qreal progress) {
+                applying = true;
+                for (const SplitterTransition& transition : transitions) {
+                    if (transition.splitter == nullptr) {
+                        continue;
+                    }
+                    QList<int> sizes;
+                    sizes.reserve(transition.startSizes.size());
+                    for (int index = 0; index < transition.startSizes.size(); ++index) {
+                        const qreal start = transition.startSizes.at(index);
+                        const qreal target = transition.targetSizes.at(index);
+                        sizes.append(qRound(std::lerp(start, target, progress)));
+                    }
+                    transition.splitter->setSizes(sizes);
+                }
+                applying = false;
+            },
+            [this] { applyAllSplitterStates(); });
     }
 
     void scheduleSynchronize(const bool applyState = true) {
@@ -435,6 +699,7 @@ class VPanelManagerPrivate final {
 
     VPanelManager* q = nullptr;
     QPointer<QWidget> window;
+    std::unique_ptr<VkWidgetAnimation> layoutAnimation;
     QPointer<QWidget> root;
     QHash<QString, PanelBinding> panels;
     QList<QString> order;
@@ -451,6 +716,9 @@ VPanelManager::VPanelManager(QWidget& window)
 
 VPanelManager::~VPanelManager() {
     closePanelChooser();
+    d_->layoutAnimation->stop();
+    d_->setAnimationConstraintsRelaxed(false);
+    d_->detachAllAnimationSlots();
 }
 
 QWidget* VPanelManager::window() const noexcept {
@@ -473,6 +741,9 @@ bool VPanelManager::setLayoutRoot(QWidget* root) {
         return true;
     }
     closePanelChooser();
+    d_->layoutAnimation->stop();
+    d_->setAnimationConstraintsRelaxed(false);
+    d_->detachAllAnimationSlots();
     for (auto iterator = d_->splitters.begin(); iterator != d_->splitters.end(); ++iterator) {
         QObject::disconnect(iterator->clickedConnection);
         QObject::disconnect(iterator->movedConnection);
@@ -496,6 +767,14 @@ bool VPanelManager::setLayoutRoot(QWidget* root) {
     }
     if (auto* splitter = qobject_cast<VSplitter*>(root)) {
         d_->attachSplitter(splitter);
+    }
+    for (const QString& id : std::as_const(d_->order)) {
+        PanelBinding& panel = d_->panels[id];
+        if (panel.widget != nullptr && root != nullptr &&
+            (panel.widget == root || root->isAncestorOf(panel.widget))) {
+            d_->attachAnimationSlot(panel);
+            d_->attachAncestorSplitters(panel.widget);
+        }
     }
     // Wait for Qt's layout pass before capturing application-provided splitter sizes.
     d_->scheduleSynchronize(false);
@@ -536,7 +815,8 @@ bool VPanelManager::registerPanel(QString id, QString title, QWidget* panel, con
             ++resolvedNumber;
         }
         d_->order.append(id);
-        d_->panels.insert(id, PanelBinding{id, std::move(title), resolvedNumber, panel, {}, true});
+        d_->panels.insert(id,
+                          PanelBinding{id, std::move(title), resolvedNumber, panel, {}, {}, true});
         existing = d_->binding(id);
     } else {
         existing->title = std::move(title);
@@ -550,8 +830,14 @@ bool VPanelManager::registerPanel(QString id, QString title, QWidget* panel, con
         if (PanelBinding* binding = d_->binding(id);
             binding != nullptr && binding->widget.data() == panel) {
             binding->widget.clear();
+            VPanelAnimationSlot* slot = binding->animationSlot.data();
+            binding->animationSlot.clear();
+            if (slot != nullptr) {
+                slot->deleteLater();
+            }
         }
     });
+    d_->attachAnimationSlot(*existing);
     d_->attachAncestorSplitters(panel);
     // Rebinds preserve an existing collapse state; new panels keep application sizes.
     const bool restoresCollapsedPanel =
@@ -565,9 +851,14 @@ bool VPanelManager::registerPanel(QString id, QString title, QWidget* panel, con
 
 bool VPanelManager::unregisterPanel(const QStringView id) {
     const QString key = id.toString();
-    if (!d_->panels.remove(key)) {
+    PanelBinding* panel = d_->binding(key);
+    if (panel == nullptr) {
         return false;
     }
+    d_->layoutAnimation->stop();
+    d_->setAnimationConstraintsRelaxed(false);
+    d_->detachAnimationSlot(*panel);
+    d_->panels.remove(key);
     d_->order.removeAll(key);
     if (PanelBinding* replacement = d_->restoreExpandedInvariant()) {
         emit panelExpandedChanged(replacement->id, true);
@@ -584,6 +875,9 @@ void VPanelManager::clearPanels() {
         return;
     }
     closePanelChooser();
+    d_->layoutAnimation->stop();
+    d_->setAnimationConstraintsRelaxed(false);
+    d_->detachAllAnimationSlots();
     d_->panels.clear();
     d_->order.clear();
     emit panelLayoutChanged();
@@ -625,7 +919,8 @@ bool VPanelManager::setPanelExpanded(const QStringView id, const bool expanded) 
 
     panel->expanded = expanded;
     changes.emplaceBack(panel->id, expanded);
-    d_->applyAllSplitterStates();
+    d_->animateAllSplitterStates(expanded ? VkMotionRole::EmphasizedEnter
+                                          : VkMotionRole::EmphasizedExit);
     for (const auto& [panelId, isExpanded] : changes) {
         emit panelExpandedChanged(panelId, isExpanded);
     }

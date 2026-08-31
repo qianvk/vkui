@@ -2,7 +2,6 @@
 
 #include "VStylePainter_p.h"
 #include "VkPopupSurfaceStyler_p.h"
-#include "../../effects/private/VkPopupGlassStyle_p.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QPointer>
@@ -437,7 +436,7 @@ void VkPopupSurfaceStyler::syncLiquidGlassSurface(QWidget& popup) {
     const VkMetricTokens& metrics = VkThemeManager::instance()->theme().metrics();
     const qreal cornerRadius =
         isVComboboxPopup(&popup) ? metrics.comboBoxPopupCornerRadius : metrics.menuCornerRadius;
-    const VLiquidGlassStyle style = detail::popupGlassStyle(cornerRadius);
+    const VLiquidGlassStyle style = VLiquidGlassStyle::popup(cornerRadius);
     state.glassSurface->setGlassStyle(style);
     state.glassSurface->setGeometry(surfaceRect(popup, metrics));
     state.glassSurface->hide();

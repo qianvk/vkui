@@ -81,6 +81,27 @@ VLiquidGlassStyle VLiquidGlassStyle::clear() noexcept {
     return style;
 }
 
+VLiquidGlassStyle VLiquidGlassStyle::control() noexcept {
+    VLiquidGlassStyle style = regular();
+    style.opticalEdgeIntensity = 0.0;
+    return style;
+}
+
+VLiquidGlassStyle VLiquidGlassStyle::popup(const qreal cornerRadius) noexcept {
+    VLiquidGlassStyle style = regular();
+    style.cornerRadius = cornerRadius;
+    // Transient information surfaces suppress high-frequency backdrop detail so text remains
+    // readable without replacing the live material with an opaque fill.
+    style.blurRadius = 20.0;
+    style.refractionHeight = 0.0;
+    style.refractionAmount = 0.0;
+    style.chromaticAberration = 0.0;
+    style.saturation = 0.82;
+    style.tintOpacity = 0.40;
+    style.opticalEdgeIntensity = 0.0;
+    return style;
+}
+
 class VLiquidGlassBackdropPrivate final : public QObject {
   public:
     struct CaptureEntry final {
@@ -149,6 +170,7 @@ class VLiquidGlassBackdropPrivate final : public QObject {
 
         QImage captureImage(sampleSize, QImage::Format_ARGB32_Premultiplied);
         captureImage.fill(sourceWidget->palette().color(sourceWidget->backgroundRole()));
+
         const QRect boundedRect = sourceRect.intersected(sourceWidget->rect());
         if (!boundedRect.isEmpty()) {
             captureInProgress = true;

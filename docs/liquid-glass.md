@@ -47,14 +47,19 @@ not increment the semantic theme generation or repolish unrelated widgets.
 `VCombobox` popup windows, `QMenu` surfaces managed by `VStyle`, and `VPopover` use the same
 renderer automatically. They sample their transient owner window and fall back to the normal
 opaque semantic popup surface when the policy is disabled. Applications do not need to attach
-backdrop providers to these framework-owned popup surfaces.
+backdrop providers to these framework-owned popup surfaces. Their public `popup()` preset uses
+stronger blur, reduced saturation, and a denser semantic tint to suppress distracting backdrop
+detail while preserving translucency. Regions outside the explicit owner use the same semantic
+fallback color and never access screen pixels.
 
 The renderer captures only the surface rectangle plus the pixels required by blur and refraction.
 It downsamples that region according to `VLiquidGlassQuality`, applies a one-to-three-pass separable
 blur while retaining a sharp optical component, and adds rounded-rectangle edge refraction,
 optional chromatic dispersion, saturation, adaptive tint, and balanced perimeter highlights.
-`VLiquidGlassStyle::regular()` and `clear()` provide balanced and clearer optical presets without
-changing the rendering backend.
+`VLiquidGlassStyle::regular()`, `clear()`, `control()`, and `popup()` are public semantic presets.
+Applications select the intended role instead of copying optical parameters. Compact setting rows
+use `control()`, while menus, comboboxes, and popovers share `popup()` with their theme corner
+radius. There is no separate application or private popup material implementation.
 
 Surface lighting does not apply a fixed dark gradient to the lower half of the material. The
 captured backdrop remains vertically neutral, while perimeter lensing and restrained highlights

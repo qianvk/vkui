@@ -111,10 +111,8 @@ void GalleryWindowTest::languageActivationDefersUiRebuild() {
         window.findChild<vkui::VLiquidGlassSurface*>(QStringLiteral("galleryLanguageGlass"));
     QVERIFY(appearanceSurface != nullptr);
     QVERIFY(languageSurface != nullptr);
-    QCOMPARE(appearanceSurface->glassStyle().opticalEdgeIntensity, 0.0);
-    QCOMPARE(languageSurface->glassStyle().opticalEdgeIntensity, 0.0);
-    QVERIFY(!appearanceSurface->glassStyle().drawsBorder);
-    QVERIFY(!languageSurface->glassStyle().drawsBorder);
+    QVERIFY(appearanceSurface->glassStyle() == vkui::VLiquidGlassStyle::control());
+    QVERIFY(languageSurface->glassStyle() == vkui::VLiquidGlassStyle::control());
 
     QPointer<vkui::VCombobox> original =
         window.findChild<vkui::VCombobox*>(QStringLiteral("galleryLanguageBox"));
@@ -454,7 +452,7 @@ void GalleryWindowTest::panelChooserTogglesPanelsAcrossAppearances() {
         QTest::mouseClick(navigation, Qt::LeftButton, Qt::NoModifier, navigation->rect().center());
         QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) == nullptr);
         QVERIFY(!manager->isPanelExpanded(QStringLiteral("navigation")));
-        QCOMPARE(splitter->sizes().constFirst(), 0);
+        QTRY_COMPARE(splitter->sizes().constFirst(), 0);
 
         manager->showPanelChooser();
         QCoreApplication::processEvents();
@@ -472,7 +470,7 @@ void GalleryWindowTest::panelChooserTogglesPanelsAcrossAppearances() {
         QTest::mouseClick(navigation, Qt::LeftButton, Qt::NoModifier, navigation->rect().center());
         QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) == nullptr);
         QVERIFY(manager->isPanelExpanded(QStringLiteral("navigation")));
-        QVERIFY(splitter->sizes().constFirst() > 0);
+        QTRY_VERIFY(splitter->sizes().constFirst() > 0);
     }
     vkui::VkThemeManager::instance()->setAppearance(vkui::VkAppearance::Auto);
 }
