@@ -24,6 +24,7 @@ class PanelManagerTest final : public QObject {
     void initTestCase();
     void ownsWindowScopedStateAcrossWidgetRebinding();
     void alwaysKeepsOneLivePanelExpanded();
+    void panelToggleAnimatesAndRetargets();
     void managedHandleOpensChooser();
     void leftWindowEdgeHandleOwnsCollapsedSplitterOverlap();
 };
@@ -62,7 +63,7 @@ void PanelManagerTest::ownsWindowScopedStateAcrossWidgetRebinding() {
                                 std::accumulate(originalSizes.cbegin(), originalSizes.cend(), 0);
 
     QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), false));
-    QCOMPARE(splitter->sizes().constFirst(), 0);
+    QTRY_COMPARE(splitter->sizes().constFirst(), 0);
     QVERIFY(!manager.isPanelExpanded(QStringLiteral("first")));
 
     QVERIFY(manager.setLayoutRoot(nullptr));
@@ -81,10 +82,13 @@ void PanelManagerTest::ownsWindowScopedStateAcrossWidgetRebinding() {
     QCOMPARE(manager.panelStates().constFirst().number, 1);
 
     QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), true));
-    const QList<int> restoredSizes = replacementSplitter->sizes();
-    const qreal restoredRatio = static_cast<qreal>(restoredSizes.constFirst()) /
-                                std::accumulate(restoredSizes.cbegin(), restoredSizes.cend(), 0);
-    QVERIFY(std::abs(restoredRatio - originalRatio) < 0.02);
+    QTRY_VERIFY(([replacementSplitter, originalRatio] {
+        const QList<int> restoredSizes = replacementSplitter->sizes();
+        const qreal restoredRatio =
+            static_cast<qreal>(restoredSizes.constFirst()) /
+            std::accumulate(restoredSizes.cbegin(), restoredSizes.cend(), 0);
+        return std::abs(restoredRatio - originalRatio) < 0.02;
+    }()));
 }
 
 void PanelManagerTest::alwaysKeepsOneLivePanelExpanded() {
@@ -131,6 +135,58 @@ void PanelManagerTest::alwaysKeepsOneLivePanelExpanded() {
     QCOMPARE(expandedCount(), 1);
     QVERIFY(!manager.setPanelExpanded(QStringLiteral("panel-3"), false));
     QVERIFY(manager.isPanelExpanded(QStringLiteral("panel-3")));
+}
+
+void PanelManagerTest::panelToggleAnimatesAndRetargets() {
+    QWidget window;
+    auto* layout = new QVBoxLayout(&window);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto* splitter = new vkui::VSplitter(Qt::Horizontal, &window);
+    auto* first = new QWidget(splitter);
+    auto* second = new QWidget(splitter);
+    first->setMinimumWidth(176);
+    splitter->addWidget(first);
+    splitter->addWidget(second);
+    splitter->setSizes({280, 520});
+    layout->addWidget(splitter);
+
+    vkui::VPanelManager manager(window);
+    QVERIFY(manager.setLayoutRoot(splitter));
+    QVERIFY(manager.registerPanel(QStringLiteral("first"), QStringLiteral("First"), first, 1));
+    QVERIFY(manager.registerPanel(QStringLiteral("second"), QStringLiteral("Second"), second, 2));
+    window.resize(800, 500);
+    window.show();
+    QCoreApplication::processEvents();
+
+    const int expandedExtent = splitter->sizes().constFirst();
+    QVERIFY(expandedExtent > first->minimumWidth());
+    QCOMPARE(first->minimumWidth(), 176);
+    QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), false));
+    QVERIFY(!manager.isPanelExpanded(QStringLiteral("first")));
+    QTRY_VERIFY_WITH_TIMEOUT(splitter->sizes().constFirst() > 0 &&
+                                 splitter->sizes().constFirst() < first->minimumWidth(),
+                             150);
+    QTRY_COMPARE_WITH_TIMEOUT(splitter->sizes().constFirst(), 0, 500);
+
+    QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), true));
+    QVERIFY(manager.isPanelExpanded(QStringLiteral("first")));
+    QTRY_VERIFY_WITH_TIMEOUT(splitter->sizes().constFirst() > 0 &&
+                                 splitter->sizes().constFirst() < first->minimumWidth(),
+                             150);
+
+    const int interruptedExtent = splitter->sizes().constFirst();
+    QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), false));
+    QTRY_VERIFY_WITH_TIMEOUT(splitter->sizes().constFirst() < interruptedExtent, 150);
+    QTRY_COMPARE_WITH_TIMEOUT(splitter->sizes().constFirst(), 0, 500);
+
+    QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), true));
+    QTRY_VERIFY_WITH_TIMEOUT(std::abs(splitter->sizes().constFirst() - expandedExtent) <= 3, 500);
+    QCOMPARE(first->minimumWidth(), 176);
+    QTRY_COMPARE(splitter->widget(0)->minimumWidth(), first->minimumWidth());
+    first->setMinimumWidth(192);
+    QTRY_COMPARE(splitter->widget(0)->minimumWidth(), first->minimumWidth());
+    splitter->setSizes({80, 720});
+    QTRY_VERIFY(splitter->sizes().constFirst() >= first->minimumWidth());
 }
 
 void PanelManagerTest::managedHandleOpensChooser() {
@@ -224,7 +280,7 @@ void PanelManagerTest::leftWindowEdgeHandleOwnsCollapsedSplitterOverlap() {
     QCOMPARE(edgeColor.rgb(), vkui::VkThemeManager::instance()->theme().colors().accent.rgb());
 
     QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), false));
-    QCOMPARE(splitter->sizes().constFirst(), 0);
+    QTRY_COMPARE(splitter->sizes().constFirst(), 0);
     QTest::mouseMove(left, pointer);
     QCoreApplication::processEvents();
     QCOMPARE(QApplication::widgetAt(left->mapToGlobal(pointer)), left);
@@ -246,14 +302,14 @@ void PanelManagerTest::leftWindowEdgeHandleOwnsCollapsedSplitterOverlap() {
 
     QTest::mouseClick(left, Qt::LeftButton, Qt::NoModifier, pointer);
     QTRY_VERIFY(manager.isPanelExpanded(QStringLiteral("first")));
-    QVERIFY(splitter->sizes().constFirst() > 0);
+    QTRY_VERIFY(splitter->sizes().constFirst() > 0);
     QVERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) == nullptr);
 
     QVERIFY(manager.setPanelExpanded(QStringLiteral("second"), false));
-    QCOMPARE(splitter->sizes().constLast(), 0);
+    QTRY_COMPARE(splitter->sizes().constLast(), 0);
     QTest::mouseClick(left, Qt::LeftButton, Qt::NoModifier, pointer);
     QTRY_VERIFY(manager.isPanelExpanded(QStringLiteral("second")));
-    QVERIFY(splitter->sizes().constLast() > 0);
+    QTRY_VERIFY(splitter->sizes().constLast() > 0);
 
     QTest::mouseClick(left, Qt::RightButton, Qt::NoModifier, pointer);
     QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) != nullptr);

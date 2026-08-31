@@ -43,6 +43,12 @@ struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
     /** Returns a clearer material for content where backdrop detail should remain visible. */
     [[nodiscard]] static VLiquidGlassStyle clear() noexcept;
 
+    /** Returns the outline-free material intended for compact controls and setting rows. */
+    [[nodiscard]] static VLiquidGlassStyle control() noexcept;
+
+    /** Returns the elevated material intended for menus, popovers, and other transient surfaces. */
+    [[nodiscard]] static VLiquidGlassStyle popup(qreal cornerRadius = -1.0) noexcept;
+
     friend bool operator==(const VLiquidGlassStyle&, const VLiquidGlassStyle&) = default;
 };
 

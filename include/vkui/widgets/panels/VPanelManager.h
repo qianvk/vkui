@@ -65,7 +65,7 @@ class VKUI_WIDGETS_EXPORT VPanelManager final : public QObject {
     [[nodiscard]] bool containsPanel(QStringView id) const;
     [[nodiscard]] bool isPanelExpanded(QStringView id) const;
 
-    /** Updates visibility while guaranteeing that at least one live panel remains expanded. */
+    /** Animates visibility while guaranteeing that at least one live panel remains expanded. */
     bool setPanelExpanded(QStringView id, bool expanded);
     bool togglePanel(QStringView id);
 

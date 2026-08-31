@@ -127,7 +127,9 @@ cross-platform glass compositions without replacing child-widget behavior. The c
 renderer is shared by every platform. `VkThemeManager::setLiquidGlassEnabled()` switches all
 supported surfaces between the optical material and their opaque semantic fallback without
 rebuilding the theme. `setLiquidGlassTintLevel()` exposes the system-style Clear-to-Tinted
-preference without leaking renderer parameters. See the [liquid-glass guide](docs/liquid-glass.md).
+preference without leaking renderer parameters. Public `regular()`, `clear()`, `control()`, and
+`popup()` material presets keep applications from duplicating optical recipes. See the
+[liquid-glass guide](docs/liquid-glass.md).
 
 ## Status
 

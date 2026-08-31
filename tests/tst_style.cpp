@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "widgets/animation/private/VkWidgetAnimation_p.h"
-#include "widgets/effects/private/VkPopupGlassStyle_p.h"
 #include "widgets/style/private/VStylePainter_p.h"
 
 #include <QAbstractButton>
@@ -736,9 +735,9 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(comboGlass->isHidden());
     QVERIFY(comboGlass->backdrop() != nullptr);
     QCOMPARE(comboGlass->backdrop()->sourceWidget(), &owner);
-    QCOMPARE(comboGlass->glassStyle().blurRadius, vkui::detail::popupGlassStyle().blurRadius);
-    QCOMPARE(comboGlass->glassStyle().saturation, vkui::detail::popupGlassStyle().saturation);
-    QCOMPARE(comboGlass->glassStyle().tintOpacity, vkui::detail::popupGlassStyle().tintOpacity);
+    const auto comboMaterial =
+        vkui::VLiquidGlassStyle::popup(manager->theme().metrics().comboBoxPopupCornerRadius);
+    QVERIFY(comboGlass->glassStyle() == comboMaterial);
     const auto& metrics = manager->theme().metrics();
     const int shadowMargin = qCeil(metrics.spacing8 + std::abs(metrics.spacing2));
     const int contentMargin = qRound(metrics.spacing6);
@@ -802,8 +801,9 @@ void StyleTest::popupSurfacesFollowLiquidGlassPolicy() {
     QVERIFY(menuGlass != nullptr);
     QVERIFY(menuGlass->isHidden());
     QCOMPARE(menuGlass->backdrop()->sourceWidget(), &owner);
-    QCOMPARE(menuGlass->glassStyle().blurRadius, vkui::detail::popupGlassStyle().blurRadius);
-    QCOMPARE(menuGlass->glassStyle().tintOpacity, vkui::detail::popupGlassStyle().tintOpacity);
+    const auto menuMaterial =
+        vkui::VLiquidGlassStyle::popup(manager->theme().metrics().menuCornerRadius);
+    QVERIFY(menuGlass->glassStyle() == menuMaterial);
     QCOMPARE(menu.style()->pixelMetric(QStyle::PM_MenuHMargin, nullptr, &menu),
              shadowMargin + contentMargin);
     QCOMPARE(menuGlass->geometry(),
@@ -1460,8 +1460,7 @@ void StyleTest::scrollBarsUseTransientThumbWithoutTrack() {
         QImage image(scrollBar.size(), QImage::Format_ARGB32_Premultiplied);
         image.fill(Qt::transparent);
         QPainter painter(&image);
-        scrollBar.style()->drawComplexControl(QStyle::CC_ScrollBar, &option, &painter,
-                                              &scrollBar);
+        scrollBar.style()->drawComplexControl(QStyle::CC_ScrollBar, &option, &painter, &scrollBar);
         return image;
     };
     const auto alphaPixelCount = [](const QImage& image) {
@@ -1483,10 +1482,10 @@ void StyleTest::scrollBarsUseTransientThumbWithoutTrack() {
 
     QStyleOptionSlider option;
     scrollBar.initStyleOption(&option);
-    const QRect thumb = scrollBar.style()->subControlRect(
-        QStyle::CC_ScrollBar, &option, QStyle::SC_ScrollBarSlider, &scrollBar);
-    const QRect groove = scrollBar.style()->subControlRect(
-        QStyle::CC_ScrollBar, &option, QStyle::SC_ScrollBarGroove, &scrollBar);
+    const QRect thumb = scrollBar.style()->subControlRect(QStyle::CC_ScrollBar, &option,
+                                                          QStyle::SC_ScrollBarSlider, &scrollBar);
+    const QRect groove = scrollBar.style()->subControlRect(QStyle::CC_ScrollBar, &option,
+                                                           QStyle::SC_ScrollBarGroove, &scrollBar);
     QVERIFY(hovered.pixelColor(thumb.center()).alpha() > 0);
     const QPoint trackSample(groove.center().x(),
                              thumb.top() > groove.top() ? groove.top() : groove.bottom());

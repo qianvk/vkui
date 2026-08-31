@@ -2,7 +2,6 @@
 
 #include "private/VPopoverPath_p.h"
 #include "private/VPopover_p.h"
-#include "../effects/private/VkPopupGlassStyle_p.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QEvent>
@@ -258,8 +257,8 @@ void VPopoverPrivate::syncLiquidGlassSurface() {
         glassSurface->hide();
         return;
     }
-    const VLiquidGlassStyle style = detail::popupGlassStyle(
-        VkThemeManager::instance()->theme().metrics().popoverCornerRadius);
+    const VLiquidGlassStyle style =
+        VLiquidGlassStyle::popup(VkThemeManager::instance()->theme().metrics().popoverCornerRadius);
     glassSurface->setGlassStyle(style);
     glassSurface->setGeometry(bodyRect);
     glassSurface->show();

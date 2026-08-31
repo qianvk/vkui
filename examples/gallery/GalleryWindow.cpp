@@ -210,11 +210,7 @@ void GalleryWindow::rebuildCentralWidget() {
         auto* surface = new vkui::VLiquidGlassSurface(pages_);
         surface->setObjectName(objectName);
         surface->setBackdrop(pages_->liquidGlassBackdrop());
-        vkui::VLiquidGlassStyle style = vkui::VLiquidGlassStyle::regular();
-        // These controls use refraction for definition and intentionally have no outline.
-        style.drawsBorder = false;
-        style.opticalEdgeIntensity = 0.0;
-        surface->setGlassStyle(style);
+        surface->setGlassStyle(vkui::VLiquidGlassStyle::control());
         surface->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         auto* layout = new QHBoxLayout(surface);
         layout->setContentsMargins(10, 3, 5, 3);

@@ -47,10 +47,19 @@ preview calls the same manager toggle API used by application commands and close
 client area is the panel diagram: there is no title bar, heading, outer canvas, or layout margin.
 
 The manager never hides registered widgets. It projects visibility into `QSplitter::setSizes()`
-with a zero extent for collapsed panels, preserving the splitter topology and handle. At least one
-panel remains expanded; toggling the sole visible panel swaps visibility to another registered
-panel. Rebinding an existing semantic ID after a UI reconstruction preserves its number,
-proportion, and collapse state.
+with a zero final extent for collapsed panels, preserving the splitter topology and handle. Toggle
+transitions use the current theme's emphasized enter and exit motion. A repeated toggle retargets
+from the currently rendered splitter sizes, so an interrupted transition remains continuous.
+Disabling animations through the global theme policy applies the target sizes immediately. At
+least one panel remains expanded; toggling the sole visible panel swaps visibility to another
+registered panel. Rebinding an existing semantic ID after a UI reconstruction preserves its
+number, proportion, and collapse state.
+
+Each direct splitter panel is hosted by a private clipping slot. During ordinary layout and manual
+resize the slot reports the panel's original minimum size, preserving normal `QSplitter`
+constraints. Only while a toggle transition is running does the slot report a zero minimum. This
+makes every extent between zero and the application minimum reachable without modifying the
+registered widget, eliminating `QSplitter`'s minimum-size-to-zero snap in both directions.
 
 The manager installs one client-area handle along the window's left edge. Following vkery's
 interaction pattern, its 20-pixel inner hit band stays visually empty until hover, then reveals a
