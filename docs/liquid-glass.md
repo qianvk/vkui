@@ -48,9 +48,10 @@ not increment the semantic theme generation or repolish unrelated widgets.
 renderer automatically. They sample their transient owner window and fall back to the normal
 opaque semantic popup surface when the policy is disabled. Applications do not need to attach
 backdrop providers to these framework-owned popup surfaces. Their public `popup()` preset uses
-stronger blur, reduced saturation, and a denser semantic tint to suppress distracting backdrop
-detail while preserving translucency. Regions outside the explicit owner use the same semantic
-fallback color and never access screen pixels.
+soft scattering, broad rounded-edge refraction, restrained chromatic dispersion, and adaptive tint.
+This makes a transient surface read as thicker glass instead of a transparent overlay while still
+suppressing backdrop detail beneath labels. Regions outside the explicit owner use the same
+semantic fallback color and never access screen pixels.
 
 The renderer captures only the surface rectangle plus the pixels required by blur and refraction.
 It downsamples that region according to `VLiquidGlassQuality`, applies a one-to-three-pass separable

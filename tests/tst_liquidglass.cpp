@@ -84,6 +84,7 @@ class LiquidGlassTest final : public QObject {
     void materialPresetsHaveDistinctOptics();
     void popupMaterialHasNoPerimeterBand();
     void popupMaterialBlursBackdrop();
+    void popupMaterialRefractsBackdropAtEdge();
     void regularMaterialRefractsBackdropAtEdge();
     void rimIsHorizontallySymmetric();
     void interiorLightingIsVerticallyBalanced();
@@ -205,14 +206,14 @@ void LiquidGlassTest::materialPresetsHaveDistinctOptics() {
     QCOMPARE(control.refractionHeight, regular.refractionHeight);
     QCOMPARE(control.opticalEdgeIntensity, 0.0);
     QVERIFY(!control.drawsBorder);
-    QCOMPARE(popup.blurRadius, 20.0);
-    QCOMPARE(popup.tintOpacity, 0.40);
-    QCOMPARE(popup.refractionHeight, 0.0);
-    QCOMPARE(popup.refractionAmount, 0.0);
-    QCOMPARE(popup.chromaticAberration, 0.0);
-    QCOMPARE(popup.saturation, 0.82);
+    QCOMPARE(popup.blurRadius, 16.0);
+    QCOMPARE(popup.tintOpacity, 0.30);
+    QCOMPARE(popup.refractionHeight, 16.0);
+    QCOMPARE(popup.refractionAmount, 28.0);
+    QCOMPARE(popup.chromaticAberration, 1.0);
+    QCOMPARE(popup.saturation, 0.96);
     QVERIFY(popup.tintOpacity > control.tintOpacity);
-    QCOMPARE(popup.opticalEdgeIntensity, 0.0);
+    QCOMPARE(popup.opticalEdgeIntensity, 0.60);
 }
 
 void LiquidGlassTest::popupMaterialHasNoPerimeterBand() {
@@ -263,6 +264,39 @@ void LiquidGlassTest::popupMaterialBlursBackdrop() {
     QVERIFY(lightStripe.lightness() < 220);
     QVERIFY(std::abs(lightStripe.lightness() - darkStripe.lightness()) < 120);
     QCOMPARE(darkStripe.alpha(), 255);
+}
+
+void LiquidGlassTest::popupMaterialRefractsBackdropAtEdge() {
+    QWidget host;
+    host.resize(240, 96);
+    StripeWidget source(&host);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(20, 16, 200, 64);
+    surface.setBackdrop(&backdrop);
+    surface.raise();
+    host.show();
+    QCoreApplication::processEvents();
+
+    auto refractiveStyle = vkui::VLiquidGlassStyle::popup(16.0);
+    refractiveStyle.tintOpacity = 0.0;
+    refractiveStyle.adaptiveLuminance = false;
+    refractiveStyle.opticalEdgeIntensity = 0.0;
+    auto flatStyle = refractiveStyle;
+    flatStyle.refractionHeight = 0.0;
+    flatStyle.refractionAmount = 0.0;
+    flatStyle.chromaticAberration = 0.0;
+
+    surface.setGlassStyle(flatStyle);
+    const QColor flatEdge = sampledColor(surface, QPoint(3, surface.height() / 2));
+    const QColor flatInterior = sampledColor(surface, surface.rect().center());
+    surface.setGlassStyle(refractiveStyle);
+    const QColor refractedEdge = sampledColor(surface, QPoint(3, surface.height() / 2));
+    const QColor refractedInterior = sampledColor(surface, surface.rect().center());
+
+    QVERIFY(std::abs(flatEdge.lightness() - refractedEdge.lightness()) > 12);
+    QVERIFY(std::abs(flatInterior.lightness() - refractedInterior.lightness()) <= 2);
 }
 
 void LiquidGlassTest::regularMaterialRefractsBackdropAtEdge() {

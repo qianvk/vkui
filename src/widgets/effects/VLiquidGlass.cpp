@@ -90,15 +90,15 @@ VLiquidGlassStyle VLiquidGlassStyle::control() noexcept {
 VLiquidGlassStyle VLiquidGlassStyle::popup(const qreal cornerRadius) noexcept {
     VLiquidGlassStyle style = regular();
     style.cornerRadius = cornerRadius;
-    // Transient information surfaces suppress high-frequency backdrop detail so text remains
-    // readable without replacing the live material with an opaque fill.
-    style.blurRadius = 20.0;
-    style.refractionHeight = 0.0;
-    style.refractionAmount = 0.0;
-    style.chromaticAberration = 0.0;
-    style.saturation = 0.82;
-    style.tintOpacity = 0.40;
-    style.opticalEdgeIntensity = 0.0;
+    // Larger transient surfaces behave like thicker glass: broad lensing and soft scattering
+    // preserve optical depth while adaptive tint keeps menu and popover content legible.
+    style.blurRadius = 16.0;
+    style.refractionHeight = 16.0;
+    style.refractionAmount = 28.0;
+    style.chromaticAberration = 1.0;
+    style.saturation = 0.96;
+    style.tintOpacity = 0.30;
+    style.opticalEdgeIntensity = 0.60;
     return style;
 }
 
