@@ -17,6 +17,8 @@ class SplitterTest final : public QObject {
     void stableHandleSeparatesInputFromPainting_data();
     void stableHandleSeparatesInputFromPainting();
     void hoverPaintsAccentSeparator();
+    void collapsedBoundaryUsesExpandedPanelBackground();
+    void movingHandleReconcilesStationaryPointer();
     void clickEmitsHandleIndex();
     void dragDoesNotEmitClick();
 };
@@ -103,6 +105,73 @@ void SplitterTest::hoverPaintsAccentSeparator() {
     image.fill(Qt::transparent);
     handle->render(&image);
     QCOMPARE(image.pixelColor(separatorX, visualRect.center().y()), firstColor);
+}
+
+void SplitterTest::collapsedBoundaryUsesExpandedPanelBackground() {
+    vkui::VSplitter splitter(Qt::Horizontal);
+    auto* first = new QWidget();
+    auto* second = new QWidget();
+    QPalette firstPalette = first->palette();
+    QPalette secondPalette = second->palette();
+    const QColor collapsedColor(37, 67, 97);
+    const QColor expandedColor(107, 77, 47);
+    firstPalette.setColor(first->backgroundRole(), collapsedColor);
+    secondPalette.setColor(second->backgroundRole(), expandedColor);
+    first->setPalette(firstPalette);
+    second->setPalette(secondPalette);
+    splitter.addWidget(first);
+    splitter.addWidget(second);
+    splitter.resize(320, 240);
+    splitter.show();
+    QApplication::processEvents();
+    splitter.setSizes({0, splitter.width() - splitter.handleWidth()});
+    QApplication::processEvents();
+
+    QCOMPARE(splitter.sizes().constFirst(), 0);
+    QSplitterHandle* handle = splitter.handle(1);
+    QVERIFY(handle != nullptr);
+    QImage image(handle->size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    handle->render(&image);
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            QCOMPARE(image.pixelColor(x, y).rgb(), expandedColor.rgb());
+        }
+    }
+}
+
+void SplitterTest::movingHandleReconcilesStationaryPointer() {
+    vkui::VSplitter splitter(Qt::Horizontal);
+    splitter.addWidget(new QWidget());
+    splitter.addWidget(new QWidget());
+    splitter.resize(320, 240);
+    splitter.show();
+    QApplication::processEvents();
+
+    QSplitterHandle* handle = splitter.handle(1);
+    QVERIFY(handle != nullptr);
+    const QPoint center = handle->rect().center();
+    const QPoint stationaryGlobalPosition = handle->mapToGlobal(center);
+    QCursor::setPos(stationaryGlobalPosition);
+    QTRY_COMPARE(QCursor::pos(), stationaryGlobalPosition);
+    QEnterEvent enterEvent{QPointF(center), QPointF(center), QPointF(stationaryGlobalPosition)};
+    QApplication::sendEvent(handle, &enterEvent);
+    QTRY_COMPARE(splitter.windowHandle()->cursor().shape(), Qt::SplitHCursor);
+
+    splitter.setSizes({0, splitter.width() - splitter.handleWidth()});
+
+    QCOMPARE(QCursor::pos(), stationaryGlobalPosition);
+    QTRY_COMPARE(splitter.sizes().constFirst(), 0);
+    QTRY_COMPARE(splitter.windowHandle()->cursor().shape(), Qt::ArrowCursor);
+
+    QImage image(handle->size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    handle->render(&image);
+    const QRgb accent = vkui::VkThemeManager::instance()->theme().colors().accent.rgb();
+    for (int y = 0; y < image.height(); ++y) {
+        QVERIFY(image.pixelColor(handle->rect().center().x(), y).rgb() != accent);
+    }
 }
 
 void SplitterTest::clickEmitsHandleIndex() {

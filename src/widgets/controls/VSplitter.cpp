@@ -6,9 +6,11 @@
 #include <QEnterEvent>
 #include <QHideEvent>
 #include <QMouseEvent>
+#include <QMoveEvent>
 #include <QPainter>
 #include <QPalette>
 #include <QPointer>
+#include <QResizeEvent>
 #include <QShowEvent>
 #include <QSplitterHandle>
 #include <QWindow>
@@ -52,7 +54,7 @@ class VSplitterHandle final : public QSplitterHandle {
   protected:
     void paintEvent(QPaintEvent*) override {
         QPainter painter(this);
-        paintPanelBackgrounds(painter);
+        const bool bordersCollapsedPanel = paintPanelBackgrounds(painter);
 
         QRect separator = rect();
         if (orientation() == Qt::Horizontal) {
@@ -65,7 +67,8 @@ class VSplitterHandle final : public QSplitterHandle {
 
         const bool interactionBlocked =
             (hovered_ || pressedButton_ != Qt::NoButton) && interactionBlockedAt(QCursor::pos());
-        if (isEnabled() && !interactionBlocked && (hovered_ || pressedButton_ != Qt::NoButton)) {
+        if (isEnabled() && !bordersCollapsedPanel && !interactionBlocked &&
+            (hovered_ || pressedButton_ != Qt::NoButton)) {
             const auto& colors = VkThemeManager::instance()->theme().colors();
             painter.fillRect(separator,
                              pressedButton_ != Qt::NoButton ? colors.accentPressed : colors.accent);
@@ -96,7 +99,8 @@ class VSplitterHandle final : public QSplitterHandle {
             updateCursorForPosition(QPointF(QCursor::pos()));
         } else if (event->type() == QEvent::CursorChange && cursorOwned_) {
             applySplitterCursor();
-        } else if (event->type() == QEvent::Leave || event->type() == QEvent::WindowDeactivate) {
+        } else if (event->type() == QEvent::Leave || event->type() == QEvent::WindowDeactivate ||
+                   event->type() == QEvent::Move || event->type() == QEvent::Resize) {
             // Native leave and activation notifications may be delivered after a newer pointer
             // position. Geometry is authoritative; never tear down the guard for a stale event.
             updateCursorForPosition(QPointF(QCursor::pos()));
@@ -120,6 +124,18 @@ class VSplitterHandle final : public QSplitterHandle {
     void hideEvent(QHideEvent* event) override {
         detachCursorTracking(true);
         QSplitterHandle::hideEvent(event);
+    }
+
+    void moveEvent(QMoveEvent* event) override {
+        QSplitterHandle::moveEvent(event);
+        // Splitter animations move the hit region while the pointer can remain stationary.
+        // Geometry changes must therefore reconcile hover and cursor ownership themselves.
+        updateCursorForPosition(QPointF(QCursor::pos()));
+    }
+
+    void resizeEvent(QResizeEvent* event) override {
+        QSplitterHandle::resizeEvent(event);
+        updateCursorForPosition(QPointF(QCursor::pos()));
     }
 
     void mousePressEvent(QMouseEvent* event) override {
@@ -254,8 +270,12 @@ class VSplitterHandle final : public QSplitterHandle {
             acquireInheritedCursorGuard();
             setHovered(inside && !blocked);
             applySplitterCursor();
-        } else if (cursorOwned_) {
-            releaseCursor(globalPosition, true);
+        } else {
+            if (cursorOwned_) {
+                releaseCursor(globalPosition, true);
+            } else {
+                setHovered(false);
+            }
         }
     }
 
@@ -318,7 +338,7 @@ class VSplitterHandle final : public QSplitterHandle {
         update();
     }
 
-    void paintPanelBackgrounds(QPainter& painter) const {
+    [[nodiscard]] bool paintPanelBackgrounds(QPainter& painter) const {
         int handleIndex = -1;
         for (int index = 1; index < owner_->count(); ++index) {
             if (owner_->handle(index) == this) {
@@ -327,13 +347,13 @@ class VSplitterHandle final : public QSplitterHandle {
             }
         }
         if (handleIndex < 1) {
-            return;
+            return false;
         }
 
         QWidget* first = owner_->widget(handleIndex - 1);
         QWidget* second = owner_->widget(handleIndex);
         if (first == nullptr || second == nullptr) {
-            return;
+            return false;
         }
 
         const auto panelColor = [](const QWidget* panel) {
@@ -343,8 +363,24 @@ class VSplitterHandle final : public QSplitterHandle {
             orientation() == Qt::Horizontal
                 ? first->geometry().center().x() <= second->geometry().center().x()
                 : first->geometry().center().y() <= second->geometry().center().y();
-        const QColor precedingColor = panelColor(firstPrecedesSecond ? first : second);
-        const QColor followingColor = panelColor(firstPrecedesSecond ? second : first);
+        const QWidget* preceding = firstPrecedesSecond ? first : second;
+        const QWidget* following = firstPrecedesSecond ? second : first;
+        const QColor precedingColor = panelColor(preceding);
+        const QColor followingColor = panelColor(following);
+        const auto panelExtent = [this](const QWidget* panel) {
+            return orientation() == Qt::Horizontal ? panel->width() : panel->height();
+        };
+        const bool precedingCollapsed = panelExtent(preceding) == 0;
+        const bool followingCollapsed = panelExtent(following) == 0;
+
+        // QSplitter retains the handle's layout extent when an adjacent panel reaches zero.
+        // Painting that extent with the surviving panel prevents a collapsed panel from leaving
+        // a colored strip at the window edge. The separator is also omitted because there is no
+        // visible boundary to advertise until the panel starts expanding again.
+        if (precedingCollapsed != followingCollapsed) {
+            painter.fillRect(rect(), precedingCollapsed ? followingColor : precedingColor);
+            return true;
+        }
 
         if (orientation() == Qt::Horizontal) {
             const int boundary = (width() + 1) / 2;
@@ -355,6 +391,7 @@ class VSplitterHandle final : public QSplitterHandle {
             painter.fillRect(QRect(0, 0, width(), boundary), precedingColor);
             painter.fillRect(QRect(0, boundary, width(), height() - boundary), followingColor);
         }
+        return precedingCollapsed && followingCollapsed;
     }
 
     void cancelClickTracking() {

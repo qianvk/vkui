@@ -29,6 +29,7 @@ class VPanelAnimationSlot final : public QWidget {
         setAutoFillBackground(false);
         setFocusPolicy(Qt::NoFocus);
         setSizePolicy(content_->sizePolicy());
+        synchronizeVisualMetadata();
     }
 
     void adoptContent() {
@@ -99,8 +100,10 @@ class VPanelAnimationSlot final : public QWidget {
         if (watched == content_ && event != nullptr) {
             switch (event->type()) {
             case QEvent::FontChange:
+            case QEvent::PaletteChange:
             case QEvent::StyleChange:
             case QEvent::LayoutRequest:
+                synchronizeVisualMetadata();
                 synchronizeMinimumConstraint();
                 updateContentGeometry();
                 break;
@@ -140,6 +143,18 @@ class VPanelAnimationSlot final : public QWidget {
         const QSize minimum = constraintRelaxed_ ? QSize(0, 0) : contentMinimumSize();
         if (minimumSize() != minimum) {
             setMinimumSize(minimum);
+        }
+    }
+
+    void synchronizeVisualMetadata() {
+        if (content_ == nullptr) {
+            return;
+        }
+        if (backgroundRole() != content_->backgroundRole()) {
+            setBackgroundRole(content_->backgroundRole());
+        }
+        if (palette() != content_->palette()) {
+            setPalette(content_->palette());
         }
     }
 

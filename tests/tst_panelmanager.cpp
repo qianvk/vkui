@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QCursor>
 #include <QDialog>
+#include <QEnterEvent>
 #include <QImage>
 #include <QSignalSpy>
 #include <QSplitterHandle>
@@ -209,6 +210,7 @@ void PanelManagerTest::managedHandleOpensChooser() {
 
     QSplitterHandle* handle = splitter->handle(1);
     QVERIFY(handle != nullptr);
+    const int expandedFirstSize = splitter->sizes().constFirst();
     QTest::mouseClick(handle, Qt::RightButton, Qt::NoModifier, handle->rect().center());
     QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) != nullptr);
     auto* dialog = window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog"));
@@ -220,10 +222,46 @@ void PanelManagerTest::managedHandleOpensChooser() {
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, outsidePosition);
     QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) == nullptr);
 
+    const QPoint handleCenter = handle->rect().center();
+    const QPoint stationaryGlobalPosition = handle->mapToGlobal(handleCenter);
+    QCursor::setPos(stationaryGlobalPosition);
+    QTRY_COMPARE(QCursor::pos(), stationaryGlobalPosition);
+    QEnterEvent enterEvent{QPointF(handleCenter), QPointF(handleCenter),
+                           QPointF(stationaryGlobalPosition)};
+    QApplication::sendEvent(handle, &enterEvent);
+    QTRY_COMPARE(window.windowHandle()->cursor().shape(), Qt::SplitHCursor);
     QTest::mouseClick(handle, Qt::LeftButton, Qt::NoModifier, handle->rect().center());
     QTRY_COMPARE(splitter->sizes().constFirst(), 0);
+    QCOMPARE(QCursor::pos(), stationaryGlobalPosition);
+    QTRY_COMPARE(window.windowHandle()->cursor().shape(), Qt::ArrowCursor);
     QVERIFY(!manager.isPanelExpanded(QStringLiteral("first")));
     QVERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) == nullptr);
+
+    QVERIFY(manager.setPanelExpanded(QStringLiteral("first"), true));
+    QTRY_VERIFY(std::abs(splitter->sizes().constFirst() - expandedFirstSize) <= 3);
+    const QPoint restoredHandleCenter = handle->rect().center();
+    const QPoint restoredGlobalPosition = handle->mapToGlobal(restoredHandleCenter);
+    QCursor::setPos(restoredGlobalPosition);
+    QTRY_COMPARE(QCursor::pos(), restoredGlobalPosition);
+    QEnterEvent restoredEnterEvent{QPointF(restoredHandleCenter), QPointF(restoredHandleCenter),
+                                   QPointF(restoredGlobalPosition)};
+    QApplication::sendEvent(handle, &restoredEnterEvent);
+    QTRY_COMPARE(window.windowHandle()->cursor().shape(), Qt::SplitHCursor);
+
+    QTest::mouseClick(handle, Qt::RightButton, Qt::NoModifier, restoredHandleCenter);
+    QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) != nullptr);
+    dialog = window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog"));
+    auto* firstPreview =
+        dialog->findChild<QAbstractButton*>(QStringLiteral("vPanelPreview_first"));
+    QVERIFY(firstPreview != nullptr);
+    QTest::mouseClick(firstPreview, Qt::LeftButton, Qt::NoModifier,
+                      firstPreview->rect().center());
+
+    QTRY_COMPARE(splitter->sizes().constFirst(), 0);
+    QCOMPARE(QCursor::pos(), restoredGlobalPosition);
+    QTRY_COMPARE(window.windowHandle()->cursor().shape(), Qt::ArrowCursor);
+    QVERIFY(!manager.isPanelExpanded(QStringLiteral("first")));
+    QTRY_VERIFY(window.findChild<QDialog*>(QStringLiteral("vPanelLayoutDialog")) == nullptr);
 }
 
 void PanelManagerTest::leftWindowEdgeHandleOwnsCollapsedSplitterOverlap() {
@@ -231,8 +269,20 @@ void PanelManagerTest::leftWindowEdgeHandleOwnsCollapsedSplitterOverlap() {
     auto* layout = new QVBoxLayout(&window);
     layout->setContentsMargins(0, 0, 0, 0);
     auto* splitter = new vkui::VSplitter(Qt::Horizontal, &window);
-    splitter->addWidget(new QWidget(splitter));
-    splitter->addWidget(new QWidget(splitter));
+    auto* firstPanel = new QWidget(splitter);
+    auto* secondPanel = new QWidget(splitter);
+    const QColor firstColor(37, 67, 97);
+    const QColor secondColor(107, 77, 47);
+    firstPanel->setBackgroundRole(QPalette::Window);
+    secondPanel->setBackgroundRole(QPalette::Base);
+    QPalette firstPalette = firstPanel->palette();
+    QPalette secondPalette = secondPanel->palette();
+    firstPalette.setColor(firstPanel->backgroundRole(), firstColor);
+    secondPalette.setColor(secondPanel->backgroundRole(), secondColor);
+    firstPanel->setPalette(firstPalette);
+    secondPanel->setPalette(secondPalette);
+    splitter->addWidget(firstPanel);
+    splitter->addWidget(secondPanel);
     layout->addWidget(splitter);
 
     vkui::VPanelManager manager(window);
@@ -241,6 +291,8 @@ void PanelManagerTest::leftWindowEdgeHandleOwnsCollapsedSplitterOverlap() {
                                   splitter->widget(0), 1));
     QVERIFY(manager.registerPanel(QStringLiteral("second"), QStringLiteral("Second"),
                                   splitter->widget(1), 2));
+    QCOMPARE(splitter->widget(0)->backgroundRole(), firstPanel->backgroundRole());
+    QCOMPARE(splitter->widget(1)->backgroundRole(), secondPanel->backgroundRole());
     window.resize(800, 500);
     window.show();
     QCoreApplication::processEvents();
@@ -299,6 +351,11 @@ void PanelManagerTest::leftWindowEdgeHandleOwnsCollapsedSplitterOverlap() {
         }
     }
     QVERIFY(!hasFullHeightAccent);
+    for (int y = 0; y < splitterImage.height(); ++y) {
+        for (int x = 0; x < splitterImage.width(); ++x) {
+            QCOMPARE(splitterImage.pixelColor(x, y).rgb(), secondColor.rgb());
+        }
+    }
 
     QTest::mouseClick(left, Qt::LeftButton, Qt::NoModifier, pointer);
     QTRY_VERIFY(manager.isPanelExpanded(QStringLiteral("first")));
