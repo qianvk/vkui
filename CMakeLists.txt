@@ -190,6 +190,7 @@ target_sources(vkui_widgets
         include/vkui/widgets/VTextStyle.h
         include/vkui/widgets/style/VStyle.h
         include/vkui/widgets/controls/VSplitter.h
+        include/vkui/widgets/controls/VLiquidGlassButton.h
         include/vkui/widgets/controls/VSlider.h
         include/vkui/widgets/controls/VSwitch.h
         include/vkui/widgets/controls/VSegmentedControl.h
@@ -217,6 +218,7 @@ target_sources(vkui_widgets
         src/widgets/style/private/VStylePainter_p.h
         src/widgets/style/private/VStylePainter.cpp
         src/widgets/controls/VSplitter.cpp
+        src/widgets/controls/VLiquidGlassButton.cpp
         src/widgets/controls/VSlider.cpp
         src/widgets/controls/VSwitch.cpp
         src/widgets/controls/VSegmentedControl.cpp

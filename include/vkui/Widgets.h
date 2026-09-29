@@ -6,6 +6,7 @@
 #include <vkui/widgets/VControlSize.h>
 #include <vkui/widgets/VTextStyle.h>
 #include <vkui/widgets/controls/VSegmentedControl.h>
+#include <vkui/widgets/controls/VLiquidGlassButton.h>
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSplitter.h>
 #include <vkui/widgets/controls/VSwitch.h>

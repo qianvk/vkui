@@ -54,6 +54,16 @@ QColor glassTint() {
                                                              : QColor(235, 238, 244);
 }
 
+QColor unavailableBackdropTint() {
+    QColor fallback = glassTint();
+    const bool dark =
+        VkThemeManager::instance()->theme().effectiveAppearance() == VkAppearance::Dark;
+    // Alpha-composited popup windows reveal the desktop without reading its pixels. The
+    // compositor supplies the missing scene; Qt can only refract application-owned pixels.
+    fallback.setAlphaF(dark ? 0.76F : 0.72F);
+    return fallback;
+}
+
 VLiquidGlassStyle styleForThemePreference(VLiquidGlassStyle style) noexcept {
     constexpr qreal FullyTintedOpacity = 0.62;
     const qreal tint =
@@ -169,7 +179,7 @@ class VLiquidGlassBackdropPrivate final : public QObject {
         }
 
         QImage captureImage(sampleSize, QImage::Format_ARGB32_Premultiplied);
-        captureImage.fill(sourceWidget->palette().color(sourceWidget->backgroundRole()));
+        captureImage.fill(unavailableBackdropTint());
 
         const QRect boundedRect = sourceRect.intersected(sourceWidget->rect());
         if (!boundedRect.isEmpty()) {
@@ -335,7 +345,8 @@ class VLiquidGlassSurfacePrivate final {
         const qreal scale =
             VkLiquidGlassRenderer::sampleScale(effectiveStyle.quality, q->devicePixelRatioF());
         const VkLiquidGlassFrame frame = backdrop->d->capture(*q, padding, scale);
-        material = VkLiquidGlassRenderer::render(frame, q->size(), effectiveStyle, glassTint());
+        material =
+            VkLiquidGlassRenderer::render(frame, q->size(), effectiveStyle, glassTint(), shapePath);
     }
 
     void paint(QPainter& painter) {
@@ -351,9 +362,14 @@ class VLiquidGlassSurfacePrivate final {
             return;
         }
         painter.save();
-        const qreal radius = resolvedCornerRadius(style, bounds);
         QPainterPath path;
-        path.addRoundedRect(bounds, radius, radius);
+        qreal radius = 0.0;
+        if (shapePath.isEmpty()) {
+            radius = resolvedCornerRadius(style, bounds);
+            path.addRoundedRect(bounds, radius, radius);
+        } else {
+            path = shapePath;
+        }
 
         painter.setRenderHint(QPainter::Antialiasing);
         const auto* manager = VkThemeManager::instance();
@@ -372,7 +388,7 @@ class VLiquidGlassSurfacePrivate final {
         painter.setClipPath(path);
         if (!material.isNull()) {
             painter.setRenderHint(QPainter::SmoothPixmapTransform);
-            painter.drawImage(bounds, material);
+            painter.drawImage(shapePath.isEmpty() ? bounds : QRectF(q->rect()), material);
         } else {
             QColor fallback = glassTint();
             const bool dark =
@@ -406,7 +422,7 @@ class VLiquidGlassSurfacePrivate final {
         }
 
         const QRectF innerBounds = bounds.adjusted(1.0, 1.0, -1.0, -1.0);
-        if (edgeIntensity > 0.0 && !innerBounds.isEmpty()) {
+        if (edgeIntensity > 0.0 && shapePath.isEmpty() && !innerBounds.isEmpty()) {
             QPainterPath innerPath;
             innerPath.addRoundedRect(innerBounds, std::max<qreal>(0.0, radius - 1.0),
                                      std::max<qreal>(0.0, radius - 1.0));
@@ -422,6 +438,7 @@ class VLiquidGlassSurfacePrivate final {
     QMetaObject::Connection backdropInvalidatedConnection;
     QMetaObject::Connection backdropDestroyedConnection;
     VLiquidGlassStyle style = VLiquidGlassStyle::regular();
+    QPainterPath shapePath;
     QImage material;
     bool enabled = true;
     bool materialDirty = true;
@@ -465,6 +482,18 @@ void VLiquidGlassSurface::setGlassStyle(const VLiquidGlassStyle& style) {
 
 VLiquidGlassStyle VLiquidGlassSurface::glassStyle() const noexcept {
     return d->style;
+}
+
+void VLiquidGlassSurface::setShapePath(const QPainterPath& path) {
+    if (d->shapePath == path) {
+        return;
+    }
+    d->shapePath = path;
+    d->invalidate();
+}
+
+QPainterPath VLiquidGlassSurface::shapePath() const {
+    return d->shapePath;
 }
 
 void VLiquidGlassSurface::setGlassEnabled(const bool enabled) {

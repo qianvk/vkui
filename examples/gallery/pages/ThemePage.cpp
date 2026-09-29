@@ -32,6 +32,7 @@
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
 #include <vkui/widgets/VTextStyle.h>
+#include <vkui/widgets/controls/VLiquidGlassButton.h>
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
 #include <vkui/widgets/effects/VLiquidGlass.h>
@@ -270,6 +271,10 @@ class LiquidGlassPreview final : public QWidget {
                                  vkui::VLiquidGlassStyle::regular());
         clear_ = createSurface(ThemePage::tr("Clear"), ThemePage::tr("Maximum backdrop detail"),
                                vkui::VLiquidGlassStyle::clear());
+        button_ = new vkui::VLiquidGlassButton(ThemePage::tr("Glass Button"), this);
+        button_->setObjectName(QStringLiteral("liquidGlassPreviewButton"));
+        button_->setBackdrop(backdrop_);
+        button_->setAccessibleName(ThemePage::tr("Interactive Liquid Glass button"));
         connect(scrollArea_->verticalScrollBar(), &QScrollBar::valueChanged, backdrop_,
                 &vkui::VLiquidGlassBackdrop::invalidate);
     }
@@ -296,7 +301,8 @@ class LiquidGlassPreview final : public QWidget {
 
   private:
     void layoutSurfaces() {
-        if (regular_ == nullptr || clear_ == nullptr || scrollArea_->viewport()->size().isEmpty()) {
+        if (regular_ == nullptr || clear_ == nullptr || button_ == nullptr ||
+            scrollArea_->viewport()->size().isEmpty()) {
             return;
         }
         const QRect viewportRect(scrollArea_->viewport()->mapTo(this, QPoint{}),
@@ -311,8 +317,10 @@ class LiquidGlassPreview final : public QWidget {
         regular_->setGeometry(left, top, surfaceWidth, SurfaceHeight);
         clear_->setGeometry(left + surfaceWidth + Gap, top, availableWidth - surfaceWidth,
                             SurfaceHeight);
+        button_->setGeometry(left, top + SurfaceHeight + 18, 154, 38);
         regular_->raise();
         clear_->raise();
+        button_->raise();
     }
 
     vkui::VLiquidGlassSurface* createSurface(const QString& title, const QString& detail,
@@ -339,6 +347,7 @@ class LiquidGlassPreview final : public QWidget {
     vkui::VLiquidGlassBackdrop* backdrop_ = nullptr;
     vkui::VLiquidGlassSurface* regular_ = nullptr;
     vkui::VLiquidGlassSurface* clear_ = nullptr;
+    vkui::VLiquidGlassButton* button_ = nullptr;
 };
 
 QString accentColorName(vkui::VkAccentColor accentColor) {

@@ -5,6 +5,7 @@
 #include <QtCore/QSize>
 #include <QtGui/QColor>
 #include <QtGui/QImage>
+#include <QtGui/QPainterPath>
 #include <vkui/widgets/effects/VLiquidGlass.h>
 
 namespace vkui {
@@ -21,7 +22,8 @@ class VkLiquidGlassRenderer final {
     [[nodiscard]] static qreal sampleScale(VLiquidGlassQuality quality,
                                            qreal devicePixelRatio) noexcept;
     [[nodiscard]] static QImage render(const VkLiquidGlassFrame& frame, const QSize& logicalSize,
-                                       const VLiquidGlassStyle& style, const QColor& tint);
+                                       const VLiquidGlassStyle& style, const QColor& tint,
+                                       const QPainterPath& shapePath = {});
 };
 
 } // namespace vkui

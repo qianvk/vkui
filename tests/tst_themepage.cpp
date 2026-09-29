@@ -8,11 +8,13 @@
 #include <QRadioButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSignalSpy>
 #include <QStyleOptionSlider>
 #include <QtTest/QTest>
 #include <cmath>
 #include <vkui/core/VkThemeManager.h>
 #include <vkui/widgets/VCombobox.h>
+#include <vkui/widgets/controls/VLiquidGlassButton.h>
 #include <vkui/widgets/controls/VSlider.h>
 #include <vkui/widgets/controls/VSwitch.h>
 #include <vkui/widgets/effects/VLiquidGlass.h>
@@ -67,7 +69,12 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
     QVERIFY(tintSlider != nullptr);
     QVERIFY(previewScrollArea != nullptr);
     const auto glassSurfaces = preview->findChildren<vkui::VLiquidGlassSurface*>();
-    QCOMPARE(glassSurfaces.size(), 2);
+    QCOMPARE(glassSurfaces.size(), 3);
+    auto* glassButton =
+        preview->findChild<vkui::VLiquidGlassButton*>(QStringLiteral("liquidGlassPreviewButton"));
+    QVERIFY(glassButton != nullptr);
+    QCOMPARE(glassButton->backdrop()->sourceWidget(), previewScrollArea->viewport());
+    QVERIFY(glassButton->isGlassEnabled());
     QCOMPARE(previewScrollArea->frameShape(), QFrame::NoFrame);
     QVERIFY(previewScrollArea->verticalScrollBar()->maximum() > 0);
     for (const auto* surface : glassSurfaces) {
@@ -105,6 +112,9 @@ void ThemePageTest::liquidGlassControlAndPreviewUpdateLive() {
     disabledPreview.fill(Qt::transparent);
     preview->render(&disabledPreview);
     QVERIFY(enabledPreview != disabledPreview);
+    QSignalSpy clickedSpy(glassButton, &QPushButton::clicked);
+    glassButton->click();
+    QCOMPARE(clickedSpy.size(), 1);
     manager->setLiquidGlassEnabled(true);
     QCOMPARE(toggle->isChecked(), true);
     QVERIFY(appearanceControls->isVisible());

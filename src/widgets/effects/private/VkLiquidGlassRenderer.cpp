@@ -2,9 +2,12 @@
 
 #include "VkLiquidGlassRenderer_p.h"
 
+#include <QtGui/QPolygonF>
+#include <QtGui/QTransform>
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace vkui {
 namespace {
@@ -24,6 +27,69 @@ qreal roundedRectDistance(const qreal x, const qreal y, const qreal halfWidth,
         std::hypot(std::max<qreal>(cornerX, 0.0), std::max<qreal>(cornerY, 0.0)) - radius;
     const qreal inside = std::min(std::max(cornerX, cornerY), 0.0);
     return outside + inside;
+}
+
+struct ShapeEdge final {
+    QPointF start;
+    QPointF vector;
+    QRectF influenceBounds;
+    qreal lengthSquared = 0.0;
+};
+
+std::vector<ShapeEdge> shapeEdges(const QPainterPath& path, const qreal influence) {
+    std::vector<ShapeEdge> edges;
+    for (const QPolygonF& polygon : path.toSubpathPolygons()) {
+        for (qsizetype index = 0; index < polygon.size(); ++index) {
+            const QPointF start = polygon.at(index);
+            const QPointF end = polygon.at((index + 1) % polygon.size());
+            const QPointF vector = end - start;
+            const qreal lengthSquared = QPointF::dotProduct(vector, vector);
+            if (lengthSquared <= 0.0001) {
+                continue;
+            }
+            edges.push_back({start, vector,
+                             QRectF(start, end)
+                                 .normalized()
+                                 .adjusted(-influence, -influence, influence, influence),
+                             lengthSquared});
+        }
+    }
+    return edges;
+}
+
+struct ShapeEdgeSample final {
+    qreal distance = 0.0;
+    qreal normalX = 0.0;
+    qreal normalY = 0.0;
+};
+
+ShapeEdgeSample nearestShapeEdge(const std::vector<ShapeEdge>& edges, const QPointF& point,
+                                 const qreal limit) {
+    qreal closestSquared = limit * limit;
+    QPointF closestPoint;
+    bool found = false;
+    for (const ShapeEdge& edge : edges) {
+        if (!edge.influenceBounds.contains(point)) {
+            continue;
+        }
+        const QPointF offset = point - edge.start;
+        const qreal fraction =
+            std::clamp(QPointF::dotProduct(offset, edge.vector) / edge.lengthSquared, 0.0, 1.0);
+        const QPointF candidate = edge.start + edge.vector * fraction;
+        const QPointF delta = candidate - point;
+        const qreal squared = QPointF::dotProduct(delta, delta);
+        if (squared < closestSquared) {
+            closestSquared = squared;
+            closestPoint = candidate;
+            found = true;
+        }
+    }
+    if (!found || closestSquared <= 0.0001) {
+        return {limit, 0.0, 0.0};
+    }
+    const qreal distance = std::sqrt(closestSquared);
+    const QPointF outward = (closestPoint - point) / distance;
+    return {distance, outward.x(), outward.y()};
 }
 
 QImage horizontalBoxBlur(const QImage& source, const int radius) {
@@ -230,7 +296,8 @@ qreal VkLiquidGlassRenderer::sampleScale(const VLiquidGlassQuality quality,
 }
 
 QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSize& logicalSize,
-                                     const VLiquidGlassStyle& style, const QColor& tint) {
+                                     const VLiquidGlassStyle& style, const QColor& tint,
+                                     const QPainterPath& shapePath) {
     if (frame.image.isNull() || logicalSize.isEmpty() || frame.sampleScale <= 0.0) {
         return {};
     }
@@ -242,7 +309,8 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
     const QImage blurred = gaussianApproximation(frame.image, blurRadius);
     const qreal scattering = std::clamp(style.blurRadius / 3.0, 0.0, 0.72);
     const QImage opticalSource =
-        blurRadius > 0 ? blendImages(frame.image, blurred, scattering) : frame.image;
+        (blurRadius > 0 ? blendImages(frame.image, blurred, scattering) : frame.image)
+            .convertToFormat(QImage::Format_ARGB32);
     QImage result(outputSize, QImage::Format_ARGB32_Premultiplied);
     result.fill(Qt::transparent);
 
@@ -257,6 +325,12 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
     const qreal dispersion = std::max<qreal>(0.0, style.chromaticAberration) * scale;
     const qreal padding = frame.padding * scale;
     const qreal saturation = std::clamp(style.saturation, 0.0, 2.0);
+    const bool customShape = !shapePath.isEmpty();
+    const QPainterPath outputShape =
+        customShape ? QTransform::fromScale(scale, scale).map(shapePath) : QPainterPath{};
+    const std::vector<ShapeEdge> edges = customShape && refractionHeight > 0.0
+                                             ? shapeEdges(outputShape, refractionHeight)
+                                             : std::vector<ShapeEdge>{};
     qreal tintOpacity = std::clamp(style.tintOpacity, 0.0, 1.0);
     if (style.adaptiveLuminance) {
         const qreal contrastDistance = std::abs(averageLuminance(opticalSource) - 0.5) * 2.0;
@@ -269,31 +343,48 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
         for (int x = 0; x < outputSize.width(); ++x) {
             const qreal centeredX = x + 0.5 - halfWidth;
             const qreal centeredY = y + 0.5 - halfHeight;
-            const qreal distance =
-                roundedRectDistance(centeredX, centeredY, halfWidth, halfHeight, radius);
-            if (distance > 0.0) {
-                continue;
-            }
-
             qreal normalX = 0.0;
             qreal normalY = 0.0;
             qreal displacement = 0.0;
             qreal edgeDispersion = 0.0;
-            const qreal edgeDepth = -distance;
+            qreal edgeDepth = refractionHeight;
+            if (customShape) {
+                const QPointF point(x + 0.5, y + 0.5);
+                if (!outputShape.contains(point)) {
+                    continue;
+                }
+                if (refractionHeight > 0.0) {
+                    const ShapeEdgeSample sample = nearestShapeEdge(edges, point, refractionHeight);
+                    edgeDepth = sample.distance;
+                    normalX = sample.normalX;
+                    normalY = sample.normalY;
+                }
+            } else {
+                const qreal distance =
+                    roundedRectDistance(centeredX, centeredY, halfWidth, halfHeight, radius);
+                if (distance > 0.0) {
+                    continue;
+                }
+                edgeDepth = -distance;
+            }
             if (refractionHeight > 0.0 && edgeDepth < refractionHeight) {
                 const qreal edgeProgress = 1.0 - edgeDepth / refractionHeight;
                 const qreal lens =
                     1.0 - std::sqrt(std::max<qreal>(0.0, 1.0 - edgeProgress * edgeProgress));
-                normalX =
-                    roundedRectDistance(centeredX + 0.5, centeredY, halfWidth, halfHeight, radius) -
-                    roundedRectDistance(centeredX - 0.5, centeredY, halfWidth, halfHeight, radius);
-                normalY =
-                    roundedRectDistance(centeredX, centeredY + 0.5, halfWidth, halfHeight, radius) -
-                    roundedRectDistance(centeredX, centeredY - 0.5, halfWidth, halfHeight, radius);
-                const qreal normalLength = std::hypot(normalX, normalY);
-                if (normalLength > 0.0001) {
-                    normalX /= normalLength;
-                    normalY /= normalLength;
+                if (!customShape) {
+                    normalX = roundedRectDistance(centeredX + 0.5, centeredY, halfWidth, halfHeight,
+                                                  radius) -
+                              roundedRectDistance(centeredX - 0.5, centeredY, halfWidth, halfHeight,
+                                                  radius);
+                    normalY = roundedRectDistance(centeredX, centeredY + 0.5, halfWidth, halfHeight,
+                                                  radius) -
+                              roundedRectDistance(centeredX, centeredY - 0.5, halfWidth, halfHeight,
+                                                  radius);
+                    const qreal normalLength = std::hypot(normalX, normalY);
+                    if (normalLength > 0.0001) {
+                        normalX /= normalLength;
+                        normalY /= normalLength;
+                    }
                 }
                 displacement = lens * refractionAmount;
                 edgeDispersion = lens * dispersion;
@@ -319,8 +410,8 @@ QImage VkLiquidGlassRenderer::render(const VkLiquidGlassFrame& frame, const QSiz
             red = std::lerp(red, static_cast<qreal>(tint.red()), tintOpacity);
             green = std::lerp(green, static_cast<qreal>(tint.green()), tintOpacity);
             blue = std::lerp(blue, static_cast<qreal>(tint.blue()), tintOpacity);
-            output[x] = qRgba(boundedChannel(red), boundedChannel(green), boundedChannel(blue),
-                              boundedChannel(center.alpha));
+            output[x] = qPremultiply(qRgba(boundedChannel(red), boundedChannel(green),
+                                           boundedChannel(blue), boundedChannel(center.alpha)));
         }
     }
     return result;

@@ -5,6 +5,7 @@
 #include <QtCore/QMetaType>
 #include <QtCore/QObject>
 #include <QtCore/QtTypes>
+#include <QtGui/QPainterPath>
 #include <QtWidgets/QWidget>
 #include <memory>
 #include <vkui/VkUiGlobal.h>
@@ -55,13 +56,15 @@ struct VKUI_WIDGETS_EXPORT VLiquidGlassStyle final {
 class VLiquidGlassBackdropPrivate;
 class VLiquidGlassSurfacePrivate;
 class VkPopupSurfaceStyler;
+class VLiquidGlassButton;
 
 /**
  * Observes a backdrop source and shares local captures between glass surfaces.
  *
  * The source and glass surfaces should normally be overlapping siblings. A top-level popup may
  * sample its transient owner because Qt renders popup windows independently. Same-window ancestor
- * captures are rejected to prevent recursive self-capture.
+ * captures are rejected to prevent recursive self-capture. Regions beyond the source widget use
+ * a translucent tint so the window compositor can show the desktop without screen-recording access.
  */
 class VKUI_WIDGETS_EXPORT VLiquidGlassBackdrop final : public QObject {
     Q_OBJECT
@@ -113,6 +116,10 @@ class VKUI_WIDGETS_EXPORT VLiquidGlassSurface final : public QWidget {
     void setGlassStyle(const VLiquidGlassStyle& style);
     [[nodiscard]] VLiquidGlassStyle glassStyle() const noexcept;
 
+    /** Sets a local-coordinate outline for nonrectangular materials such as popovers. */
+    void setShapePath(const QPainterPath& path);
+    [[nodiscard]] QPainterPath shapePath() const;
+
     void setGlassEnabled(bool enabled);
     [[nodiscard]] bool isGlassEnabled() const noexcept;
 
@@ -128,6 +135,7 @@ class VKUI_WIDGETS_EXPORT VLiquidGlassSurface final : public QWidget {
   private:
     Q_DISABLE_COPY_MOVE(VLiquidGlassSurface)
     friend class VkPopupSurfaceStyler;
+    friend class VLiquidGlassButton;
 
     void paintMaterial(QPainter& painter);
 

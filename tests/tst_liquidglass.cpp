@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <memory>
 #include <vkui/core/VkThemeManager.h>
+#include <vkui/widgets/controls/VLiquidGlassButton.h>
 #include <vkui/widgets/effects/VLiquidGlass.h>
 
 namespace {
@@ -77,6 +78,9 @@ class LiquidGlassTest final : public QObject {
 
   private slots:
     void capturesBackdropWithoutRecursingIntoSurface();
+    void uncapturedBackdropRemainsTranslucent();
+    void glassButtonUsesSharedBackdropAndRemainsClickable();
+    void customShapeUsesOneMaterialAcrossArrowAndBody();
     void sourcePaintInvalidatesEverySharedSurface();
     void sourceLifetimeIsSafe();
     void switchingSourceDisconnectsOldObservers();
@@ -113,6 +117,100 @@ void LiquidGlassTest::capturesBackdropWithoutRecursingIntoSurface() {
     QVERIFY(leading.blue() < 35);
     QVERIFY(trailing.blue() > 220);
     QVERIFY(trailing.red() < 35);
+}
+
+void LiquidGlassTest::uncapturedBackdropRemainsTranslucent() {
+    QWidget host;
+    host.resize(100, 80);
+    SplitColorWidget source(&host);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface;
+    surface.resize(120, 48);
+    surface.setBackdrop(&backdrop);
+    surface.setGlassStyle(exactBackdropStyle());
+    host.show();
+    surface.move(host.mapToGlobal(QPoint(80, 16)));
+    surface.show();
+    QCoreApplication::processEvents();
+
+    QImage image(surface.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    surface.render(&image);
+    const QColor inside = image.pixelColor(8, 24);
+    const QColor outside = image.pixelColor(80, 24);
+    QCOMPARE(inside.alpha(), 255);
+    QVERIFY(outside.alpha() >= 150);
+    QVERIFY(outside.alpha() <= 220);
+    QVERIFY(outside.red() < 255);
+
+    surface.setGlassStyle(vkui::VLiquidGlassStyle::popup(16.0));
+    image.fill(Qt::transparent);
+    surface.render(&image);
+    QVERIFY(image.pixelColor(80, 24).alpha() < 255);
+}
+
+void LiquidGlassTest::glassButtonUsesSharedBackdropAndRemainsClickable() {
+    auto* manager = vkui::VkThemeManager::instance();
+    const bool originalGlassEnabled = manager->liquidGlassEnabled();
+    manager->setLiquidGlassEnabled(true);
+    QWidget host;
+    host.resize(180, 80);
+    SplitColorWidget source(&host);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassButton button(QStringLiteral("Action"), &host);
+    button.setGeometry(24, 20, 130, 36);
+    button.setBackdrop(&backdrop);
+    host.show();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(button.backdrop(), &backdrop);
+    QCOMPARE(button.glassStyle(), vkui::VLiquidGlassStyle::control());
+    const QColor leading = sampledColor(button, QPoint(20, 18));
+    const QColor trailing = sampledColor(button, QPoint(110, 18));
+    QVERIFY(leading.red() > trailing.red() + 30);
+    QVERIFY(trailing.blue() > leading.blue() + 30);
+    QSignalSpy clickedSpy(&button, &QPushButton::clicked);
+    button.click();
+    QCOMPARE(clickedSpy.size(), 1);
+    manager->setLiquidGlassEnabled(originalGlassEnabled);
+}
+
+void LiquidGlassTest::customShapeUsesOneMaterialAcrossArrowAndBody() {
+    QWidget host;
+    host.resize(180, 120);
+    SplitColorWidget source(&host);
+    source.setColors(Qt::white, Qt::white);
+    source.setGeometry(host.rect());
+    vkui::VLiquidGlassBackdrop backdrop(&source);
+    vkui::VLiquidGlassSurface surface(&host);
+    surface.setGeometry(10, 10, 160, 100);
+    surface.setBackdrop(&backdrop);
+    surface.setGlassStyle(exactBackdropStyle());
+
+    QPainterPath outline;
+    outline.moveTo(0, 16);
+    outline.lineTo(70, 16);
+    outline.lineTo(80, 0);
+    outline.lineTo(90, 16);
+    outline.lineTo(160, 16);
+    outline.lineTo(160, 100);
+    outline.lineTo(0, 100);
+    outline.closeSubpath();
+    surface.setShapePath(outline);
+    host.show();
+    QCoreApplication::processEvents();
+
+    QImage image(surface.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    surface.render(&image);
+    const QColor arrow = image.pixelColor(80, 10);
+    const QColor body = image.pixelColor(80, 30);
+    QCOMPARE(arrow, body);
+    QCOMPARE(arrow.alpha(), 255);
+    QCOMPARE(image.pixelColor(40, 8).alpha(), 0);
+    QVERIFY(surface.shapePath() == outline);
 }
 
 void LiquidGlassTest::sourcePaintInvalidatesEverySharedSurface() {

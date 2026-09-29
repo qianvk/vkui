@@ -18,6 +18,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QScreen>
 #include <QtGui/QTouchEvent>
+#include <QtGui/QTransform>
 #include <QtGui/QWindow>
 #include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
@@ -252,15 +253,17 @@ void VPopoverPrivate::syncLiquidGlassSurface() {
         glassSurface->setBackdrop(glassBackdrop);
     }
     glassBackdrop->setSourceWidget(anchorWindow);
-    const QRect bodyRect = finalPlacement.bodyRect.toAlignedRect().intersected(q->rect());
-    if (bodyRect.isEmpty()) {
+    const QRect materialRect = finalPath.boundingRect().toAlignedRect().intersected(q->rect());
+    if (materialRect.isEmpty()) {
         glassSurface->hide();
         return;
     }
     const VLiquidGlassStyle style =
         VLiquidGlassStyle::popup(VkThemeManager::instance()->theme().metrics().popoverCornerRadius);
     glassSurface->setGlassStyle(style);
-    glassSurface->setGeometry(bodyRect);
+    glassSurface->setGeometry(materialRect);
+    glassSurface->setShapePath(
+        QTransform::fromTranslate(-materialRect.x(), -materialRect.y()).map(finalPath));
     glassSurface->show();
     glassSurface->lower();
 }
@@ -1124,15 +1127,12 @@ void VPopoverPrivate::paint(QPaintEvent* event) {
         painter.drawPixmap(QPointF(0.0, 0.0), shadow);
     }
 
-    QColor surface = colors.popoverBackground;
-    if (VkThemeManager::instance()->liquidGlassEnabled()) {
-        const qreal tint =
-            normalizedLiquidGlassTintLevel(VkThemeManager::instance()->liquidGlassTintLevel());
-        const int clearAlpha = theme.effectiveAppearance() == VkAppearance::Dark ? 108 : 76;
-        const int tintedAlpha = theme.effectiveAppearance() == VkAppearance::Dark ? 224 : 208;
-        surface.setAlpha(qRound(std::lerp(clearAlpha, tintedAlpha, tint)));
+    if (VkThemeManager::instance()->liquidGlassEnabled() && glassSurface &&
+        glassSurface->isVisible()) {
+        // The child renders one continuous material across the arrow and body.
+        return;
     }
-    painter.fillPath(finalPath, surface);
+    painter.fillPath(finalPath, colors.popoverBackground);
     QPen borderPen(colors.border);
     borderPen.setWidthF(std::max<qreal>(0.5, metrics.borderWidth));
     borderPen.setJoinStyle(Qt::RoundJoin);

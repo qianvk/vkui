@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#include <QtGui/QImage>
+#include <QtGui/QPalette>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 #include <QtWidgets/QApplication>
@@ -127,11 +129,16 @@ void PopoverInteractionTest::popupContentInheritsResponsiveFont() {
 void PopoverInteractionTest::popoverUsesSharedLiquidGlassPolicy() {
     auto* manager = vkui::VkThemeManager::instance();
     const bool original = manager->liquidGlassEnabled();
+    const vkui::VkAppearance originalAppearance = manager->appearance();
     manager->setLiquidGlassEnabled(true);
 
     QWidget window;
     window.resize(480, 320);
-    QPushButton anchor(QStringLiteral("Anchor"), &window);
+    QPalette palette = window.palette();
+    palette.setColor(QPalette::Window, QColor(230, 230, 230));
+    window.setPalette(palette);
+    window.setAutoFillBackground(true);
+    QWidget anchor(&window);
     anchor.setGeometry(180, 120, 100, 32);
     window.show();
 
@@ -139,6 +146,7 @@ void PopoverInteractionTest::popoverUsesSharedLiquidGlassPolicy() {
     auto* content = new QLabel(QStringLiteral("Glass content"));
     content->setMinimumSize(220, 100);
     popover.setContentWidget(content);
+    popover.setPreferredPlacement(vkui::VPopoverPlacement::Below);
     popover.openFor(&anchor);
     QTRY_VERIFY(popover.isOpen());
 
@@ -150,10 +158,27 @@ void PopoverInteractionTest::popoverUsesSharedLiquidGlassPolicy() {
     QCOMPARE(surface->backdrop()->sourceWidget(), &window);
     QVERIFY(surface->glassStyle() ==
             vkui::VLiquidGlassStyle::popup(manager->theme().metrics().popoverCornerRadius));
+    QVERIFY(!surface->shapePath().isEmpty());
+    QCOMPARE(surface->shapePath().toSubpathPolygons().size(), 1);
+    const int centerX = surface->geometry().center().x();
+    const int bodyTop =
+        surface->geometry().top() + qRound(manager->theme().metrics().popoverArrowDepth);
+    for (const vkui::VkAppearance appearance :
+         {vkui::VkAppearance::Light, vkui::VkAppearance::Dark}) {
+        manager->setAppearance(appearance);
+        QCoreApplication::processEvents();
+        const QImage material = popover.grab().toImage();
+        const QColor arrowBase = material.pixelColor(centerX, bodyTop - 1);
+        const QColor body = material.pixelColor(centerX, bodyTop + 14);
+        QVERIFY(qAbs(arrowBase.red() - body.red()) <= 6);
+        QVERIFY(qAbs(arrowBase.green() - body.green()) <= 6);
+        QVERIFY(qAbs(arrowBase.blue() - body.blue()) <= 6);
+    }
 
     manager->setLiquidGlassEnabled(false);
     QCoreApplication::processEvents();
     QVERIFY(!surface->isVisible());
+    manager->setAppearance(originalAppearance);
     manager->setLiquidGlassEnabled(original);
 }
 
