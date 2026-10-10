@@ -176,11 +176,13 @@ class WindowsWindowBackend final : public VPlatformWindowBackend {
         case WM_NCCALCSIZE:
             if (wParam != FALSE) {
                 auto* parameters = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
-                const RECT proposed = parameters->rgrc[0];
-                const LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
-                parameters->rgrc[0].top =
-                    proposed.top + (IsZoomed(hwnd) ? nativeResizeBorderThickness() : 0);
-                return result;
+                // Own the whole client rectangle. Delegating first retains the standard side
+                // borders and makes Qt's expanded-client resize lose pixels on each side.
+                if (IsZoomed(hwnd)) {
+                    const int border = nativeResizeBorderThickness();
+                    InflateRect(&parameters->rgrc[0], -border, -border);
+                }
+                return 0;
             }
             break;
         case WM_NCHITTEST: {
