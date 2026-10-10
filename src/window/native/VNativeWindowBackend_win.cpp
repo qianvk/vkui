@@ -15,8 +15,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <CommCtrl.h>
 #include <Windows.h>
+#include <CommCtrl.h>
 #include <dwmapi.h>
 #include <windowsx.h>
 
