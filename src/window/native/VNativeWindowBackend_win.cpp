@@ -16,6 +16,8 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+
+// Common controls require the Win32 declarations above.
 #include <CommCtrl.h>
 #include <dwmapi.h>
 #include <windowsx.h>
