@@ -44,14 +44,28 @@ VNativeWindowController::VNativeWindowController(QWidget& host)
     applicationWindowFlags_ = host_->windowFlags();
     systemButtons_ = systemButtonsFromWindowFlags(applicationWindowFlags_);
     host_->setAttribute(Qt::WA_DontCreateNativeAncestors);
-#if defined(Q_OS_MACOS) && QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    // The application supplies its own chrome within the full client surface.
+    // Reserving Qt's native safe area adds a second title-bar-sized background strip.
     host_->setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea, false);
 #endif
     // Qt 6.9 introduced a public full-content contract that preserves native
     // window semantics. Older supported Qt versions use a frameless client
     // model while the backend restores the native titled/thick frame.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+#if defined(Q_OS_WIN)
+    // Windows caption buttons belong to DWM. ExpandedClientAreaHint creates a
+    // Qt-painted _q_titlebar instead, which cannot supply native Snap hover.
+    host_->setWindowFlag(Qt::ExpandedClientAreaHint, false);
+    // Keep an alpha channel for the DWM-owned caption area. The native frame is
+    // retained, so Qt does not turn this into a layered frameless window.
+    host_->setAttribute(Qt::WA_TranslucentBackground);
+    // Only the caption aperture is transparent; ordinary dialog backgrounds
+    // must still receive QWidget's normal palette fill.
+    host_->setAttribute(Qt::WA_NoSystemBackground, false);
+#else
     host_->setWindowFlag(Qt::ExpandedClientAreaHint, true);
+#endif
     host_->setWindowFlag(Qt::NoTitleBarBackgroundHint, true);
 #else
     host_->setWindowFlag(Qt::FramelessWindowHint, true);
@@ -183,6 +197,9 @@ bool VNativeWindowController::setSystemButtonsVisible(const bool visible) {
     systemButtonsVisible_ = visible;
     if (backendAttached_) {
         backend_->applySystemButtonState();
+        // App title-bar surfaces can change visibility in the same UI action.
+        QMetaObject::invokeMethod(this, &VNativeWindowController::synchronizeNativeWindow,
+                                  Qt::QueuedConnection);
     }
     return true;
 }
@@ -282,6 +299,14 @@ bool VNativeWindowController::eventFilter(QObject* watched, QEvent* event) {
         case QEvent::Resize:
         case QEvent::WindowStateChange:
             synchronizeNativeWindow();
+            break;
+        case QEvent::PaletteChange:
+        case QEvent::ApplicationPaletteChange:
+            synchronizeNativeWindow();
+            // The host receives the palette event before child title-bar surfaces.
+            // Resolve their inherited native caption color after propagation completes.
+            QMetaObject::invokeMethod(this, &VNativeWindowController::synchronizeNativeWindow,
+                                      Qt::QueuedConnection);
             break;
         case QEvent::Destroy:
             detachNativeHandle();
